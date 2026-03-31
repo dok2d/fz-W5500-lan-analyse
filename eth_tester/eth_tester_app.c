@@ -11,6 +11,7 @@
 #include "protocols/port_scan.h"
 #include "protocols/mac_changer.h"
 #include "protocols/traceroute.h"
+#include "protocols/discovery.h"
 #include "utils/packet_utils.h"
 #include "utils/oui_lookup.h"
 
@@ -89,6 +90,7 @@ static void eth_tester_do_cont_ping(EthTesterApp* app);
 static void eth_tester_do_port_scan(EthTesterApp* app);
 static void eth_tester_do_mac_changer(EthTesterApp* app);
 static void eth_tester_do_traceroute(EthTesterApp* app);
+static void eth_tester_do_discovery(EthTesterApp* app);
 static void eth_tester_do_ping_sweep(EthTesterApp* app);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static void eth_tester_save_results(const char* filename, const char* content);
@@ -120,6 +122,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->mac_changer_text = furi_string_alloc();
     app->traceroute_text = furi_string_alloc();
     app->ping_sweep_text = furi_string_alloc();
+    app->discovery_text = furi_string_alloc();
 
     /* Set initial text */
     furi_string_set(app->link_info_text, "Press OK to read\nlink status...\n");
@@ -158,6 +161,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "mDNS/SSDP Scan", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
@@ -292,6 +296,12 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Default ping sweep - will use DHCP subnet */
     strncpy(app->ping_sweep_ip_input, "192.168.1.0/24", sizeof(app->ping_sweep_ip_input));
 
+    /* mDNS/SSDP Discovery view */
+    app->text_box_discovery = text_box_alloc();
+    text_box_set_font(app->text_box_discovery, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_discovery), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDiscovery, text_box_get_view(app->text_box_discovery));
+
     /* Load saved MAC from SD card if available */
     if(mac_changer_load(app->mac_addr)) {
         FURI_LOG_I(TAG, "Loaded custom MAC from SD");
@@ -326,6 +336,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTracerouteInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingSweep);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingSweepInput);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDiscovery);
 
     submenu_free(app->submenu);
     text_box_free(app->text_box_link);
@@ -349,6 +360,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_input_free(app->text_input_traceroute);
     text_box_free(app->text_box_ping_sweep);
     text_input_free(app->text_input_ping_sweep);
+    text_box_free(app->text_box_discovery);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -365,6 +377,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->mac_changer_text);
     furi_string_free(app->traceroute_text);
     furi_string_free(app->ping_sweep_text);
+    furi_string_free(app->discovery_text);
 
     /* Stop and free DHCP timer */
     furi_timer_stop(app->dhcp_timer);
@@ -779,6 +792,12 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             app->wol_mac_input,
             6);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewWolInput);
+        break;
+
+    case EthTesterMenuItemDiscovery:
+        eth_tester_show_view(app, app->text_box_discovery, EthTesterViewDiscovery, app->discovery_text, "Scanning...\n");
+        eth_tester_do_discovery(app);
+        eth_tester_update_view(app->text_box_discovery, app->discovery_text);
         break;
 
     case EthTesterMenuItemPingSweep:
@@ -1940,6 +1959,184 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
 
     furi_string_free(results);
     eth_tester_save_results("ping_sweep.txt", furi_string_get_cstr(app->ping_sweep_text));
+}
+
+/* ==================== mDNS / SSDP Discovery ==================== */
+
+static void eth_tester_do_discovery(EthTesterApp* app) {
+    furi_string_reset(app->discovery_text);
+
+    if(!eth_tester_ensure_w5500(app)) {
+        furi_string_set(app->discovery_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    if(!w5500_hal_get_link_status()) {
+        furi_string_set(app->discovery_text, "No Link!\nConnect cable.\n");
+        return;
+    }
+
+    /* Get IP via DHCP */
+    furi_string_set(app->discovery_text, "Getting IP via DHCP...\n");
+    eth_tester_update_view(app->text_box_discovery, app->discovery_text);
+
+    uint8_t* dhcp_buffer = malloc(1024);
+    if(!dhcp_buffer) {
+        furi_string_set(app->discovery_text, "Memory alloc failed!\n");
+        return;
+    }
+    wiz_NetInfo net_info;
+    wizchip_getnetinfo(&net_info);
+    net_info.dhcp = NETINFO_DHCP;
+    memset(net_info.ip, 0, 4);
+    memset(net_info.sn, 0, 4);
+    memset(net_info.gw, 0, 4);
+    wizchip_setnetinfo(&net_info);
+
+    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
+
+    bool got_ip = false;
+    uint32_t dhcp_start = furi_get_tick();
+    while(furi_get_tick() - dhcp_start < 15000) {
+        uint8_t dhcp_ret = DHCP_run();
+        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
+            getIPfromDHCP(net_info.ip);
+            getSNfromDHCP(net_info.sn);
+            getGWfromDHCP(net_info.gw);
+            getDNSfromDHCP(net_info.dns);
+            net_info.dhcp = NETINFO_DHCP;
+            wizchip_setnetinfo(&net_info);
+            got_ip = true;
+            break;
+        }
+        if(dhcp_ret == DHCP_FAILED) break;
+        furi_delay_ms(10);
+    }
+    DHCP_stop();
+    free(dhcp_buffer);
+
+    if(!got_ip) {
+        furi_string_set(app->discovery_text, "DHCP failed.\n");
+        return;
+    }
+
+    furi_string_set(app->discovery_text, "Sending mDNS + SSDP...\n");
+    eth_tester_update_view(app->text_box_discovery, app->discovery_text);
+
+    /* Allocate device array */
+    DiscoveryDevice* devices = malloc(sizeof(DiscoveryDevice) * DISCOVERY_MAX_DEVICES);
+    if(!devices) {
+        furi_string_set(app->discovery_text, "Memory alloc failed!\n");
+        return;
+    }
+    memset(devices, 0, sizeof(DiscoveryDevice) * DISCOVERY_MAX_DEVICES);
+    uint16_t device_count = 0;
+
+    /* Send both queries */
+    bool mdns_ok = mdns_send_query(W5500_MDNS_SOCKET);
+    bool ssdp_ok = ssdp_send_msearch(W5500_SSDP_SOCKET);
+
+    if(!mdns_ok && !ssdp_ok) {
+        furi_string_set(app->discovery_text, "Failed to send queries!\n");
+        free(devices);
+        return;
+    }
+
+    furi_string_set(app->discovery_text, "Listening for responses...\n(5 seconds)\n");
+    eth_tester_update_view(app->text_box_discovery, app->discovery_text);
+
+    /* Listen for responses */
+    uint8_t recv_buf[512];
+    uint32_t start_tick = furi_get_tick();
+
+    while(furi_get_tick() - start_tick < DISCOVERY_TIMEOUT_MS && device_count < DISCOVERY_MAX_DEVICES) {
+        /* Check mDNS socket */
+        if(mdns_ok) {
+            uint16_t rx = getSn_RX_RSR(W5500_MDNS_SOCKET);
+            if(rx > 0) {
+                uint8_t from_ip[4];
+                uint16_t from_port;
+                int32_t received = recvfrom(W5500_MDNS_SOCKET, recv_buf, sizeof(recv_buf), from_ip, &from_port);
+                if(received > 0) {
+                    DiscoveryDevice dev;
+                    if(mdns_parse_response(recv_buf, (uint16_t)received, from_ip, &dev)) {
+                        /* Check for duplicate IP */
+                        bool dup = false;
+                        for(uint16_t i = 0; i < device_count; i++) {
+                            if(memcmp(devices[i].ip, dev.ip, 4) == 0 &&
+                               devices[i].source == dev.source) {
+                                dup = true;
+                                break;
+                            }
+                        }
+                        if(!dup) {
+                            memcpy(&devices[device_count++], &dev, sizeof(dev));
+                        }
+                    }
+                }
+            }
+        }
+
+        /* Check SSDP socket */
+        if(ssdp_ok) {
+            uint16_t rx = getSn_RX_RSR(W5500_SSDP_SOCKET);
+            if(rx > 0) {
+                uint8_t from_ip[4];
+                uint16_t from_port;
+                int32_t received = recvfrom(W5500_SSDP_SOCKET, recv_buf, sizeof(recv_buf), from_ip, &from_port);
+                if(received > 0) {
+                    DiscoveryDevice dev;
+                    if(ssdp_parse_response(recv_buf, (uint16_t)received, from_ip, &dev)) {
+                        /* Check for duplicate IP + source */
+                        bool dup = false;
+                        for(uint16_t i = 0; i < device_count; i++) {
+                            if(memcmp(devices[i].ip, dev.ip, 4) == 0 &&
+                               devices[i].source == dev.source) {
+                                dup = true;
+                                break;
+                            }
+                        }
+                        if(!dup) {
+                            memcpy(&devices[device_count++], &dev, sizeof(dev));
+                        }
+                    }
+                }
+            }
+        }
+
+        furi_delay_ms(50);
+    }
+
+    /* Close sockets */
+    if(mdns_ok) close(W5500_MDNS_SOCKET);
+    if(ssdp_ok) close(W5500_SSDP_SOCKET);
+
+    /* Format results */
+    furi_string_printf(
+        app->discovery_text,
+        "=== Discovery ===\n"
+        "Found %d device(s)\n\n",
+        device_count);
+
+    for(uint16_t i = 0; i < device_count; i++) {
+        DiscoveryDevice* d = &devices[i];
+        char ip_str[16];
+        pkt_format_ip(d->ip, ip_str);
+        furi_string_cat_printf(
+            app->discovery_text,
+            "%s [%s]\n %s\n %s\n\n",
+            ip_str,
+            d->source == DiscoverySourceMdns ? "mDNS" : "SSDP",
+            d->name,
+            d->service_type);
+    }
+
+    if(device_count == 0) {
+        furi_string_cat_str(app->discovery_text, "No devices found.\n");
+    }
+
+    free(devices);
+    eth_tester_save_results("discovery.txt", furi_string_get_cstr(app->discovery_text));
 }
 
 /* ==================== Port Scanner ==================== */

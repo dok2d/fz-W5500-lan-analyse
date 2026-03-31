@@ -38,6 +38,7 @@ typedef enum {
     EthTesterViewTracerouteInput,
     EthTesterViewPingSweep,
     EthTesterViewPingSweepInput,
+    EthTesterViewDiscovery,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -56,6 +57,7 @@ typedef enum {
     EthTesterMenuItemMacChanger,
     EthTesterMenuItemTraceroute,
     EthTesterMenuItemPingSweep,
+    EthTesterMenuItemDiscovery,
 } EthTesterMenuItem;
 
 /* Packet statistics counters */
@@ -98,6 +100,7 @@ struct EthTesterApp {
     TextInput* text_input_traceroute;
     TextBox* text_box_ping_sweep;
     TextInput* text_input_ping_sweep;
+    TextBox* text_box_discovery;
     NotificationApp* notifications;
 
     /* W5500 state */
@@ -157,4 +160,5 @@ struct EthTesterApp {
     FuriString* mac_changer_text;
     FuriString* traceroute_text;
     FuriString* ping_sweep_text;
+    FuriString* discovery_text;
 };
