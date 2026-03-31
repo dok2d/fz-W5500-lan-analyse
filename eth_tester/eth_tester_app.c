@@ -12,6 +12,7 @@
 #include "protocols/mac_changer.h"
 #include "protocols/traceroute.h"
 #include "protocols/discovery.h"
+#include "protocols/stp_vlan.h"
 #include "utils/packet_utils.h"
 #include "utils/oui_lookup.h"
 
@@ -92,6 +93,7 @@ static void eth_tester_do_mac_changer(EthTesterApp* app);
 static void eth_tester_do_traceroute(EthTesterApp* app);
 static void eth_tester_do_discovery(EthTesterApp* app);
 static void eth_tester_do_ping_sweep(EthTesterApp* app);
+static void eth_tester_do_stp_vlan(EthTesterApp* app);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static void eth_tester_save_results(const char* filename, const char* content);
 
@@ -123,6 +125,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->traceroute_text = furi_string_alloc();
     app->ping_sweep_text = furi_string_alloc();
     app->discovery_text = furi_string_alloc();
+    app->stp_vlan_text = furi_string_alloc();
 
     /* Set initial text */
     furi_string_set(app->link_info_text, "Press OK to read\nlink status...\n");
@@ -162,6 +165,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "mDNS/SSDP Scan", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "STP/VLAN Detect", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
@@ -302,6 +306,12 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_box_get_view(app->text_box_discovery), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDiscovery, text_box_get_view(app->text_box_discovery));
 
+    /* STP/VLAN Detection view */
+    app->text_box_stp_vlan = text_box_alloc();
+    text_box_set_font(app->text_box_stp_vlan, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_stp_vlan), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewStpVlan, text_box_get_view(app->text_box_stp_vlan));
+
     /* Load saved MAC from SD card if available */
     if(mac_changer_load(app->mac_addr)) {
         FURI_LOG_I(TAG, "Loaded custom MAC from SD");
@@ -337,6 +347,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingSweep);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingSweepInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDiscovery);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewStpVlan);
 
     submenu_free(app->submenu);
     text_box_free(app->text_box_link);
@@ -361,6 +372,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_box_free(app->text_box_ping_sweep);
     text_input_free(app->text_input_ping_sweep);
     text_box_free(app->text_box_discovery);
+    text_box_free(app->text_box_stp_vlan);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -378,6 +390,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->traceroute_text);
     furi_string_free(app->ping_sweep_text);
     furi_string_free(app->discovery_text);
+    furi_string_free(app->stp_vlan_text);
 
     /* Stop and free DHCP timer */
     furi_timer_stop(app->dhcp_timer);
@@ -792,6 +805,12 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             app->wol_mac_input,
             6);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewWolInput);
+        break;
+
+    case EthTesterMenuItemStpVlan:
+        eth_tester_show_view(app, app->text_box_stp_vlan, EthTesterViewStpVlan, app->stp_vlan_text, "Listening...\n");
+        eth_tester_do_stp_vlan(app);
+        eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
         break;
 
     case EthTesterMenuItemDiscovery:
@@ -2137,6 +2156,129 @@ static void eth_tester_do_discovery(EthTesterApp* app) {
 
     free(devices);
     eth_tester_save_results("discovery.txt", furi_string_get_cstr(app->discovery_text));
+}
+
+/* ==================== STP/BPDU + VLAN Detection ==================== */
+
+static void eth_tester_do_stp_vlan(EthTesterApp* app) {
+    furi_string_reset(app->stp_vlan_text);
+
+    if(!eth_tester_ensure_w5500(app)) {
+        furi_string_set(app->stp_vlan_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    if(!w5500_hal_get_link_status()) {
+        furi_string_set(app->stp_vlan_text, "No Link!\nConnect cable.\n");
+        return;
+    }
+
+    furi_string_set(app->stp_vlan_text, "Listening for BPDU\nand VLAN tags...\n(30 seconds)\n");
+    eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
+
+    /* Open MACRAW socket */
+    if(!w5500_hal_open_macraw()) {
+        furi_string_set(app->stp_vlan_text, "Failed to open\nMACRAW socket!\n");
+        return;
+    }
+
+    BpduInfo bpdu;
+    memset(&bpdu, 0, sizeof(bpdu));
+
+    VlanState vlan_state;
+    vlan_state_init(&vlan_state);
+
+    uint32_t start_tick = furi_get_tick();
+    uint32_t timeout_ms = 30000;
+    uint32_t last_update = 0;
+
+    while(furi_get_tick() - start_tick < timeout_ms) {
+        uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
+        if(recv_len >= ETH_HEADER_SIZE) {
+            /* Count frame for stats */
+            eth_tester_count_frame(app, frame_buf, recv_len);
+
+            /* Check for BPDU */
+            if(!bpdu.valid) {
+                stp_parse_bpdu(frame_buf, recv_len, &bpdu);
+            }
+
+            /* Check for 802.1Q VLAN tag */
+            uint16_t vlan_id;
+            if(vlan_extract_tag(frame_buf, recv_len, &vlan_id)) {
+                vlan_state_add(&vlan_state, vlan_id);
+            }
+        }
+
+        /* Update display every 2 seconds */
+        uint32_t elapsed = furi_get_tick() - start_tick;
+        if(elapsed - last_update > 2000) {
+            last_update = elapsed;
+            furi_string_reset(app->stp_vlan_text);
+            furi_string_printf(
+                app->stp_vlan_text,
+                "Listening... %lus/%lus\n\n",
+                (unsigned long)(elapsed / 1000),
+                (unsigned long)(timeout_ms / 1000));
+
+            if(bpdu.valid) {
+                char bpdu_buf[256];
+                stp_format_bpdu(&bpdu, bpdu_buf, sizeof(bpdu_buf));
+                furi_string_cat_str(app->stp_vlan_text, bpdu_buf);
+            } else {
+                furi_string_cat_str(app->stp_vlan_text, "No BPDU detected yet.\n");
+            }
+
+            furi_string_cat_str(app->stp_vlan_text, "\n--- VLANs ---\n");
+            if(vlan_state.vlan_count > 0) {
+                for(uint16_t i = 0; i < vlan_state.vlan_count; i++) {
+                    furi_string_cat_printf(
+                        app->stp_vlan_text,
+                        "VLAN %d: %lu frames\n",
+                        vlan_state.vlans[i].vlan_id,
+                        (unsigned long)vlan_state.vlans[i].frame_count);
+                }
+            } else {
+                furi_string_cat_str(app->stp_vlan_text, "No 802.1Q tags.\n");
+            }
+
+            eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
+        }
+
+        furi_delay_ms(50);
+    }
+
+    w5500_hal_close_macraw();
+
+    /* Format final results */
+    furi_string_reset(app->stp_vlan_text);
+
+    if(bpdu.valid) {
+        char bpdu_buf[256];
+        stp_format_bpdu(&bpdu, bpdu_buf, sizeof(bpdu_buf));
+        furi_string_cat_str(app->stp_vlan_text, bpdu_buf);
+    } else {
+        furi_string_set(app->stp_vlan_text, "=== STP/VLAN ===\nNo BPDU detected.\n");
+    }
+
+    furi_string_cat_str(app->stp_vlan_text, "\n--- VLANs ---\n");
+    if(vlan_state.vlan_count > 0) {
+        furi_string_cat_printf(
+            app->stp_vlan_text,
+            "Tagged frames: %lu\n",
+            (unsigned long)vlan_state.total_tagged_frames);
+        for(uint16_t i = 0; i < vlan_state.vlan_count; i++) {
+            furi_string_cat_printf(
+                app->stp_vlan_text,
+                "VLAN %d: %lu frames\n",
+                vlan_state.vlans[i].vlan_id,
+                (unsigned long)vlan_state.vlans[i].frame_count);
+        }
+    } else {
+        furi_string_cat_str(app->stp_vlan_text, "No 802.1Q tags detected.\n(Not on trunk port?)\n");
+    }
+
+    eth_tester_save_results("stp_vlan.txt", furi_string_get_cstr(app->stp_vlan_text));
 }
 
 /* ==================== Port Scanner ==================== */
