@@ -10,6 +10,7 @@
 #include <gui/view.h>
 #include <notification/notification_messages.h>
 #include "protocols/ping_graph.h"
+#include "protocols/history.h"
 
 /* Forward declarations */
 typedef struct EthTesterApp EthTesterApp;
@@ -109,8 +110,9 @@ struct EthTesterApp {
     TextInput* text_input_ping_sweep;
     TextBox* text_box_discovery;
     TextBox* text_box_stp_vlan;
-    TextBox* text_box_history;
+    Submenu* submenu_history;
     TextBox* text_box_history_file;
+    HistoryState* history_state;
     TextBox* text_box_about;
     NotificationApp* notifications;
 
@@ -185,6 +187,5 @@ struct EthTesterApp {
     FuriString* ping_sweep_text;
     FuriString* discovery_text;
     FuriString* stp_vlan_text;
-    FuriString* history_text;
     FuriString* history_file_text;
 };

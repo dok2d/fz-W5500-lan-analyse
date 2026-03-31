@@ -100,7 +100,8 @@ static void eth_tester_do_traceroute(EthTesterApp* app);
 static void eth_tester_do_discovery(EthTesterApp* app);
 static void eth_tester_do_ping_sweep(EthTesterApp* app);
 static void eth_tester_do_stp_vlan(EthTesterApp* app);
-static void eth_tester_do_history(EthTesterApp* app);
+static void eth_tester_history_populate(EthTesterApp* app);
+static void eth_tester_history_file_callback(void* context, uint32_t index);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static void eth_tester_save_results(const char* filename, const char* content);
 static void eth_tester_save_and_notify(const char* type, FuriString* text);
@@ -235,7 +236,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->ping_sweep_text = furi_string_alloc();
     app->discovery_text = furi_string_alloc();
     app->stp_vlan_text = furi_string_alloc();
-    app->history_text = furi_string_alloc();
+    /* history_text removed — history now uses submenu */
     app->history_file_text = furi_string_alloc();
 
     /* Set initial text */
@@ -423,14 +424,14 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDiscovery, text_box_get_view(app->text_box_discovery));
 
     /* History views */
-    app->text_box_history = text_box_alloc();
-    text_box_set_font(app->text_box_history, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_history), eth_tester_navigation_submenu_callback);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistory, text_box_get_view(app->text_box_history));
+    app->submenu_history = submenu_alloc();
+    view_set_previous_callback(submenu_get_view(app->submenu_history), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistory, submenu_get_view(app->submenu_history));
+    app->history_state = NULL;
 
     app->text_box_history_file = text_box_alloc();
     text_box_set_font(app->text_box_history_file, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_history_file), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_history_file), eth_tester_navigation_history_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistoryFile, text_box_get_view(app->text_box_history_file));
 
     /* STP/VLAN Detection view */
@@ -524,8 +525,9 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_input_free(app->text_input_ping_sweep);
     text_box_free(app->text_box_discovery);
     text_box_free(app->text_box_stp_vlan);
-    text_box_free(app->text_box_history);
+    submenu_free(app->submenu_history);
     text_box_free(app->text_box_history_file);
+    if(app->history_state) free(app->history_state);
     text_box_free(app->text_box_about);
 
     view_dispatcher_free(app->view_dispatcher);
@@ -545,7 +547,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->ping_sweep_text);
     furi_string_free(app->discovery_text);
     furi_string_free(app->stp_vlan_text);
-    furi_string_free(app->history_text);
+    /* history_text removed — history now uses submenu */
     furi_string_free(app->history_file_text);
 
     /* Stop and free DHCP timer */
@@ -573,6 +575,11 @@ static uint32_t eth_tester_navigation_exit_callback(void* context) {
 static uint32_t eth_tester_navigation_submenu_callback(void* context) {
     UNUSED(context);
     return EthTesterViewMainMenu;
+}
+
+static uint32_t eth_tester_navigation_history_callback(void* context) {
+    UNUSED(context);
+    return EthTesterViewHistory;
 }
 
 /* ==================== Worker thread ==================== */
@@ -656,9 +663,7 @@ static int32_t eth_tester_worker_fn(void* context) {
         eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
         break;
     case EthTesterMenuItemHistory:
-        eth_tester_do_history(app);
-        eth_tester_update_view(app->text_box_history, app->history_text);
-        break;
+        break; /* History uses synchronous submenu, no worker needed */
     default:
         break;
     }
@@ -920,8 +925,8 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemHistory:
-        eth_tester_show_view(app, app->text_box_history, EthTesterViewHistory, app->history_text, "Loading...\n");
-        eth_tester_worker_start(app, EthTesterMenuItemHistory, EthTesterViewHistory);
+        eth_tester_history_populate(app);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewHistory);
         break;
 
     case EthTesterMenuItemStpVlan:
@@ -2422,59 +2427,69 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
 
 /* ==================== History Browser ==================== */
 
-static void eth_tester_do_history(EthTesterApp* app) {
-    furi_string_reset(app->history_text);
+static void eth_tester_history_populate(EthTesterApp* app) {
+    submenu_reset(app->submenu_history);
 
-    HistoryState* state = malloc(sizeof(HistoryState));
-    if(!state) {
-        furi_string_set(app->history_text, "Memory alloc failed!\n");
-        return;
+    /* Free previous state if any */
+    if(app->history_state) {
+        free(app->history_state);
+        app->history_state = NULL;
     }
 
-    uint16_t count = history_list(state);
+    app->history_state = malloc(sizeof(HistoryState));
+    if(!app->history_state) return;
+
+    uint16_t count = history_list(app->history_state);
 
     if(count == 0) {
-        furi_string_set(app->history_text,
-            "=== History ===\n"
-            "No saved results yet.\n\n"
-            "All scan results are\n"
-            "auto-saved to SD card.\n"
-            "Run any scan and come\n"
-            "back to see results.\n");
-        free(state);
+        submenu_add_item(app->submenu_history, "No saved results", 0, NULL, NULL);
         return;
     }
 
-    furi_string_printf(
-        app->history_text,
-        "=== History ===\n"
-        "%d file(s) saved\n\n",
-        count);
-
     for(uint16_t i = 0; i < count; i++) {
-        HistoryEntry* e = &state->files[i];
+        HistoryEntry* e = &app->history_state->files[i];
 
-        /* Format nicely: extract date from filename if possible */
-        char display_date[20] = "";
+        /* Build display label: "[type] MM-DD HH:MM" */
+        char label[48];
         if(strlen(e->filename) > 15 && e->filename[8] == '_') {
-            /* YYYYMMDD_HHMMSS -> YYYY-MM-DD HH:MM */
-            snprintf(display_date, sizeof(display_date),
-                "%.4s-%.2s-%.2s %.2s:%.2s",
-                e->filename,
+            snprintf(label, sizeof(label),
+                "[%s] %.2s-%.2s %.2s:%.2s",
+                e->type,
                 e->filename + 4,
                 e->filename + 6,
                 e->filename + 9,
                 e->filename + 11);
+        } else {
+            snprintf(label, sizeof(label), "%s", e->filename);
         }
 
-        furi_string_cat_printf(
-            app->history_text,
-            "%s\n  %s\n",
-            display_date[0] ? display_date : e->filename,
-            e->type);
+        submenu_add_item(
+            app->submenu_history,
+            label,
+            i,
+            eth_tester_history_file_callback,
+            app);
+    }
+}
+
+static void eth_tester_history_file_callback(void* context, uint32_t index) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    if(!app->history_state || index >= app->history_state->file_count) return;
+
+    const char* filename = app->history_state->files[index].filename;
+
+    char buf[2048];
+    if(history_read_file(filename, buf, sizeof(buf))) {
+        furi_string_set(app->history_file_text, buf);
+    } else {
+        furi_string_printf(app->history_file_text, "Failed to read:\n%s\n", filename);
     }
 
-    free(state);
+    text_box_reset(app->text_box_history_file);
+    text_box_set_text(app->text_box_history_file, furi_string_get_cstr(app->history_file_text));
+    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewHistoryFile);
 }
 
 /* ==================== Port Scanner ==================== */
