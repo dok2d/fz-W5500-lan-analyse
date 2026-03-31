@@ -263,6 +263,20 @@ static bool eth_tester_ensure_w5500(EthTesterApp* app) {
     return true;
 }
 
+/* ==================== View update helpers ==================== */
+
+static void eth_tester_show_view(EthTesterApp* app, TextBox* tb, EthTesterView view, FuriString* text, const char* initial) {
+    furi_string_set(text, initial);
+    text_box_set_text(tb, furi_string_get_cstr(text));
+    view_dispatcher_switch_to_view(app->view_dispatcher, view);
+    furi_delay_ms(1);
+}
+
+static void eth_tester_update_view(TextBox* tb, FuriString* text) {
+    text_box_set_text(tb, furi_string_get_cstr(text));
+    furi_delay_ms(1);
+}
+
 /* ==================== Ping IP input callback ==================== */
 
 static bool eth_tester_parse_ip(const char* str, uint8_t ip[4]) {
@@ -291,23 +305,6 @@ static void eth_tester_ping_ip_input_callback(void* context) {
         memset(app->ping_ip_custom, 0, 4);
     }
     eth_tester_update_view(app->text_box_ping, app->ping_text);
-}
-
-/* ==================== View update helpers ==================== */
-
-/* Switch to a text box view and show initial status text.
- * This lets the user see progress immediately instead of a frozen menu. */
-static void eth_tester_show_view(EthTesterApp* app, TextBox* tb, EthTesterView view, FuriString* text, const char* initial) {
-    furi_string_set(text, initial);
-    text_box_set_text(tb, furi_string_get_cstr(text));
-    view_dispatcher_switch_to_view(app->view_dispatcher, view);
-    furi_delay_ms(1); /* yield so GUI thread renders */
-}
-
-/* Update text box contents while the view is already visible */
-static void eth_tester_update_view(TextBox* tb, FuriString* text) {
-    text_box_set_text(tb, furi_string_get_cstr(text));
-    furi_delay_ms(1);
 }
 
 /* ==================== Submenu callback ==================== */
