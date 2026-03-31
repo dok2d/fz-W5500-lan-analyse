@@ -9,6 +9,7 @@
 #include "protocols/wol.h"
 #include "protocols/ping_graph.h"
 #include "protocols/port_scan.h"
+#include "protocols/mac_changer.h"
 #include "utils/packet_utils.h"
 #include "utils/oui_lookup.h"
 
@@ -85,6 +86,7 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app);
 static void eth_tester_do_wol(EthTesterApp* app);
 static void eth_tester_do_cont_ping(EthTesterApp* app);
 static void eth_tester_do_port_scan(EthTesterApp* app);
+static void eth_tester_do_mac_changer(EthTesterApp* app);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static void eth_tester_save_results(const char* filename, const char* content);
 
@@ -112,6 +114,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->dns_text = furi_string_alloc();
     app->wol_text = furi_string_alloc();
     app->port_scan_text = furi_string_alloc();
+    app->mac_changer_text = furi_string_alloc();
 
     /* Set initial text */
     furi_string_set(app->link_info_text, "Press OK to read\nlink status...\n");
@@ -123,6 +126,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     furi_string_set(app->dns_text, "DNS Lookup ready.\n");
     furi_string_set(app->wol_text, "Wake-on-LAN ready.\n");
     furi_string_set(app->port_scan_text, "Port Scanner ready.\n");
+    furi_string_set(app->mac_changer_text, "MAC Changer ready.\n");
 
     /* Open GUI */
     app->gui = furi_record_open(RECORD_GUI);
@@ -144,6 +148,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Continuous Ping", EthTesterMenuItemContPing, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Port Scanner", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
@@ -242,6 +247,21 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Default port scan target */
     strncpy(app->port_scan_ip_input, "192.168.1.1", sizeof(app->port_scan_ip_input));
 
+    /* MAC Changer views */
+    app->text_box_mac_changer = text_box_alloc();
+    text_box_set_font(app->text_box_mac_changer, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_mac_changer), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMacChanger, text_box_get_view(app->text_box_mac_changer));
+
+    app->byte_input_mac_changer = byte_input_alloc();
+    view_set_previous_callback(byte_input_get_view(app->byte_input_mac_changer), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMacChangerInput, byte_input_get_view(app->byte_input_mac_changer));
+
+    /* Load saved MAC from SD card if available */
+    if(mac_changer_load(app->mac_addr)) {
+        FURI_LOG_I(TAG, "Loaded custom MAC from SD");
+    }
+
     return app;
 }
 
@@ -265,6 +285,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewContPingInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPortScan);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPortScanInput);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChanger);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChangerInput);
 
     submenu_free(app->submenu);
     text_box_free(app->text_box_link);
@@ -282,6 +304,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_input_free(app->text_input_cont_ping);
     text_box_free(app->text_box_port_scan);
     text_input_free(app->text_input_port_scan);
+    text_box_free(app->text_box_mac_changer);
+    byte_input_free(app->byte_input_mac_changer);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -295,6 +319,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->dns_text);
     furi_string_free(app->wol_text);
     furi_string_free(app->port_scan_text);
+    furi_string_free(app->mac_changer_text);
 
     /* Stop and free DHCP timer */
     furi_timer_stop(app->dhcp_timer);
@@ -543,6 +568,32 @@ static void eth_tester_cont_ping_ip_input_callback(void* context) {
     view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
 }
 
+/* ==================== MAC changer byte input callback ==================== */
+
+static void eth_tester_mac_changer_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    /* Apply the custom MAC */
+    memcpy(app->mac_addr, app->mac_changer_input, 6);
+    w5500_hal_set_mac(app->mac_addr);
+    mac_changer_save(app->mac_addr);
+
+    char mac_str[18];
+    pkt_format_mac(app->mac_addr, mac_str);
+
+    furi_string_printf(
+        app->mac_changer_text,
+        "=== MAC Changer ===\n"
+        "Custom MAC set:\n%s\n\n"
+        "Saved to SD card.\n"
+        "Takes full effect on\n"
+        "next DHCP/reconnect.\n",
+        mac_str);
+    eth_tester_show_view(app, app->text_box_mac_changer, EthTesterViewMacChanger, app->mac_changer_text,
+        furi_string_get_cstr(app->mac_changer_text));
+}
+
 /* ==================== Port scan IP input callback ==================== */
 
 static void eth_tester_port_scan_ip_input_callback(void* context) {
@@ -655,6 +706,12 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             app->wol_mac_input,
             6);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewWolInput);
+        break;
+
+    case EthTesterMenuItemMacChanger:
+        eth_tester_show_view(app, app->text_box_mac_changer, EthTesterViewMacChanger, app->mac_changer_text, "Loading...\n");
+        eth_tester_do_mac_changer(app);
+        eth_tester_update_view(app->text_box_mac_changer, app->mac_changer_text);
         break;
 
     case EthTesterMenuItemPortScan:
@@ -1458,6 +1515,57 @@ static void eth_tester_do_wol(EthTesterApp* app) {
             "Failed to send!\n",
             mac_str);
     }
+}
+
+/* ==================== MAC Changer ==================== */
+
+static void eth_tester_do_mac_changer(EthTesterApp* app) {
+    furi_string_reset(app->mac_changer_text);
+
+    /* Read current MAC */
+    uint8_t current_mac[6];
+    if(app->w5500_initialized) {
+        w5500_hal_get_mac(current_mac);
+    } else {
+        memcpy(current_mac, app->mac_addr, 6);
+    }
+
+    uint8_t default_mac[6] = MAC_CHANGER_DEFAULT_MAC;
+    bool is_default = (memcmp(current_mac, default_mac, 6) == 0);
+
+    char mac_str[18];
+    pkt_format_mac(current_mac, mac_str);
+
+    char default_str[18];
+    pkt_format_mac(default_mac, default_str);
+
+    /* Generate a random MAC for preview */
+    uint8_t random_mac[6];
+    mac_changer_generate_random(random_mac);
+
+    /* Apply random MAC immediately */
+    memcpy(app->mac_addr, random_mac, 6);
+    if(app->w5500_initialized) {
+        w5500_hal_set_mac(app->mac_addr);
+    }
+    mac_changer_save(app->mac_addr);
+
+    char new_mac_str[18];
+    pkt_format_mac(random_mac, new_mac_str);
+
+    furi_string_printf(
+        app->mac_changer_text,
+        "=== MAC Changer ===\n"
+        "Previous: %s\n"
+        "%s\n\n"
+        "New random MAC:\n"
+        "%s\n\n"
+        "Saved to SD card.\n"
+        "Full effect on next\n"
+        "DHCP/reconnect.\n",
+        mac_str,
+        is_default ? "(default)" : "(custom)",
+        new_mac_str);
 }
 
 /* ==================== Port Scanner ==================== */
