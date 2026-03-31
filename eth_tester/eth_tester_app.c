@@ -5,6 +5,8 @@
 #include "protocols/arp_scan.h"
 #include "protocols/dhcp_discover.h"
 #include "protocols/icmp.h"
+#include "protocols/dns_lookup.h"
+#include "protocols/wol.h"
 #include "utils/packet_utils.h"
 #include "utils/oui_lookup.h"
 
@@ -77,6 +79,8 @@ static void eth_tester_do_arp_scan(EthTesterApp* app);
 static void eth_tester_do_dhcp_analyze(EthTesterApp* app);
 static void eth_tester_do_ping(EthTesterApp* app);
 static void eth_tester_do_stats(EthTesterApp* app);
+static void eth_tester_do_dns_lookup(EthTesterApp* app);
+static void eth_tester_do_wol(EthTesterApp* app);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static void eth_tester_save_results(const char* filename, const char* content);
 
@@ -101,6 +105,8 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->dhcp_text = furi_string_alloc();
     app->ping_text = furi_string_alloc();
     app->stats_text = furi_string_alloc();
+    app->dns_text = furi_string_alloc();
+    app->wol_text = furi_string_alloc();
 
     /* Set initial text */
     furi_string_set(app->link_info_text, "Press OK to read\nlink status...\n");
@@ -109,6 +115,8 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     furi_string_set(app->dhcp_text, "DHCP Analyze ready.\nPress Back to return.\n");
     furi_string_set(app->ping_text, "Ping ready.\nPress Back to return.\n");
     furi_string_set(app->stats_text, "No statistics yet.\nRun LLDP/CDP or ARP\nto collect data.\n");
+    furi_string_set(app->dns_text, "DNS Lookup ready.\n");
+    furi_string_set(app->wol_text, "Wake-on-LAN ready.\n");
 
     /* Open GUI */
     app->gui = furi_record_open(RECORD_GUI);
@@ -126,6 +134,8 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "DHCP Analyze", EthTesterMenuItemDhcpAnalyze, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "DNS Lookup", EthTesterMenuItemDnsLookup, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
@@ -168,6 +178,29 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Default ping target */
     strncpy(app->ping_ip_input, "8.8.8.8", sizeof(app->ping_ip_input));
 
+    /* DNS Lookup views */
+    app->text_box_dns = text_box_alloc();
+    text_box_set_font(app->text_box_dns, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_dns), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDnsLookup, text_box_get_view(app->text_box_dns));
+
+    app->text_input_dns = text_input_alloc();
+    view_set_previous_callback(text_input_get_view(app->text_input_dns), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDnsInput, text_input_get_view(app->text_input_dns));
+
+    /* Default DNS hostname */
+    strncpy(app->dns_hostname_input, "google.com", sizeof(app->dns_hostname_input));
+
+    /* Wake-on-LAN views */
+    app->text_box_wol = text_box_alloc();
+    text_box_set_font(app->text_box_wol, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_wol), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewWol, text_box_get_view(app->text_box_wol));
+
+    app->byte_input_wol = byte_input_alloc();
+    view_set_previous_callback(byte_input_get_view(app->byte_input_wol), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewWolInput, byte_input_get_view(app->byte_input_wol));
+
     return app;
 }
 
@@ -183,6 +216,10 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPing);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewStats);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDnsLookup);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDnsInput);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewWol);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewWolInput);
 
     submenu_free(app->submenu);
     text_box_free(app->text_box_link);
@@ -192,6 +229,10 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_box_free(app->text_box_ping);
     text_input_free(app->text_input_ping);
     text_box_free(app->text_box_stats);
+    text_box_free(app->text_box_dns);
+    text_input_free(app->text_input_dns);
+    text_box_free(app->text_box_wol);
+    byte_input_free(app->byte_input_wol);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -202,6 +243,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->dhcp_text);
     furi_string_free(app->ping_text);
     furi_string_free(app->stats_text);
+    furi_string_free(app->dns_text);
+    furi_string_free(app->wol_text);
 
     /* Stop and free DHCP timer */
     furi_timer_stop(app->dhcp_timer);
@@ -307,6 +350,28 @@ static void eth_tester_ping_ip_input_callback(void* context) {
     eth_tester_update_view(app->text_box_ping, app->ping_text);
 }
 
+/* ==================== DNS hostname input callback ==================== */
+
+static void eth_tester_dns_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    eth_tester_show_view(app, app->text_box_dns, EthTesterViewDnsLookup, app->dns_text, "Initializing...\n");
+    eth_tester_do_dns_lookup(app);
+    eth_tester_update_view(app->text_box_dns, app->dns_text);
+}
+
+/* ==================== WoL MAC input callback ==================== */
+
+static void eth_tester_wol_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    eth_tester_show_view(app, app->text_box_wol, EthTesterViewWol, app->wol_text, "Sending WoL...\n");
+    eth_tester_do_wol(app);
+    eth_tester_update_view(app->text_box_wol, app->wol_text);
+}
+
 /* ==================== Submenu callback ==================== */
 
 static void eth_tester_submenu_callback(void* context, uint32_t index) {
@@ -355,6 +420,31 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         eth_tester_show_view(app, app->text_box_stats, EthTesterViewStats, app->stats_text, "Initializing W5500...\n");
         eth_tester_do_stats(app);
         eth_tester_update_view(app->text_box_stats, app->stats_text);
+        break;
+
+    case EthTesterMenuItemDnsLookup:
+        text_input_reset(app->text_input_dns);
+        text_input_set_header_text(app->text_input_dns, "Hostname to resolve:");
+        text_input_set_result_callback(
+            app->text_input_dns,
+            eth_tester_dns_input_callback,
+            app,
+            app->dns_hostname_input,
+            sizeof(app->dns_hostname_input),
+            false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewDnsInput);
+        break;
+
+    case EthTesterMenuItemWol:
+        byte_input_set_header_text(app->byte_input_wol, "Target MAC address:");
+        byte_input_set_result_callback(
+            app->byte_input_wol,
+            eth_tester_wol_input_callback,
+            NULL,
+            app,
+            app->wol_mac_input,
+            6);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewWolInput);
         break;
 
     default:
@@ -934,6 +1024,203 @@ static void eth_tester_do_ping(EthTesterApp* app) {
         }
         eth_tester_update_view(app->text_box_ping, app->ping_text);
         furi_delay_ms(100);
+    }
+}
+
+/* ==================== DNS Lookup ==================== */
+
+static void eth_tester_do_dns_lookup(EthTesterApp* app) {
+    furi_string_reset(app->dns_text);
+
+    if(!eth_tester_ensure_w5500(app)) {
+        furi_string_set(app->dns_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    if(!w5500_hal_get_link_status()) {
+        furi_string_set(app->dns_text, "No Link!\nConnect cable.\n");
+        return;
+    }
+
+    /* Get IP and DNS server via DHCP */
+    furi_string_set(app->dns_text, "Getting IP via DHCP...\n");
+    eth_tester_update_view(app->text_box_dns, app->dns_text);
+
+    uint8_t* dhcp_buffer = malloc(1024);
+    if(!dhcp_buffer) {
+        furi_string_set(app->dns_text, "Memory alloc failed!\n");
+        return;
+    }
+    wiz_NetInfo net_info;
+    wizchip_getnetinfo(&net_info);
+    net_info.dhcp = NETINFO_DHCP;
+    memset(net_info.ip, 0, 4);
+    memset(net_info.sn, 0, 4);
+    memset(net_info.gw, 0, 4);
+    wizchip_setnetinfo(&net_info);
+
+    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
+
+    bool got_ip = false;
+    uint32_t dhcp_start = furi_get_tick();
+    while(furi_get_tick() - dhcp_start < 15000) {
+        uint8_t dhcp_ret = DHCP_run();
+        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
+            getIPfromDHCP(net_info.ip);
+            getSNfromDHCP(net_info.sn);
+            getGWfromDHCP(net_info.gw);
+            getDNSfromDHCP(net_info.dns);
+            net_info.dhcp = NETINFO_DHCP;
+            wizchip_setnetinfo(&net_info);
+            got_ip = true;
+            break;
+        }
+        if(dhcp_ret == DHCP_FAILED) break;
+        furi_delay_ms(10);
+    }
+    DHCP_stop();
+    free(dhcp_buffer);
+
+    if(!got_ip) {
+        furi_string_set(app->dns_text, "DHCP failed.\nCannot resolve DNS.\n");
+        return;
+    }
+
+    /* Check DNS server is valid */
+    if(net_info.dns[0] == 0 && net_info.dns[1] == 0 &&
+       net_info.dns[2] == 0 && net_info.dns[3] == 0) {
+        furi_string_set(app->dns_text, "No DNS server\nfrom DHCP.\n");
+        return;
+    }
+
+    memcpy(app->dns_server_ip, net_info.dns, 4);
+
+    char dns_str[16];
+    pkt_format_ip(net_info.dns, dns_str);
+
+    furi_string_printf(
+        app->dns_text,
+        "Resolving:\n%s\nDNS: %s\n\n",
+        app->dns_hostname_input,
+        dns_str);
+    eth_tester_update_view(app->text_box_dns, app->dns_text);
+
+    /* Perform DNS lookup */
+    DnsLookupResult dns_result;
+    bool ok = dns_lookup(W5500_DNS_SOCKET, net_info.dns, app->dns_hostname_input, &dns_result);
+
+    if(ok) {
+        char ip_str[16];
+        pkt_format_ip(dns_result.resolved_ip, ip_str);
+        furi_string_printf(
+            app->dns_text,
+            "=== DNS Lookup ===\n"
+            "Host: %s\n"
+            "DNS: %s\n\n"
+            "Result: %s\n",
+            app->dns_hostname_input,
+            dns_str,
+            ip_str);
+    } else {
+        furi_string_printf(
+            app->dns_text,
+            "=== DNS Lookup ===\n"
+            "Host: %s\n"
+            "DNS: %s\n\n"
+            "%s\n",
+            app->dns_hostname_input,
+            dns_str,
+            dns_result.rcode == DNS_RCODE_NXDOMAIN ? "NXDOMAIN (not found)" : "Timeout (3s)");
+    }
+
+    eth_tester_save_results("dns_lookup.txt", furi_string_get_cstr(app->dns_text));
+}
+
+/* ==================== Wake-on-LAN ==================== */
+
+static void eth_tester_do_wol(EthTesterApp* app) {
+    furi_string_reset(app->wol_text);
+
+    if(!eth_tester_ensure_w5500(app)) {
+        furi_string_set(app->wol_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    if(!w5500_hal_get_link_status()) {
+        furi_string_set(app->wol_text, "No Link!\nConnect cable.\n");
+        return;
+    }
+
+    /* Need a valid IP for sending UDP - get via DHCP */
+    furi_string_set(app->wol_text, "Getting IP via DHCP...\n");
+    eth_tester_update_view(app->text_box_wol, app->wol_text);
+
+    uint8_t* dhcp_buffer = malloc(1024);
+    if(!dhcp_buffer) {
+        furi_string_set(app->wol_text, "Memory alloc failed!\n");
+        return;
+    }
+    wiz_NetInfo net_info;
+    wizchip_getnetinfo(&net_info);
+    net_info.dhcp = NETINFO_DHCP;
+    memset(net_info.ip, 0, 4);
+    memset(net_info.sn, 0, 4);
+    memset(net_info.gw, 0, 4);
+    wizchip_setnetinfo(&net_info);
+
+    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
+
+    bool got_ip = false;
+    uint32_t dhcp_start = furi_get_tick();
+    while(furi_get_tick() - dhcp_start < 15000) {
+        uint8_t dhcp_ret = DHCP_run();
+        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
+            getIPfromDHCP(net_info.ip);
+            getSNfromDHCP(net_info.sn);
+            getGWfromDHCP(net_info.gw);
+            getDNSfromDHCP(net_info.dns);
+            net_info.dhcp = NETINFO_DHCP;
+            wizchip_setnetinfo(&net_info);
+            got_ip = true;
+            break;
+        }
+        if(dhcp_ret == DHCP_FAILED) break;
+        furi_delay_ms(10);
+    }
+    DHCP_stop();
+    free(dhcp_buffer);
+
+    if(!got_ip) {
+        furi_string_set(app->wol_text, "DHCP failed.\nCannot send WoL.\n");
+        return;
+    }
+
+    char mac_str[18];
+    pkt_format_mac(app->wol_mac_input, mac_str);
+
+    furi_string_printf(
+        app->wol_text,
+        "Sending WoL to:\n%s\n\n",
+        mac_str);
+    eth_tester_update_view(app->text_box_wol, app->wol_text);
+
+    bool ok = wol_send(W5500_WOL_SOCKET, app->wol_mac_input);
+
+    if(ok) {
+        furi_string_printf(
+            app->wol_text,
+            "=== Wake-on-LAN ===\n"
+            "Target: %s\n\n"
+            "Magic packet sent!\n"
+            "Press Back to return.\n",
+            mac_str);
+    } else {
+        furi_string_printf(
+            app->wol_text,
+            "=== Wake-on-LAN ===\n"
+            "Target: %s\n\n"
+            "Failed to send!\n",
+            mac_str);
     }
 }
 

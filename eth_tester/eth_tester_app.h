@@ -6,6 +6,7 @@
 #include <gui/modules/submenu.h>
 #include <gui/modules/text_box.h>
 #include <gui/modules/text_input.h>
+#include <gui/modules/byte_input.h>
 #include <notification/notification_messages.h>
 
 /* Forward declarations */
@@ -21,6 +22,10 @@ typedef enum {
     EthTesterViewPing,
     EthTesterViewPingInput,
     EthTesterViewStats,
+    EthTesterViewDnsLookup,
+    EthTesterViewDnsInput,
+    EthTesterViewWol,
+    EthTesterViewWolInput,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -32,6 +37,8 @@ typedef enum {
     EthTesterMenuItemDhcpAnalyze,
     EthTesterMenuItemPing,
     EthTesterMenuItemStats,
+    EthTesterMenuItemDnsLookup,
+    EthTesterMenuItemWol,
 } EthTesterMenuItem;
 
 /* Packet statistics counters */
@@ -59,7 +66,11 @@ struct EthTesterApp {
     TextBox* text_box_dhcp;
     TextBox* text_box_ping;
     TextBox* text_box_stats;
+    TextBox* text_box_dns;
+    TextBox* text_box_wol;
     TextInput* text_input_ping;
+    TextInput* text_input_dns;
+    ByteInput* byte_input_wol;
     NotificationApp* notifications;
 
     /* W5500 state */
@@ -80,6 +91,13 @@ struct EthTesterApp {
     /* Packet statistics */
     PacketStats stats;
 
+    /* DNS lookup state */
+    char dns_hostname_input[64]; /* text input buffer for hostname */
+    uint8_t dns_server_ip[4];   /* DNS server from DHCP */
+
+    /* Wake-on-LAN state */
+    uint8_t wol_mac_input[6]; /* byte input buffer for MAC */
+
     /* Text buffers for views */
     FuriString* link_info_text;
     FuriString* lldp_text;
@@ -87,4 +105,6 @@ struct EthTesterApp {
     FuriString* dhcp_text;
     FuriString* ping_text;
     FuriString* stats_text;
+    FuriString* dns_text;
+    FuriString* wol_text;
 };
