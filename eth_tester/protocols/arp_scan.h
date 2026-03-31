@@ -16,11 +16,8 @@
 #define ARP_HLEN_ETHERNET  6
 #define ARP_PLEN_IPV4      4
 
-/* Maximum discovered hosts (RAM-limited) */
-#define ARP_MAX_HOSTS 64
-
-/* Maximum subnet size we'll scan (/24 = 254 hosts) */
-#define ARP_MAX_SCAN_HOSTS 254
+/* Maximum discovered hosts (hard cap for RAM safety, ~14 KB) */
+#define ARP_MAX_HOSTS_CAP 384
 
 /* Batch size for sending ARP requests */
 #define ARP_BATCH_SIZE 16
@@ -39,8 +36,9 @@ typedef struct {
 } ArpHost;
 
 typedef struct {
-    ArpHost hosts[ARP_MAX_HOSTS];
-    uint8_t count;
+    ArpHost* hosts;       /* heap-allocated, capacity = max_hosts */
+    uint16_t max_hosts;   /* allocated capacity */
+    uint16_t count;
     uint16_t total_sent;
     uint8_t progress_percent;
     bool scanning;
@@ -83,10 +81,16 @@ bool arp_parse_reply(
  * mask: subnet mask
  * start_ip: output, first host IP in range
  * end_ip: output, last host IP in range
- * Returns number of hosts to scan, or 0 if subnet is too large.
+ * Returns number of hosts to scan (0 if point-to-point/host-only).
  */
 uint16_t arp_calc_scan_range(
     const uint8_t ip[4],
     const uint8_t mask[4],
     uint8_t start_ip[4],
     uint8_t end_ip[4]);
+
+/**
+ * Calculate CIDR prefix length from subnet mask.
+ * Returns 0..32.
+ */
+uint8_t arp_mask_to_prefix(const uint8_t mask[4]);

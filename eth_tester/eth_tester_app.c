@@ -544,15 +544,20 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     /* Calculate scan range */
     uint8_t start_ip[4], end_ip[4];
     uint16_t num_hosts = arp_calc_scan_range(net_info.ip, net_info.sn, start_ip, end_ip);
+    uint8_t prefix = arp_mask_to_prefix(net_info.sn);
 
     if(num_hosts == 0) {
-        furi_string_set(app->arp_text, "Subnet too large!\nMax /24 (254 hosts)\n");
+        furi_string_set(app->arp_text, "No hosts to scan\n(point-to-point link?)\n");
         return;
     }
 
+    /* Cap discoverable hosts to ARP_MAX_HOSTS_CAP for RAM safety */
+    uint16_t max_hosts = (num_hosts < ARP_MAX_HOSTS_CAP) ? num_hosts : ARP_MAX_HOSTS_CAP;
+
     char ip_str[16];
     pkt_format_ip(net_info.ip, ip_str);
-    furi_string_printf(app->arp_text, "Scanning %s/%d\n%d hosts...\n", ip_str, 24, num_hosts);
+    furi_string_printf(
+        app->arp_text, "Scanning %s/%d\n%d hosts...\n", ip_str, prefix, num_hosts);
 
     /* Open MACRAW for sending ARP requests and receiving replies */
     if(!w5500_hal_open_macraw()) {
@@ -560,7 +565,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
         return;
     }
 
-    /* Allocate on heap to avoid stack overflow */
+    /* Allocate scan state + hosts array on heap */
     ArpScanState* scan = malloc(sizeof(ArpScanState));
     if(!scan) {
         furi_string_set(app->arp_text, "Memory alloc failed!\n");
@@ -568,6 +573,15 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
         return;
     }
     memset(scan, 0, sizeof(ArpScanState));
+    scan->hosts = malloc(sizeof(ArpHost) * max_hosts);
+    if(!scan->hosts) {
+        furi_string_set(app->arp_text, "Memory alloc failed!\n");
+        free(scan);
+        w5500_hal_close_macraw();
+        return;
+    }
+    memset(scan->hosts, 0, sizeof(ArpHost) * max_hosts);
+    scan->max_hosts = max_hosts;
     scan->scanning = true;
     scan->start_tick = furi_get_tick();
 
@@ -599,7 +613,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
 
                 uint8_t sender_mac[6], sender_ip[4];
                 if(arp_parse_reply(frame_buf, recv_len, sender_mac, sender_ip)) {
-                    if(scan->count < ARP_MAX_HOSTS) {
+                    if(scan->count < scan->max_hosts) {
                         ArpHost* host = &scan->hosts[scan->count];
                         memcpy(host->ip, sender_ip, 4);
                         memcpy(host->mac, sender_mac, 6);
@@ -622,13 +636,13 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
             if(arp_parse_reply(frame_buf, recv_len, sender_mac, sender_ip)) {
                 /* Check for duplicate */
                 bool duplicate = false;
-                for(uint8_t j = 0; j < scan->count; j++) {
+                for(uint16_t j = 0; j < scan->count; j++) {
                     if(memcmp(scan->hosts[j].ip, sender_ip, 4) == 0) {
                         duplicate = true;
                         break;
                     }
                 }
-                if(!duplicate && scan->count < ARP_MAX_HOSTS) {
+                if(!duplicate && scan->count < scan->max_hosts) {
                     ArpHost* host = &scan->hosts[scan->count];
                     memcpy(host->ip, sender_ip, 4);
                     memcpy(host->mac, sender_mac, 6);
@@ -657,7 +671,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
         (unsigned long)(scan->elapsed_ms / 1000),
         (unsigned long)((scan->elapsed_ms % 1000) / 100));
 
-    for(uint8_t i = 0; i < scan->count; i++) {
+    for(uint16_t i = 0; i < scan->count; i++) {
         ArpHost* h = &scan->hosts[i];
         char ip_buf[16], mac_buf[18];
         pkt_format_ip(h->ip, ip_buf);
@@ -669,6 +683,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
         furi_string_cat_str(app->arp_text, "No hosts found.\n");
     }
 
+    free(scan->hosts);
     free(scan);
 
     /* Save results to SD card */

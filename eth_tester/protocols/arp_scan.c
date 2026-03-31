@@ -93,17 +93,31 @@ uint16_t arp_calc_scan_range(
     uint32_t first_host = network + 1;
     uint32_t last_host = broadcast - 1;
 
-    /* Check if subnet is too large (more than /24 = 254 hosts) */
     uint32_t num_hosts = last_host - first_host + 1;
-    if(num_hosts > ARP_MAX_SCAN_HOSTS) {
-        FURI_LOG_W(
-            "ARP", "Subnet too large: %lu hosts (max %d)", (unsigned long)num_hosts, ARP_MAX_SCAN_HOSTS);
+    if(num_hosts == 0 || first_host >= last_host) {
         return 0;
+    }
+
+    /* Cap to uint16_t max (65535) */
+    if(num_hosts > 0xFFFF) {
+        num_hosts = 0xFFFF;
+        last_host = first_host + num_hosts - 1;
     }
 
     /* Write start and end IPs */
     pkt_write_u32_be(start_ip, first_host);
     pkt_write_u32_be(end_ip, last_host);
 
+    FURI_LOG_I("ARP", "Scan range: %lu hosts", (unsigned long)num_hosts);
     return (uint16_t)num_hosts;
+}
+
+uint8_t arp_mask_to_prefix(const uint8_t mask[4]) {
+    uint32_t m = pkt_read_u32_be(mask);
+    uint8_t bits = 0;
+    while(m & 0x80000000) {
+        bits++;
+        m <<= 1;
+    }
+    return bits;
 }
