@@ -253,6 +253,9 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* ViewDispatcher */
     app->view_dispatcher = view_dispatcher_alloc();
     view_dispatcher_attach_to_gui(app->view_dispatcher, app->gui, ViewDispatcherTypeFullscreen);
+    view_dispatcher_set_event_callback_context(app->view_dispatcher, app);
+    view_dispatcher_set_navigation_event_callback(app->view_dispatcher, eth_tester_nav_event_cb);
+    view_dispatcher_set_custom_event_callback(app->view_dispatcher, eth_tester_custom_event_cb);
 
     /* Main menu (Submenu view) */
     app->submenu = submenu_alloc();
@@ -278,32 +281,32 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* TextBox views for each feature */
     app->text_box_link = text_box_alloc();
     text_box_set_font(app->text_box_link, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_link), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_link), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewLinkInfo, text_box_get_view(app->text_box_link));
 
     app->text_box_lldp = text_box_alloc();
     text_box_set_font(app->text_box_lldp, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_lldp), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_lldp), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewLldp, text_box_get_view(app->text_box_lldp));
 
     app->text_box_arp = text_box_alloc();
     text_box_set_font(app->text_box_arp, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_arp), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_arp), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewArpScan, text_box_get_view(app->text_box_arp));
 
     app->text_box_dhcp = text_box_alloc();
     text_box_set_font(app->text_box_dhcp, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_dhcp), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_dhcp), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDhcpAnalyze, text_box_get_view(app->text_box_dhcp));
 
     app->text_box_ping = text_box_alloc();
     text_box_set_font(app->text_box_ping, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_ping), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_ping), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPing, text_box_get_view(app->text_box_ping));
 
     app->text_box_stats = text_box_alloc();
     text_box_set_font(app->text_box_stats, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_stats), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_stats), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewStats, text_box_get_view(app->text_box_stats));
 
     /* TextInput for ping target IP */
@@ -317,7 +320,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* DNS Lookup views */
     app->text_box_dns = text_box_alloc();
     text_box_set_font(app->text_box_dns, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_dns), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_dns), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDnsLookup, text_box_get_view(app->text_box_dns));
 
     app->text_input_dns = text_input_alloc();
@@ -330,7 +333,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Wake-on-LAN views */
     app->text_box_wol = text_box_alloc();
     text_box_set_font(app->text_box_wol, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_wol), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_wol), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewWol, text_box_get_view(app->text_box_wol));
 
     app->byte_input_wol = byte_input_alloc();
@@ -360,7 +363,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Port Scanner views */
     app->text_box_port_scan = text_box_alloc();
     text_box_set_font(app->text_box_port_scan, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_port_scan), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_port_scan), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPortScan, text_box_get_view(app->text_box_port_scan));
 
     app->text_input_port_scan = text_input_alloc();
@@ -373,7 +376,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* MAC Changer views */
     app->text_box_mac_changer = text_box_alloc();
     text_box_set_font(app->text_box_mac_changer, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_mac_changer), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_mac_changer), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMacChanger, text_box_get_view(app->text_box_mac_changer));
 
     app->byte_input_mac_changer = byte_input_alloc();
@@ -383,7 +386,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Traceroute views */
     app->text_box_traceroute = text_box_alloc();
     text_box_set_font(app->text_box_traceroute, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_traceroute), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_traceroute), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewTraceroute, text_box_get_view(app->text_box_traceroute));
 
     app->text_input_traceroute = text_input_alloc();
@@ -396,7 +399,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Ping Sweep views */
     app->text_box_ping_sweep = text_box_alloc();
     text_box_set_font(app->text_box_ping_sweep, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_ping_sweep), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_ping_sweep), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPingSweep, text_box_get_view(app->text_box_ping_sweep));
 
     app->text_input_ping_sweep = text_input_alloc();
@@ -409,24 +412,24 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* mDNS/SSDP Discovery view */
     app->text_box_discovery = text_box_alloc();
     text_box_set_font(app->text_box_discovery, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_discovery), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_discovery), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDiscovery, text_box_get_view(app->text_box_discovery));
 
     /* History views */
     app->text_box_history = text_box_alloc();
     text_box_set_font(app->text_box_history, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_history), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_history), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistory, text_box_get_view(app->text_box_history));
 
     app->text_box_history_file = text_box_alloc();
     text_box_set_font(app->text_box_history_file, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_history_file), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_history_file), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistoryFile, text_box_get_view(app->text_box_history_file));
 
     /* STP/VLAN Detection view */
     app->text_box_stp_vlan = text_box_alloc();
     text_box_set_font(app->text_box_stp_vlan, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_stp_vlan), eth_tester_navigation_submenu_callback);
+    view_set_previous_callback(text_box_get_view(app->text_box_stp_vlan), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewStpVlan, text_box_get_view(app->text_box_stp_vlan));
 
     /* Load saved MAC from SD card if available */
@@ -439,6 +442,9 @@ static EthTesterApp* eth_tester_app_alloc(void) {
 
 static void eth_tester_app_free(EthTesterApp* app) {
     furi_assert(app);
+
+    /* Stop worker thread */
+    eth_tester_worker_stop(app);
 
     /* Remove and free views */
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMainMenu);
@@ -542,6 +548,77 @@ static uint32_t eth_tester_navigation_submenu_callback(void* context) {
     return EthTesterViewMainMenu;
 }
 
+/* ==================== Worker thread ==================== */
+
+/* Worker previous_callback: returns VIEW_NONE to trigger nav_event_cb */
+static uint32_t eth_tester_worker_back(void* context) {
+    UNUSED(context);
+    return VIEW_NONE;
+}
+
+/* Navigation event callback: handles Back on worker views */
+static bool eth_tester_nav_event_cb(void* context) {
+    EthTesterApp* app = context;
+    if(app->worker_thread) {
+        app->worker_running = false;
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
+        return true;
+    }
+    return false;
+}
+
+static bool eth_tester_custom_event_cb(void* context, uint32_t event) {
+    UNUSED(context);
+    UNUSED(event);
+    return false;
+}
+
+static int32_t eth_tester_worker_fn(void* context) {
+    EthTesterApp* app = context;
+    switch(app->worker_op) {
+    case EthTesterMenuItemLinkInfo:     eth_tester_do_link_info(app); break;
+    case EthTesterMenuItemLldpCdp:      eth_tester_do_lldp_cdp(app); break;
+    case EthTesterMenuItemArpScan:      eth_tester_do_arp_scan(app); break;
+    case EthTesterMenuItemDhcpAnalyze:  eth_tester_do_dhcp_analyze(app); break;
+    case EthTesterMenuItemPing:         eth_tester_do_ping(app); break;
+    case EthTesterMenuItemStats:        eth_tester_do_stats(app); break;
+    case EthTesterMenuItemDnsLookup:    eth_tester_do_dns_lookup(app); break;
+    case EthTesterMenuItemWol:          eth_tester_do_wol(app); break;
+    case EthTesterMenuItemContPing:     eth_tester_do_cont_ping(app); break;
+    case EthTesterMenuItemPortScan:     eth_tester_do_port_scan(app); break;
+    case EthTesterMenuItemMacChanger:   eth_tester_do_mac_changer(app); break;
+    case EthTesterMenuItemTraceroute:   eth_tester_do_traceroute(app); break;
+    case EthTesterMenuItemPingSweep:    eth_tester_do_ping_sweep(app); break;
+    case EthTesterMenuItemDiscovery:    eth_tester_do_discovery(app); break;
+    case EthTesterMenuItemStpVlan:      eth_tester_do_stp_vlan(app); break;
+    case EthTesterMenuItemHistory:      eth_tester_do_history(app); break;
+    default: break;
+    }
+    return 0;
+}
+
+static void eth_tester_worker_stop(EthTesterApp* app) {
+    if(app->worker_thread) {
+        app->worker_running = false;
+        furi_thread_join(app->worker_thread);
+        furi_thread_free(app->worker_thread);
+        app->worker_thread = NULL;
+    }
+}
+
+static void eth_tester_worker_start(EthTesterApp* app, uint32_t op, EthTesterView result_view) {
+    eth_tester_worker_stop(app);
+    app->worker_op = op;
+    app->worker_running = true;
+
+    /* Switch to result view */
+    view_dispatcher_switch_to_view(app->view_dispatcher, result_view);
+
+    app->worker_thread = furi_thread_alloc_ex("EthWorker", 8 * 1024,
+        eth_tester_worker_fn, app);
+    furi_thread_start(app->worker_thread);
+}
+
 /* ==================== W5500 initialization helper ==================== */
 
 static bool eth_tester_ensure_w5500(EthTesterApp* app) {
@@ -606,17 +683,15 @@ static void eth_tester_ping_ip_input_callback(void* context) {
     EthTesterApp* app = context;
     furi_assert(app);
 
-    /* Switch to result view immediately so user sees progress */
-    eth_tester_show_view(app, app->text_box_ping, EthTesterViewPing, app->ping_text, "Initializing...\n");
-
-    /* Parse entered IP */
     if(eth_tester_parse_ip(app->ping_ip_input, app->ping_ip_custom)) {
-        eth_tester_do_ping(app);
+        furi_string_set(app->ping_text, "Initializing...\n");
+        text_box_set_text(app->text_box_ping, furi_string_get_cstr(app->ping_text));
+        eth_tester_worker_start(app, EthTesterMenuItemPing, EthTesterViewPing);
     } else {
         furi_string_set(app->ping_text, "Invalid IP address!\n");
-        memset(app->ping_ip_custom, 0, 4);
+        text_box_set_text(app->text_box_ping, furi_string_get_cstr(app->ping_text));
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPing);
     }
-    eth_tester_update_view(app->text_box_ping, app->ping_text);
 }
 
 /* ==================== Continuous Ping IP input callback ==================== */
@@ -626,19 +701,11 @@ static void eth_tester_cont_ping_ip_input_callback(void* context) {
     furi_assert(app);
 
     if(!eth_tester_parse_ip(app->cont_ping_ip_input, app->cont_ping_target)) {
-        /* Show error then return to menu */
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
         return;
     }
 
-    /* Switch to the graph view */
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewContPing);
-
-    /* Run the ping loop */
-    eth_tester_do_cont_ping(app);
-
-    /* When done, return to menu */
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
+    eth_tester_worker_start(app, EthTesterMenuItemContPing, EthTesterViewContPing);
 }
 
 /* ==================== Ping Sweep input callback ==================== */
@@ -647,9 +714,9 @@ static void eth_tester_ping_sweep_input_callback(void* context) {
     EthTesterApp* app = context;
     furi_assert(app);
 
-    eth_tester_show_view(app, app->text_box_ping_sweep, EthTesterViewPingSweep, app->ping_sweep_text, "Initializing...\n");
-    eth_tester_do_ping_sweep(app);
-    eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+    furi_string_set(app->ping_sweep_text, "Initializing...\n");
+    text_box_set_text(app->text_box_ping_sweep, furi_string_get_cstr(app->ping_sweep_text));
+    eth_tester_worker_start(app, EthTesterMenuItemPingSweep, EthTesterViewPingSweep);
 }
 
 /* ==================== Traceroute IP input callback ==================== */
@@ -660,13 +727,14 @@ static void eth_tester_traceroute_ip_input_callback(void* context) {
 
     if(!eth_tester_parse_ip(app->traceroute_ip_input, app->traceroute_target)) {
         furi_string_set(app->traceroute_text, "Invalid IP address!\n");
-        eth_tester_show_view(app, app->text_box_traceroute, EthTesterViewTraceroute, app->traceroute_text, "Invalid IP address!\n");
+        text_box_set_text(app->text_box_traceroute, furi_string_get_cstr(app->traceroute_text));
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewTraceroute);
         return;
     }
 
-    eth_tester_show_view(app, app->text_box_traceroute, EthTesterViewTraceroute, app->traceroute_text, "Initializing...\n");
-    eth_tester_do_traceroute(app);
-    eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+    furi_string_set(app->traceroute_text, "Initializing...\n");
+    text_box_set_text(app->text_box_traceroute, furi_string_get_cstr(app->traceroute_text));
+    eth_tester_worker_start(app, EthTesterMenuItemTraceroute, EthTesterViewTraceroute);
 }
 
 /* ==================== Port scan IP input callback ==================== */
@@ -677,13 +745,14 @@ static void eth_tester_port_scan_ip_input_callback(void* context) {
 
     if(!eth_tester_parse_ip(app->port_scan_ip_input, app->port_scan_target)) {
         furi_string_set(app->port_scan_text, "Invalid IP address!\n");
-        eth_tester_show_view(app, app->text_box_port_scan, EthTesterViewPortScan, app->port_scan_text, "Invalid IP address!\n");
+        text_box_set_text(app->text_box_port_scan, furi_string_get_cstr(app->port_scan_text));
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPortScan);
         return;
     }
 
-    eth_tester_show_view(app, app->text_box_port_scan, EthTesterViewPortScan, app->port_scan_text, "Initializing...\n");
-    eth_tester_do_port_scan(app);
-    eth_tester_update_view(app->text_box_port_scan, app->port_scan_text);
+    furi_string_set(app->port_scan_text, "Initializing...\n");
+    text_box_set_text(app->text_box_port_scan, furi_string_get_cstr(app->port_scan_text));
+    eth_tester_worker_start(app, EthTesterMenuItemPortScan, EthTesterViewPortScan);
 }
 
 /* ==================== DNS hostname input callback ==================== */
@@ -692,9 +761,9 @@ static void eth_tester_dns_input_callback(void* context) {
     EthTesterApp* app = context;
     furi_assert(app);
 
-    eth_tester_show_view(app, app->text_box_dns, EthTesterViewDnsLookup, app->dns_text, "Initializing...\n");
-    eth_tester_do_dns_lookup(app);
-    eth_tester_update_view(app->text_box_dns, app->dns_text);
+    furi_string_set(app->dns_text, "Initializing...\n");
+    text_box_set_text(app->text_box_dns, furi_string_get_cstr(app->dns_text));
+    eth_tester_worker_start(app, EthTesterMenuItemDnsLookup, EthTesterViewDnsLookup);
 }
 
 /* ==================== WoL MAC input callback ==================== */
@@ -703,9 +772,9 @@ static void eth_tester_wol_input_callback(void* context) {
     EthTesterApp* app = context;
     furi_assert(app);
 
-    eth_tester_show_view(app, app->text_box_wol, EthTesterViewWol, app->wol_text, "Sending WoL...\n");
-    eth_tester_do_wol(app);
-    eth_tester_update_view(app->text_box_wol, app->wol_text);
+    furi_string_set(app->wol_text, "Sending WoL...\n");
+    text_box_set_text(app->text_box_wol, furi_string_get_cstr(app->wol_text));
+    eth_tester_worker_start(app, EthTesterMenuItemWol, EthTesterViewWol);
 }
 
 /* ==================== Submenu callback ==================== */
@@ -717,26 +786,22 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
     switch(index) {
     case EthTesterMenuItemLinkInfo:
         eth_tester_show_view(app, app->text_box_link, EthTesterViewLinkInfo, app->link_info_text, "Reading link status...\n");
-        eth_tester_do_link_info(app);
-        eth_tester_update_view(app->text_box_link, app->link_info_text);
+        eth_tester_worker_start(app, EthTesterMenuItemLinkInfo, EthTesterViewLinkInfo);
         break;
 
     case EthTesterMenuItemLldpCdp:
         eth_tester_show_view(app, app->text_box_lldp, EthTesterViewLldp, app->lldp_text, "Listening for LLDP/CDP...\n");
-        eth_tester_do_lldp_cdp(app);
-        eth_tester_update_view(app->text_box_lldp, app->lldp_text);
+        eth_tester_worker_start(app, EthTesterMenuItemLldpCdp, EthTesterViewLldp);
         break;
 
     case EthTesterMenuItemArpScan:
         eth_tester_show_view(app, app->text_box_arp, EthTesterViewArpScan, app->arp_text, "Initializing W5500...\n");
-        eth_tester_do_arp_scan(app);
-        eth_tester_update_view(app->text_box_arp, app->arp_text);
+        eth_tester_worker_start(app, EthTesterMenuItemArpScan, EthTesterViewArpScan);
         break;
 
     case EthTesterMenuItemDhcpAnalyze:
         eth_tester_show_view(app, app->text_box_dhcp, EthTesterViewDhcpAnalyze, app->dhcp_text, "Initializing W5500...\n");
-        eth_tester_do_dhcp_analyze(app);
-        eth_tester_update_view(app->text_box_dhcp, app->dhcp_text);
+        eth_tester_worker_start(app, EthTesterMenuItemDhcpAnalyze, EthTesterViewDhcpAnalyze);
         break;
 
     case EthTesterMenuItemPing:
@@ -754,8 +819,7 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
 
     case EthTesterMenuItemStats:
         eth_tester_show_view(app, app->text_box_stats, EthTesterViewStats, app->stats_text, "Initializing W5500...\n");
-        eth_tester_do_stats(app);
-        eth_tester_update_view(app->text_box_stats, app->stats_text);
+        eth_tester_worker_start(app, EthTesterMenuItemStats, EthTesterViewStats);
         break;
 
     case EthTesterMenuItemDnsLookup:
@@ -785,20 +849,17 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
 
     case EthTesterMenuItemHistory:
         eth_tester_show_view(app, app->text_box_history, EthTesterViewHistory, app->history_text, "Loading...\n");
-        eth_tester_do_history(app);
-        eth_tester_update_view(app->text_box_history, app->history_text);
+        eth_tester_worker_start(app, EthTesterMenuItemHistory, EthTesterViewHistory);
         break;
 
     case EthTesterMenuItemStpVlan:
         eth_tester_show_view(app, app->text_box_stp_vlan, EthTesterViewStpVlan, app->stp_vlan_text, "Listening...\n");
-        eth_tester_do_stp_vlan(app);
-        eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
+        eth_tester_worker_start(app, EthTesterMenuItemStpVlan, EthTesterViewStpVlan);
         break;
 
     case EthTesterMenuItemDiscovery:
         eth_tester_show_view(app, app->text_box_discovery, EthTesterViewDiscovery, app->discovery_text, "Scanning...\n");
-        eth_tester_do_discovery(app);
-        eth_tester_update_view(app->text_box_discovery, app->discovery_text);
+        eth_tester_worker_start(app, EthTesterMenuItemDiscovery, EthTesterViewDiscovery);
         break;
 
     case EthTesterMenuItemPingSweep:
@@ -829,8 +890,7 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
 
     case EthTesterMenuItemMacChanger:
         eth_tester_show_view(app, app->text_box_mac_changer, EthTesterViewMacChanger, app->mac_changer_text, "Loading...\n");
-        eth_tester_do_mac_changer(app);
-        eth_tester_update_view(app->text_box_mac_changer, app->mac_changer_text);
+        eth_tester_worker_start(app, EthTesterMenuItemMacChanger, EthTesterViewMacChanger);
         break;
 
     case EthTesterMenuItemPortScan:
