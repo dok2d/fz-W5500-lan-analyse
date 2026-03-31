@@ -29,7 +29,22 @@ typedef enum {
     EthTesterMenuItemArpScan,
     EthTesterMenuItemDhcpAnalyze,
     EthTesterMenuItemPing,
+    EthTesterMenuItemStats,
 } EthTesterMenuItem;
+
+/* Packet statistics counters */
+typedef struct {
+    uint32_t total_frames;
+    uint32_t broadcast_frames;
+    uint32_t multicast_frames;
+    uint32_t unicast_frames;
+    uint32_t ipv4_frames;
+    uint32_t arp_frames;
+    uint32_t ipv6_frames;
+    uint32_t lldp_frames;
+    uint32_t cdp_frames;
+    uint32_t unknown_frames;
+} PacketStats;
 
 /* Application state */
 struct EthTesterApp {
@@ -41,6 +56,7 @@ struct EthTesterApp {
     TextBox* text_box_arp;
     TextBox* text_box_dhcp;
     TextBox* text_box_ping;
+    TextBox* text_box_stats;
     NotificationApp* notifications;
 
     /* W5500 state */
@@ -51,10 +67,14 @@ struct EthTesterApp {
     uint8_t link_duplex;  /* 0 = half, 1 = full */
     uint8_t mac_addr[6];
 
+    /* Packet statistics */
+    PacketStats stats;
+
     /* Text buffers for views */
     FuriString* link_info_text;
     FuriString* lldp_text;
     FuriString* arp_text;
     FuriString* dhcp_text;
     FuriString* ping_text;
+    FuriString* stats_text;
 };

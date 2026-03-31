@@ -46,6 +46,8 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app);
 static void eth_tester_do_arp_scan(EthTesterApp* app);
 static void eth_tester_do_dhcp_analyze(EthTesterApp* app);
 static void eth_tester_do_ping(EthTesterApp* app);
+static void eth_tester_do_stats(EthTesterApp* app);
+static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 
 /* ==================== App alloc / free ==================== */
 
@@ -63,6 +65,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->arp_text = furi_string_alloc();
     app->dhcp_text = furi_string_alloc();
     app->ping_text = furi_string_alloc();
+    app->stats_text = furi_string_alloc();
 
     /* Set initial text */
     furi_string_set(app->link_info_text, "Press OK to read\nlink status...\n");
@@ -70,6 +73,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     furi_string_set(app->arp_text, "ARP Scan ready.\nPress Back to return.\n");
     furi_string_set(app->dhcp_text, "DHCP Analyze ready.\nPress Back to return.\n");
     furi_string_set(app->ping_text, "Ping ready.\nPress Back to return.\n");
+    furi_string_set(app->stats_text, "No statistics yet.\nRun LLDP/CDP or ARP\nto collect data.\n");
 
     /* Open GUI */
     app->gui = furi_record_open(RECORD_GUI);
@@ -87,6 +91,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "ARP Scan", EthTesterMenuItemArpScan, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "DHCP Analyze", EthTesterMenuItemDhcpAnalyze, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
@@ -116,6 +121,11 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_box_get_view(app->text_box_ping), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPing, text_box_get_view(app->text_box_ping));
 
+    app->text_box_stats = text_box_alloc();
+    text_box_set_font(app->text_box_stats, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_stats), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewStats, text_box_get_view(app->text_box_stats));
+
     return app;
 }
 
@@ -129,6 +139,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewArpScan);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDhcpAnalyze);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPing);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewStats);
 
     submenu_free(app->submenu);
     text_box_free(app->text_box_link);
@@ -136,6 +147,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_box_free(app->text_box_arp);
     text_box_free(app->text_box_dhcp);
     text_box_free(app->text_box_ping);
+    text_box_free(app->text_box_stats);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -145,6 +157,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->arp_text);
     furi_string_free(app->dhcp_text);
     furi_string_free(app->ping_text);
+    furi_string_free(app->stats_text);
 
     /* Deinit W5500 if initialized */
     if(app->w5500_initialized) {
@@ -239,6 +252,12 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPing);
         break;
 
+    case EthTesterMenuItemStats:
+        eth_tester_do_stats(app);
+        text_box_set_text(app->text_box_stats, furi_string_get_cstr(app->stats_text));
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewStats);
+        break;
+
     default:
         break;
     }
@@ -316,6 +335,9 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
     while(furi_get_tick() - start_tick < timeout_ms) {
         uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
         if(recv_len >= ETH_HEADER_SIZE) {
+            /* Count frame for statistics */
+            eth_tester_count_frame(app, frame_buf, recv_len);
+
             uint16_t ethertype = pkt_get_ethertype(frame_buf);
 
             /* Check for LLDP */
@@ -367,6 +389,9 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
     if(!found) {
         furi_string_set(app->lldp_text, "No LLDP/CDP neighbors\ndetected (waited 60s)\n");
     }
+
+    /* Save results to SD card */
+    eth_tester_save_results("lldp_cdp.txt", furi_string_get_cstr(app->lldp_text));
 }
 
 static void eth_tester_do_arp_scan(EthTesterApp* app) {
@@ -548,6 +573,9 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     if(scan.count == 0) {
         furi_string_cat_str(app->arp_text, "No hosts found.\n");
     }
+
+    /* Save results to SD card */
+    eth_tester_save_results("arp_scan.txt", furi_string_get_cstr(app->arp_text));
 }
 
 static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
@@ -649,6 +677,9 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
     } else {
         furi_string_set(app->dhcp_text, "No DHCP server found.\n(waited 10 sec)\n");
     }
+
+    /* Save results to SD card */
+    eth_tester_save_results("dhcp_analyze.txt", furi_string_get_cstr(app->dhcp_text));
 }
 
 static void eth_tester_do_ping(EthTesterApp* app) {
@@ -733,6 +764,118 @@ static void eth_tester_do_ping(EthTesterApp* app) {
     }
 }
 
+/* ==================== Packet statistics ==================== */
+
+static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len) {
+    if(len < ETH_HEADER_SIZE) return;
+
+    app->stats.total_frames++;
+
+    /* Classify by destination MAC */
+    uint8_t dst[6];
+    pkt_get_dst_mac(frame, dst);
+    if(pkt_is_broadcast(dst)) {
+        app->stats.broadcast_frames++;
+    } else if(pkt_is_multicast(dst)) {
+        app->stats.multicast_frames++;
+    } else {
+        app->stats.unicast_frames++;
+    }
+
+    /* Classify by EtherType */
+    uint16_t ethertype = pkt_get_ethertype(frame);
+    switch(ethertype) {
+    case ETHERTYPE_IPV4:
+        app->stats.ipv4_frames++;
+        break;
+    case ETHERTYPE_ARP:
+        app->stats.arp_frames++;
+        break;
+    case ETHERTYPE_IPV6:
+        app->stats.ipv6_frames++;
+        break;
+    case ETHERTYPE_LLDP:
+        app->stats.lldp_frames++;
+        break;
+    default:
+        /* Check for CDP (length field + LLC/SNAP) */
+        if(ethertype < 0x0600 && len >= 22) {
+            const uint8_t cdp_mac[] = CDP_DST_MAC;
+            if(memcmp(frame, cdp_mac, 6) == 0) {
+                app->stats.cdp_frames++;
+                break;
+            }
+        }
+        app->stats.unknown_frames++;
+        break;
+    }
+}
+
+static void eth_tester_do_stats(EthTesterApp* app) {
+    furi_string_reset(app->stats_text);
+
+    if(!eth_tester_ensure_w5500(app)) {
+        furi_string_set(app->stats_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    if(!w5500_hal_get_link_status()) {
+        furi_string_set(app->stats_text, "No Link!\nConnect cable first.\n");
+        return;
+    }
+
+    /* If no frames counted yet, do a quick capture */
+    if(app->stats.total_frames == 0) {
+        furi_string_set(app->stats_text, "Capturing frames...\n(10 seconds)\n");
+
+        if(!w5500_hal_open_macraw()) {
+            furi_string_set(app->stats_text, "Failed to open\nMACRAW!\n");
+            return;
+        }
+
+        uint32_t start_tick = furi_get_tick();
+        while(furi_get_tick() - start_tick < 10000) {
+            uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
+            if(recv_len >= ETH_HEADER_SIZE) {
+                eth_tester_count_frame(app, frame_buf, recv_len);
+            }
+            furi_delay_ms(10);
+        }
+
+        w5500_hal_close_macraw();
+    }
+
+    /* Format statistics */
+    PacketStats* s = &app->stats;
+    furi_string_printf(
+        app->stats_text,
+        "=== Packet Stats ===\n"
+        "Total: %lu\n"
+        "Unicast: %lu\n"
+        "Broadcast: %lu\n"
+        "Multicast: %lu\n"
+        "\n=== By EtherType ===\n"
+        "IPv4: %lu\n"
+        "ARP: %lu\n"
+        "IPv6: %lu\n"
+        "LLDP: %lu\n"
+        "CDP: %lu\n"
+        "Other: %lu\n",
+        (unsigned long)s->total_frames,
+        (unsigned long)s->unicast_frames,
+        (unsigned long)s->broadcast_frames,
+        (unsigned long)s->multicast_frames,
+        (unsigned long)s->ipv4_frames,
+        (unsigned long)s->arp_frames,
+        (unsigned long)s->ipv6_frames,
+        (unsigned long)s->lldp_frames,
+        (unsigned long)s->cdp_frames,
+        (unsigned long)s->unknown_frames);
+
+    /* Save stats to SD card */
+    eth_tester_save_results("stats.txt", furi_string_get_cstr(app->stats_text));
+}
+
 /* ==================== Save results to SD card ==================== */
 
 static void eth_tester_save_results(const char* filename, const char* content) {
@@ -761,7 +904,6 @@ static void eth_tester_save_results(const char* filename, const char* content) {
 
 int32_t eth_tester_app(void* p) {
     UNUSED(p);
-    UNUSED(eth_tester_save_results);
 
     FURI_LOG_I(TAG, "LAN Tester starting");
 
