@@ -887,8 +887,17 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemPingSweep:
+        /* Auto-fill CIDR from cached DHCP if available */
+        if(app->dhcp_valid) {
+            uint8_t prefix = arp_mask_to_prefix(app->dhcp_mask);
+            uint32_t net = pkt_read_u32_be(app->dhcp_ip) & pkt_read_u32_be(app->dhcp_mask);
+            uint8_t net_ip[4];
+            pkt_write_u32_be(net_ip, net);
+            snprintf(app->ping_sweep_ip_input, sizeof(app->ping_sweep_ip_input),
+                "%d.%d.%d.%d/%d", net_ip[0], net_ip[1], net_ip[2], net_ip[3], prefix);
+        }
         text_input_reset(app->text_input_ping_sweep);
-        text_input_set_header_text(app->text_input_ping_sweep, "CIDR (192.168.1.0/24):");
+        text_input_set_header_text(app->text_input_ping_sweep, "CIDR (e.g. 192.168.1.0/24):");
         text_input_set_result_callback(
             app->text_input_ping_sweep,
             eth_tester_ping_sweep_input_callback,
@@ -1132,6 +1141,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
             net_info.dhcp = NETINFO_DHCP;
             wizchip_setnetinfo(&net_info);
             got_ip = true;
+            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
             break;
         }
         if(dhcp_ret == DHCP_FAILED) {
@@ -1477,6 +1487,7 @@ static void eth_tester_do_ping(EthTesterApp* app) {
             net_info.dhcp = NETINFO_DHCP;
             wizchip_setnetinfo(&net_info);
             got_ip = true;
+            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
             break;
         }
         if(dhcp_ret == DHCP_FAILED) break;
@@ -1573,6 +1584,7 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
             net_info.dhcp = NETINFO_DHCP;
             wizchip_setnetinfo(&net_info);
             got_ip = true;
+            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
             break;
         }
         if(dhcp_ret == DHCP_FAILED) break;
@@ -1682,6 +1694,7 @@ static void eth_tester_do_wol(EthTesterApp* app) {
             net_info.dhcp = NETINFO_DHCP;
             wizchip_setnetinfo(&net_info);
             got_ip = true;
+            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
             break;
         }
         if(dhcp_ret == DHCP_FAILED) break;
@@ -1821,6 +1834,7 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
             net_info.dhcp = NETINFO_DHCP;
             wizchip_setnetinfo(&net_info);
             got_ip = true;
+            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
             break;
         }
         if(dhcp_ret == DHCP_FAILED) break;
@@ -1947,6 +1961,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
             net_info.dhcp = NETINFO_DHCP;
             wizchip_setnetinfo(&net_info);
             got_ip = true;
+            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
             break;
         }
         if(dhcp_ret == DHCP_FAILED) break;
@@ -2096,6 +2111,7 @@ static void eth_tester_do_discovery(EthTesterApp* app) {
             net_info.dhcp = NETINFO_DHCP;
             wizchip_setnetinfo(&net_info);
             got_ip = true;
+            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
             break;
         }
         if(dhcp_ret == DHCP_FAILED) break;
@@ -2452,6 +2468,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
             net_info.dhcp = NETINFO_DHCP;
             wizchip_setnetinfo(&net_info);
             got_ip = true;
+            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
             break;
         }
         if(dhcp_ret == DHCP_FAILED) break;
@@ -2592,6 +2609,7 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
             net_info.dhcp = NETINFO_DHCP;
             wizchip_setnetinfo(&net_info);
             got_ip = true;
+            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
             break;
         }
         if(dhcp_ret == DHCP_FAILED) break;

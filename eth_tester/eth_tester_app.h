@@ -130,6 +130,13 @@ struct EthTesterApp {
     /* DHCP timer (1 second periodic for DHCP_time_handler) */
     FuriTimer* dhcp_timer;
 
+    /* Cached DHCP results (for auto-populating scan ranges) */
+    uint8_t dhcp_ip[4];
+    uint8_t dhcp_mask[4];
+    uint8_t dhcp_gw[4];
+    uint8_t dhcp_dns[4];
+    bool dhcp_valid;
+
     /* Custom ping target IP (parsed from user input) */
     uint8_t ping_ip_custom[4];
     char ping_ip_input[16]; /* text input buffer "xxx.xxx.xxx.xxx" */
