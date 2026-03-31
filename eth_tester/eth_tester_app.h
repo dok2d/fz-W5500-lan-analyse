@@ -30,6 +30,8 @@ typedef enum {
     EthTesterViewWolInput,
     EthTesterViewContPing,
     EthTesterViewContPingInput,
+    EthTesterViewPortScan,
+    EthTesterViewPortScanInput,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -44,6 +46,7 @@ typedef enum {
     EthTesterMenuItemDnsLookup,
     EthTesterMenuItemWol,
     EthTesterMenuItemContPing,
+    EthTesterMenuItemPortScan,
 } EthTesterMenuItem;
 
 /* Packet statistics counters */
@@ -78,6 +81,8 @@ struct EthTesterApp {
     ByteInput* byte_input_wol;
     View* view_cont_ping;
     TextInput* text_input_cont_ping;
+    TextBox* text_box_port_scan;
+    TextInput* text_input_port_scan;
     NotificationApp* notifications;
 
     /* W5500 state */
@@ -110,6 +115,10 @@ struct EthTesterApp {
     uint8_t cont_ping_target[4]; /* parsed target IP */
     PingGraphState* ping_graph;  /* heap-allocated ping graph state */
 
+    /* Port scanner state */
+    char port_scan_ip_input[16]; /* text input buffer */
+    uint8_t port_scan_target[4]; /* parsed target IP */
+
     /* Text buffers for views */
     FuriString* link_info_text;
     FuriString* lldp_text;
@@ -119,4 +128,5 @@ struct EthTesterApp {
     FuriString* stats_text;
     FuriString* dns_text;
     FuriString* wol_text;
+    FuriString* port_scan_text;
 };
