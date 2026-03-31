@@ -103,6 +103,7 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app);
 static void eth_tester_do_history(EthTesterApp* app);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static void eth_tester_save_results(const char* filename, const char* content);
+static void eth_tester_save_and_notify(const char* type, FuriString* text);
 
 /* ==================== Continuous Ping view model & callbacks ==================== */
 
@@ -1133,7 +1134,7 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
     }
 
     /* Save results to SD card */
-    eth_tester_save_results("lldp_cdp.txt", furi_string_get_cstr(app->lldp_text));
+    eth_tester_save_and_notify("lldp_cdp.txt", app->lldp_text);
 }
 
 static void eth_tester_do_arp_scan(EthTesterApp* app) {
@@ -1361,7 +1362,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     free(scan);
 
     /* Save results to SD card */
-    eth_tester_save_results("arp_scan.txt", furi_string_get_cstr(app->arp_text));
+    eth_tester_save_and_notify("arp_scan.txt", app->arp_text);
 }
 
 static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
@@ -1483,7 +1484,7 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
     }
 
     /* Save results to SD card */
-    eth_tester_save_results("dhcp_analyze.txt", furi_string_get_cstr(app->dhcp_text));
+    eth_tester_save_and_notify("dhcp_analyze.txt", app->dhcp_text);
 }
 
 static void eth_tester_do_ping(EthTesterApp* app) {
@@ -1688,7 +1689,7 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
             dns_result.rcode == DNS_RCODE_NXDOMAIN ? "NXDOMAIN (not found)" : "Timeout (3s)");
     }
 
-    eth_tester_save_results("dns_lookup.txt", furi_string_get_cstr(app->dns_text));
+    eth_tester_save_and_notify("dns_lookup.txt", app->dns_text);
 }
 
 /* ==================== Wake-on-LAN ==================== */
@@ -1934,7 +1935,7 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
         }
     }
 
-    eth_tester_save_results("traceroute.txt", furi_string_get_cstr(app->traceroute_text));
+    eth_tester_save_and_notify("traceroute.txt", app->traceroute_text);
 }
 
 /* ==================== Ping Sweep ==================== */
@@ -2114,7 +2115,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
     }
 
     furi_string_free(results);
-    eth_tester_save_results("ping_sweep.txt", furi_string_get_cstr(app->ping_sweep_text));
+    eth_tester_save_and_notify("ping_sweep.txt", app->ping_sweep_text);
 }
 
 /* ==================== mDNS / SSDP Discovery ==================== */
@@ -2293,7 +2294,7 @@ static void eth_tester_do_discovery(EthTesterApp* app) {
     }
 
     free(devices);
-    eth_tester_save_results("discovery.txt", furi_string_get_cstr(app->discovery_text));
+    eth_tester_save_and_notify("discovery.txt", app->discovery_text);
 }
 
 /* ==================== STP/BPDU + VLAN Detection ==================== */
@@ -2416,7 +2417,7 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
         furi_string_cat_str(app->stp_vlan_text, "No 802.1Q tags detected.\n(Not on trunk port?)\n");
     }
 
-    eth_tester_save_results("stp_vlan.txt", furi_string_get_cstr(app->stp_vlan_text));
+    eth_tester_save_and_notify("stp_vlan.txt", app->stp_vlan_text);
 }
 
 /* ==================== History Browser ==================== */
@@ -2435,9 +2436,11 @@ static void eth_tester_do_history(EthTesterApp* app) {
     if(count == 0) {
         furi_string_set(app->history_text,
             "=== History ===\n"
-            "No saved files found.\n\n"
-            "Run scans to save\n"
-            "results to SD card.\n");
+            "No saved results yet.\n\n"
+            "All scan results are\n"
+            "auto-saved to SD card.\n"
+            "Run any scan and come\n"
+            "back to see results.\n");
         free(state);
         return;
     }
@@ -2626,7 +2629,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
 
     furi_string_free(results);
 
-    eth_tester_save_results("port_scan.txt", furi_string_get_cstr(app->port_scan_text));
+    eth_tester_save_and_notify("port_scan.txt", app->port_scan_text);
 }
 
 /* ==================== Continuous Ping ==================== */
@@ -2853,7 +2856,7 @@ static void eth_tester_do_stats(EthTesterApp* app) {
         (unsigned long)s->unknown_frames);
 
     /* Save stats to SD card */
-    eth_tester_save_results("stats.txt", furi_string_get_cstr(app->stats_text));
+    eth_tester_save_and_notify("stats.txt", app->stats_text);
 }
 
 /* ==================== Save results to SD card ==================== */
@@ -2869,6 +2872,12 @@ static void eth_tester_save_results(const char* type, const char* content) {
     }
 
     history_save(scan_type, content);
+}
+
+/* Save results and append "Saved to History" to the display text */
+static void eth_tester_save_and_notify(const char* type, FuriString* text) {
+    eth_tester_save_results(type, furi_string_get_cstr(text));
+    furi_string_cat_str(text, "\nSaved to History\n");
 }
 
 /* ==================== Entry point ==================== */
