@@ -83,6 +83,8 @@ static uint32_t eth_tester_worker_back(void* context);
 static bool eth_tester_nav_event_cb(void* context);
 static bool eth_tester_custom_event_cb(void* context, uint32_t event);
 static void eth_tester_worker_stop(EthTesterApp* app);
+static void eth_tester_update_view(TextBox* tb, FuriString* text);
+static void eth_tester_show_view(EthTesterApp* app, TextBox* tb, EthTesterView view, FuriString* text, const char* initial);
 
 static void eth_tester_do_link_info(EthTesterApp* app);
 static void eth_tester_do_lldp_cdp(EthTesterApp* app);
@@ -449,10 +451,15 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->text_box_about = text_box_alloc();
     text_box_set_font(app->text_box_about, TextBoxFontText);
     text_box_set_text(app->text_box_about,
-        "=== LAN Analyzer ===\n"
-        "W5500 Ethernet Tool\n\n"
-        "Version: 0.2\n"
-        "Author: dok2d\n\n"
+        "=== LAN Analyzer ===\n\n"
+        "Ethernet network analysis\n"
+        "tool for Flipper Zero\n"
+        "using W5500 SPI module.\n\n"
+        "Scan, ping, trace,\n"
+        "discover devices,\n"
+        "analyze DHCP/LLDP/CDP,\n"
+        "detect VLANs and STP.\n\n"
+        "v0.2 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(text_box_get_view(app->text_box_about), eth_tester_navigation_submenu_callback);
