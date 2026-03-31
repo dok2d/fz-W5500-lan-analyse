@@ -264,27 +264,27 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Main menu (Submenu view) */
     app->submenu = submenu_alloc();
     /* --- Network Info --- */
-    submenu_add_item(app->submenu, "[Network Info]", 0xFF, NULL, NULL);
+    submenu_add_item(app->submenu, "[Network Info]", 0xFF, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  Link Info", EthTesterMenuItemLinkInfo, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  LLDP/CDP", EthTesterMenuItemLldpCdp, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  DHCP Analyze", EthTesterMenuItemDhcpAnalyze, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
     /* --- Scanning --- */
-    submenu_add_item(app->submenu, "[Scanning]", 0xFE, NULL, NULL);
+    submenu_add_item(app->submenu, "[Scanning]", 0xFE, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  ARP Scan", EthTesterMenuItemArpScan, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  Port Scanner", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  mDNS/SSDP", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  STP/VLAN", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
     /* --- Tools --- */
-    submenu_add_item(app->submenu, "[Tools]", 0xFD, NULL, NULL);
+    submenu_add_item(app->submenu, "[Tools]", 0xFD, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  Continuous Ping", EthTesterMenuItemContPing, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  DNS Lookup", EthTesterMenuItemDnsLookup, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
     /* --- System --- */
-    submenu_add_item(app->submenu, "[System]", 0xFC, NULL, NULL);
+    submenu_add_item(app->submenu, "[System]", 0xFC, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  About", EthTesterMenuItemAbout, eth_tester_submenu_callback, app);
@@ -584,14 +584,20 @@ static uint32_t eth_tester_worker_back(void* context) {
     return VIEW_NONE;
 }
 
-/* Navigation event callback: handles Back on worker views */
+/* Navigation event callback: handles Back on worker views and app exit */
 static bool eth_tester_nav_event_cb(void* context) {
     EthTesterApp* app = context;
     if(app->worker_thread) {
+        /* Stop worker, join, clean up */
         app->worker_running = false;
+        furi_thread_join(app->worker_thread);
+        furi_thread_free(app->worker_thread);
+        app->worker_thread = NULL;
+        /* Go to menu (not exit) */
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
         return true;
     }
+    /* No worker — exit app (Back pressed on main menu) */
     return false;
 }
 
@@ -603,24 +609,74 @@ static bool eth_tester_custom_event_cb(void* context, uint32_t event) {
 
 static int32_t eth_tester_worker_fn(void* context) {
     EthTesterApp* app = context;
+
+    /* Dispatch to the appropriate operation */
     switch(app->worker_op) {
-    case EthTesterMenuItemLinkInfo:     eth_tester_do_link_info(app); break;
-    case EthTesterMenuItemLldpCdp:      eth_tester_do_lldp_cdp(app); break;
-    case EthTesterMenuItemArpScan:      eth_tester_do_arp_scan(app); break;
-    case EthTesterMenuItemDhcpAnalyze:  eth_tester_do_dhcp_analyze(app); break;
-    case EthTesterMenuItemPing:         eth_tester_do_ping(app); break;
-    case EthTesterMenuItemStats:        eth_tester_do_stats(app); break;
-    case EthTesterMenuItemDnsLookup:    eth_tester_do_dns_lookup(app); break;
-    case EthTesterMenuItemWol:          eth_tester_do_wol(app); break;
-    case EthTesterMenuItemContPing:     eth_tester_do_cont_ping(app); break;
-    case EthTesterMenuItemPortScan:     eth_tester_do_port_scan(app); break;
-    case EthTesterMenuItemMacChanger:   eth_tester_do_mac_changer(app); break;
-    case EthTesterMenuItemTraceroute:   eth_tester_do_traceroute(app); break;
-    case EthTesterMenuItemPingSweep:    eth_tester_do_ping_sweep(app); break;
-    case EthTesterMenuItemDiscovery:    eth_tester_do_discovery(app); break;
-    case EthTesterMenuItemStpVlan:      eth_tester_do_stp_vlan(app); break;
-    case EthTesterMenuItemHistory:      eth_tester_do_history(app); break;
-    default: break;
+    case EthTesterMenuItemLinkInfo:
+        eth_tester_do_link_info(app);
+        eth_tester_update_view(app->text_box_link, app->link_info_text);
+        break;
+    case EthTesterMenuItemLldpCdp:
+        eth_tester_do_lldp_cdp(app);
+        eth_tester_update_view(app->text_box_lldp, app->lldp_text);
+        break;
+    case EthTesterMenuItemArpScan:
+        eth_tester_do_arp_scan(app);
+        eth_tester_update_view(app->text_box_arp, app->arp_text);
+        break;
+    case EthTesterMenuItemDhcpAnalyze:
+        eth_tester_do_dhcp_analyze(app);
+        eth_tester_update_view(app->text_box_dhcp, app->dhcp_text);
+        break;
+    case EthTesterMenuItemPing:
+        eth_tester_do_ping(app);
+        eth_tester_update_view(app->text_box_ping, app->ping_text);
+        break;
+    case EthTesterMenuItemStats:
+        eth_tester_do_stats(app);
+        eth_tester_update_view(app->text_box_stats, app->stats_text);
+        break;
+    case EthTesterMenuItemDnsLookup:
+        eth_tester_do_dns_lookup(app);
+        eth_tester_update_view(app->text_box_dns, app->dns_text);
+        break;
+    case EthTesterMenuItemWol:
+        eth_tester_do_wol(app);
+        eth_tester_update_view(app->text_box_wol, app->wol_text);
+        break;
+    case EthTesterMenuItemContPing:
+        eth_tester_do_cont_ping(app);
+        break; /* Uses custom view, not TextBox */
+    case EthTesterMenuItemPortScan:
+        eth_tester_do_port_scan(app);
+        eth_tester_update_view(app->text_box_port_scan, app->port_scan_text);
+        break;
+    case EthTesterMenuItemMacChanger:
+        eth_tester_do_mac_changer(app);
+        eth_tester_update_view(app->text_box_mac_changer, app->mac_changer_text);
+        break;
+    case EthTesterMenuItemTraceroute:
+        eth_tester_do_traceroute(app);
+        eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+        break;
+    case EthTesterMenuItemPingSweep:
+        eth_tester_do_ping_sweep(app);
+        eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+        break;
+    case EthTesterMenuItemDiscovery:
+        eth_tester_do_discovery(app);
+        eth_tester_update_view(app->text_box_discovery, app->discovery_text);
+        break;
+    case EthTesterMenuItemStpVlan:
+        eth_tester_do_stp_vlan(app);
+        eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
+        break;
+    case EthTesterMenuItemHistory:
+        eth_tester_do_history(app);
+        eth_tester_update_view(app->text_box_history, app->history_text);
+        break;
+    default:
+        break;
     }
     return 0;
 }
