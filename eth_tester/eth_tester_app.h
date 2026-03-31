@@ -6,7 +6,10 @@
 #include <gui/modules/submenu.h>
 #include <gui/modules/text_box.h>
 #include <gui/modules/text_input.h>
+#include <gui/modules/byte_input.h>
+#include <gui/view.h>
 #include <notification/notification_messages.h>
+#include "protocols/ping_graph.h"
 
 /* Forward declarations */
 typedef struct EthTesterApp EthTesterApp;
@@ -21,6 +24,25 @@ typedef enum {
     EthTesterViewPing,
     EthTesterViewPingInput,
     EthTesterViewStats,
+    EthTesterViewDnsLookup,
+    EthTesterViewDnsInput,
+    EthTesterViewWol,
+    EthTesterViewWolInput,
+    EthTesterViewContPing,
+    EthTesterViewContPingInput,
+    EthTesterViewPortScan,
+    EthTesterViewPortScanInput,
+    EthTesterViewMacChanger,
+    EthTesterViewMacChangerInput,
+    EthTesterViewTraceroute,
+    EthTesterViewTracerouteInput,
+    EthTesterViewPingSweep,
+    EthTesterViewPingSweepInput,
+    EthTesterViewDiscovery,
+    EthTesterViewStpVlan,
+    EthTesterViewHistory,
+    EthTesterViewHistoryFile,
+    EthTesterViewAbout,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -32,6 +54,17 @@ typedef enum {
     EthTesterMenuItemDhcpAnalyze,
     EthTesterMenuItemPing,
     EthTesterMenuItemStats,
+    EthTesterMenuItemDnsLookup,
+    EthTesterMenuItemWol,
+    EthTesterMenuItemContPing,
+    EthTesterMenuItemPortScan,
+    EthTesterMenuItemMacChanger,
+    EthTesterMenuItemTraceroute,
+    EthTesterMenuItemPingSweep,
+    EthTesterMenuItemDiscovery,
+    EthTesterMenuItemStpVlan,
+    EthTesterMenuItemHistory,
+    EthTesterMenuItemAbout,
 } EthTesterMenuItem;
 
 /* Packet statistics counters */
@@ -59,8 +92,32 @@ struct EthTesterApp {
     TextBox* text_box_dhcp;
     TextBox* text_box_ping;
     TextBox* text_box_stats;
+    TextBox* text_box_dns;
+    TextBox* text_box_wol;
     TextInput* text_input_ping;
+    TextInput* text_input_dns;
+    ByteInput* byte_input_wol;
+    View* view_cont_ping;
+    TextInput* text_input_cont_ping;
+    TextBox* text_box_port_scan;
+    TextInput* text_input_port_scan;
+    TextBox* text_box_mac_changer;
+    ByteInput* byte_input_mac_changer;
+    TextBox* text_box_traceroute;
+    TextInput* text_input_traceroute;
+    TextBox* text_box_ping_sweep;
+    TextInput* text_input_ping_sweep;
+    TextBox* text_box_discovery;
+    TextBox* text_box_stp_vlan;
+    TextBox* text_box_history;
+    TextBox* text_box_history_file;
+    TextBox* text_box_about;
     NotificationApp* notifications;
+
+    /* Worker thread for non-blocking operations */
+    FuriThread* worker_thread;
+    volatile bool worker_running;
+    uint32_t worker_op; /* EthTesterMenuItem value */
 
     /* W5500 state */
     bool w5500_initialized;
@@ -73,12 +130,45 @@ struct EthTesterApp {
     /* DHCP timer (1 second periodic for DHCP_time_handler) */
     FuriTimer* dhcp_timer;
 
+    /* Cached DHCP results (for auto-populating scan ranges) */
+    uint8_t dhcp_ip[4];
+    uint8_t dhcp_mask[4];
+    uint8_t dhcp_gw[4];
+    uint8_t dhcp_dns[4];
+    bool dhcp_valid;
+
     /* Custom ping target IP (parsed from user input) */
     uint8_t ping_ip_custom[4];
     char ping_ip_input[16]; /* text input buffer "xxx.xxx.xxx.xxx" */
 
     /* Packet statistics */
     PacketStats stats;
+
+    /* DNS lookup state */
+    char dns_hostname_input[64]; /* text input buffer for hostname */
+    uint8_t dns_server_ip[4];   /* DNS server from DHCP */
+
+    /* Wake-on-LAN state */
+    uint8_t wol_mac_input[6]; /* byte input buffer for MAC */
+
+    /* Continuous ping state */
+    char cont_ping_ip_input[16]; /* text input buffer */
+    uint8_t cont_ping_target[4]; /* parsed target IP */
+    PingGraphState* ping_graph;  /* heap-allocated ping graph state */
+
+    /* Port scanner state */
+    char port_scan_ip_input[16]; /* text input buffer */
+    uint8_t port_scan_target[4]; /* parsed target IP */
+
+    /* MAC changer state */
+    uint8_t mac_changer_input[6]; /* byte input buffer for custom MAC */
+
+    /* Traceroute state */
+    char traceroute_ip_input[16]; /* text input buffer */
+    uint8_t traceroute_target[4]; /* parsed target IP */
+
+    /* Ping sweep state */
+    char ping_sweep_ip_input[20]; /* "192.168.1.0/24" */
 
     /* Text buffers for views */
     FuriString* link_info_text;
@@ -87,4 +177,14 @@ struct EthTesterApp {
     FuriString* dhcp_text;
     FuriString* ping_text;
     FuriString* stats_text;
+    FuriString* dns_text;
+    FuriString* wol_text;
+    FuriString* port_scan_text;
+    FuriString* mac_changer_text;
+    FuriString* traceroute_text;
+    FuriString* ping_sweep_text;
+    FuriString* discovery_text;
+    FuriString* stp_vlan_text;
+    FuriString* history_text;
+    FuriString* history_file_text;
 };
