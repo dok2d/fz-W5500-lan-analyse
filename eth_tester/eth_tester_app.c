@@ -13,6 +13,7 @@
 #include "protocols/traceroute.h"
 #include "protocols/discovery.h"
 #include "protocols/stp_vlan.h"
+#include "protocols/history.h"
 #include "utils/packet_utils.h"
 #include "utils/oui_lookup.h"
 
@@ -94,6 +95,7 @@ static void eth_tester_do_traceroute(EthTesterApp* app);
 static void eth_tester_do_discovery(EthTesterApp* app);
 static void eth_tester_do_ping_sweep(EthTesterApp* app);
 static void eth_tester_do_stp_vlan(EthTesterApp* app);
+static void eth_tester_do_history(EthTesterApp* app);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static void eth_tester_save_results(const char* filename, const char* content);
 
@@ -126,6 +128,8 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->ping_sweep_text = furi_string_alloc();
     app->discovery_text = furi_string_alloc();
     app->stp_vlan_text = furi_string_alloc();
+    app->history_text = furi_string_alloc();
+    app->history_file_text = furi_string_alloc();
 
     /* Set initial text */
     furi_string_set(app->link_info_text, "Press OK to read\nlink status...\n");
@@ -166,6 +170,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "mDNS/SSDP Scan", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "STP/VLAN Detect", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
@@ -306,6 +311,17 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_box_get_view(app->text_box_discovery), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDiscovery, text_box_get_view(app->text_box_discovery));
 
+    /* History views */
+    app->text_box_history = text_box_alloc();
+    text_box_set_font(app->text_box_history, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_history), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistory, text_box_get_view(app->text_box_history));
+
+    app->text_box_history_file = text_box_alloc();
+    text_box_set_font(app->text_box_history_file, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_history_file), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistoryFile, text_box_get_view(app->text_box_history_file));
+
     /* STP/VLAN Detection view */
     app->text_box_stp_vlan = text_box_alloc();
     text_box_set_font(app->text_box_stp_vlan, TextBoxFontText);
@@ -348,6 +364,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingSweepInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDiscovery);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewStpVlan);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHistory);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHistoryFile);
 
     submenu_free(app->submenu);
     text_box_free(app->text_box_link);
@@ -373,6 +391,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_input_free(app->text_input_ping_sweep);
     text_box_free(app->text_box_discovery);
     text_box_free(app->text_box_stp_vlan);
+    text_box_free(app->text_box_history);
+    text_box_free(app->text_box_history_file);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -391,6 +411,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->ping_sweep_text);
     furi_string_free(app->discovery_text);
     furi_string_free(app->stp_vlan_text);
+    furi_string_free(app->history_text);
+    furi_string_free(app->history_file_text);
 
     /* Stop and free DHCP timer */
     furi_timer_stop(app->dhcp_timer);
@@ -805,6 +827,12 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             app->wol_mac_input,
             6);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewWolInput);
+        break;
+
+    case EthTesterMenuItemHistory:
+        eth_tester_show_view(app, app->text_box_history, EthTesterViewHistory, app->history_text, "Loading...\n");
+        eth_tester_do_history(app);
+        eth_tester_update_view(app->text_box_history, app->history_text);
         break;
 
     case EthTesterMenuItemStpVlan:
@@ -2281,6 +2309,61 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
     eth_tester_save_results("stp_vlan.txt", furi_string_get_cstr(app->stp_vlan_text));
 }
 
+/* ==================== History Browser ==================== */
+
+static void eth_tester_do_history(EthTesterApp* app) {
+    furi_string_reset(app->history_text);
+
+    HistoryState* state = malloc(sizeof(HistoryState));
+    if(!state) {
+        furi_string_set(app->history_text, "Memory alloc failed!\n");
+        return;
+    }
+
+    uint16_t count = history_list(state);
+
+    if(count == 0) {
+        furi_string_set(app->history_text,
+            "=== History ===\n"
+            "No saved files found.\n\n"
+            "Run scans to save\n"
+            "results to SD card.\n");
+        free(state);
+        return;
+    }
+
+    furi_string_printf(
+        app->history_text,
+        "=== History ===\n"
+        "%d file(s) saved\n\n",
+        count);
+
+    for(uint16_t i = 0; i < count; i++) {
+        HistoryEntry* e = &state->files[i];
+
+        /* Format nicely: extract date from filename if possible */
+        char display_date[20] = "";
+        if(strlen(e->filename) > 15 && e->filename[8] == '_') {
+            /* YYYYMMDD_HHMMSS -> YYYY-MM-DD HH:MM */
+            snprintf(display_date, sizeof(display_date),
+                "%.4s-%.2s-%.2s %.2s:%.2s",
+                e->filename,
+                e->filename + 4,
+                e->filename + 6,
+                e->filename + 9,
+                e->filename + 11);
+        }
+
+        furi_string_cat_printf(
+            app->history_text,
+            "%s\n  %s\n",
+            display_date[0] ? display_date : e->filename,
+            e->type);
+    }
+
+    free(state);
+}
+
 /* ==================== Port Scanner ==================== */
 
 static void eth_tester_do_port_scan(EthTesterApp* app) {
@@ -2663,26 +2746,17 @@ static void eth_tester_do_stats(EthTesterApp* app) {
 
 /* ==================== Save results to SD card ==================== */
 
-static void eth_tester_save_results(const char* filename, const char* content) {
-    Storage* storage = furi_record_open(RECORD_STORAGE);
-
-    /* Ensure directory exists */
-    storage_simply_mkdir(storage, APP_DATA_PATH(""));
-
-    File* file = storage_file_alloc(storage);
-    char filepath[128];
-    snprintf(filepath, sizeof(filepath), APP_DATA_PATH("%s"), filename);
-
-    if(storage_file_open(file, filepath, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
-        storage_file_write(file, content, strlen(content));
-        storage_file_close(file);
-        FURI_LOG_I(TAG, "Results saved to %s", filepath);
-    } else {
-        FURI_LOG_E(TAG, "Failed to save results to %s", filepath);
+static void eth_tester_save_results(const char* type, const char* content) {
+    /* Extract scan type from filename (remove .txt extension if present) */
+    char scan_type[32];
+    strncpy(scan_type, type, sizeof(scan_type) - 1);
+    scan_type[sizeof(scan_type) - 1] = '\0';
+    uint16_t len = strlen(scan_type);
+    if(len > 4 && strcmp(&scan_type[len - 4], ".txt") == 0) {
+        scan_type[len - 4] = '\0';
     }
 
-    storage_file_free(file);
-    furi_record_close(RECORD_STORAGE);
+    history_save(scan_type, content);
 }
 
 /* ==================== Entry point ==================== */
