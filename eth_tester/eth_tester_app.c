@@ -160,6 +160,14 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_box_get_view(app->text_box_stats), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewStats, text_box_get_view(app->text_box_stats));
 
+    /* TextInput for ping target IP */
+    app->text_input_ping = text_input_alloc();
+    view_set_previous_callback(text_input_get_view(app->text_input_ping), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPingInput, text_input_get_view(app->text_input_ping));
+
+    /* Default ping target */
+    strncpy(app->ping_ip_input, "8.8.8.8", sizeof(app->ping_ip_input));
+
     return app;
 }
 
@@ -173,6 +181,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewArpScan);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDhcpAnalyze);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPing);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewStats);
 
     submenu_free(app->submenu);
@@ -181,6 +190,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_box_free(app->text_box_arp);
     text_box_free(app->text_box_dhcp);
     text_box_free(app->text_box_ping);
+    text_input_free(app->text_input_ping);
     text_box_free(app->text_box_stats);
 
     view_dispatcher_free(app->view_dispatcher);
@@ -253,6 +263,34 @@ static bool eth_tester_ensure_w5500(EthTesterApp* app) {
     return true;
 }
 
+/* ==================== Ping IP input callback ==================== */
+
+static bool eth_tester_parse_ip(const char* str, uint8_t ip[4]) {
+    unsigned int a, b, c, d;
+    if(sscanf(str, "%u.%u.%u.%u", &a, &b, &c, &d) != 4) return false;
+    if(a > 255 || b > 255 || c > 255 || d > 255) return false;
+    ip[0] = (uint8_t)a;
+    ip[1] = (uint8_t)b;
+    ip[2] = (uint8_t)c;
+    ip[3] = (uint8_t)d;
+    return true;
+}
+
+static void eth_tester_ping_ip_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    /* Parse entered IP */
+    if(eth_tester_parse_ip(app->ping_ip_input, app->ping_ip_custom)) {
+        eth_tester_do_ping(app);
+    } else {
+        furi_string_set(app->ping_text, "Invalid IP address!\n");
+        memset(app->ping_ip_custom, 0, 4);
+    }
+    text_box_set_text(app->text_box_ping, furi_string_get_cstr(app->ping_text));
+    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPing);
+}
+
 /* ==================== Submenu callback ==================== */
 
 static void eth_tester_submenu_callback(void* context, uint32_t index) {
@@ -285,9 +323,16 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemPing:
-        eth_tester_do_ping(app);
-        text_box_set_text(app->text_box_ping, furi_string_get_cstr(app->ping_text));
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPing);
+        text_input_reset(app->text_input_ping);
+        text_input_set_header_text(app->text_input_ping, "Ping target IP:");
+        text_input_set_result_callback(
+            app->text_input_ping,
+            eth_tester_ping_ip_input_callback,
+            app,
+            app->ping_ip_input,
+            sizeof(app->ping_ip_input),
+            false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPingInput);
         break;
 
     case EthTesterMenuItemStats:
@@ -450,8 +495,13 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     /*
      * First, get our IP via the W5500's built-in DHCP.
      * Use Socket 1 for DHCP.
+     * Allocate on heap to avoid stack overflow (app stack is only 4 KB).
      */
-    uint8_t dhcp_buffer[1024];
+    uint8_t* dhcp_buffer = malloc(1024);
+    if(!dhcp_buffer) {
+        furi_string_set(app->arp_text, "Memory alloc failed!\n");
+        return;
+    }
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
     net_info.dhcp = NETINFO_DHCP;
@@ -482,6 +532,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
         furi_delay_ms(10);
     }
     DHCP_stop();
+    free(dhcp_buffer);
 
     if(!got_ip) {
         furi_string_set(app->arp_text, "DHCP failed.\nCannot determine\nsubnet for ARP scan.\n");
@@ -509,10 +560,16 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
         return;
     }
 
-    ArpScanState scan;
-    memset(&scan, 0, sizeof(scan));
-    scan.scanning = true;
-    scan.start_tick = furi_get_tick();
+    /* Allocate on heap to avoid stack overflow */
+    ArpScanState* scan = malloc(sizeof(ArpScanState));
+    if(!scan) {
+        furi_string_set(app->arp_text, "Memory alloc failed!\n");
+        w5500_hal_close_macraw();
+        return;
+    }
+    memset(scan, 0, sizeof(ArpScanState));
+    scan->scanning = true;
+    scan->start_tick = furi_get_tick();
 
     /* Send ARP requests in batches */
     uint8_t arp_frame[42];
@@ -526,7 +583,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
         pkt_write_u32_be(target, current_ip);
         arp_build_request(arp_frame, net_info.mac, net_info.ip, target);
         w5500_hal_macraw_send(arp_frame, 42);
-        scan.total_sent++;
+        scan->total_sent++;
         current_ip++;
         batch_count++;
 
@@ -542,14 +599,14 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
 
                 uint8_t sender_mac[6], sender_ip[4];
                 if(arp_parse_reply(frame_buf, recv_len, sender_mac, sender_ip)) {
-                    if(scan.count < ARP_MAX_HOSTS) {
-                        ArpHost* host = &scan.hosts[scan.count];
+                    if(scan->count < ARP_MAX_HOSTS) {
+                        ArpHost* host = &scan->hosts[scan->count];
                         memcpy(host->ip, sender_ip, 4);
                         memcpy(host->mac, sender_mac, 6);
                         const char* vendor = oui_lookup(sender_mac);
                         strncpy(host->vendor, vendor, sizeof(host->vendor) - 1);
                         host->responded = true;
-                        scan.count++;
+                        scan->count++;
                     }
                 }
             }
@@ -565,20 +622,20 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
             if(arp_parse_reply(frame_buf, recv_len, sender_mac, sender_ip)) {
                 /* Check for duplicate */
                 bool duplicate = false;
-                for(uint8_t j = 0; j < scan.count; j++) {
-                    if(memcmp(scan.hosts[j].ip, sender_ip, 4) == 0) {
+                for(uint8_t j = 0; j < scan->count; j++) {
+                    if(memcmp(scan->hosts[j].ip, sender_ip, 4) == 0) {
                         duplicate = true;
                         break;
                     }
                 }
-                if(!duplicate && scan.count < ARP_MAX_HOSTS) {
-                    ArpHost* host = &scan.hosts[scan.count];
+                if(!duplicate && scan->count < ARP_MAX_HOSTS) {
+                    ArpHost* host = &scan->hosts[scan->count];
                     memcpy(host->ip, sender_ip, 4);
                     memcpy(host->mac, sender_mac, 6);
                     const char* vendor = oui_lookup(sender_mac);
                     strncpy(host->vendor, vendor, sizeof(host->vendor) - 1);
                     host->responded = true;
-                    scan.count++;
+                    scan->count++;
                 }
             }
         }
@@ -587,30 +644,32 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
 
     w5500_hal_close_macraw();
 
-    scan.elapsed_ms = furi_get_tick() - scan.start_tick;
-    scan.scanning = false;
-    scan.complete = true;
+    scan->elapsed_ms = furi_get_tick() - scan->start_tick;
+    scan->scanning = false;
+    scan->complete = true;
 
     /* Format results */
     furi_string_reset(app->arp_text);
     furi_string_printf(
         app->arp_text,
         "Found %d hosts in %lu.%lus\n\n",
-        scan.count,
-        (unsigned long)(scan.elapsed_ms / 1000),
-        (unsigned long)((scan.elapsed_ms % 1000) / 100));
+        scan->count,
+        (unsigned long)(scan->elapsed_ms / 1000),
+        (unsigned long)((scan->elapsed_ms % 1000) / 100));
 
-    for(uint8_t i = 0; i < scan.count; i++) {
-        ArpHost* h = &scan.hosts[i];
+    for(uint8_t i = 0; i < scan->count; i++) {
+        ArpHost* h = &scan->hosts[i];
         char ip_buf[16], mac_buf[18];
         pkt_format_ip(h->ip, ip_buf);
         pkt_format_mac(h->mac, mac_buf);
         furi_string_cat_printf(app->arp_text, "%s\n %s\n %s\n", ip_buf, mac_buf, h->vendor);
     }
 
-    if(scan.count == 0) {
+    if(scan->count == 0) {
         furi_string_cat_str(app->arp_text, "No hosts found.\n");
     }
+
+    free(scan);
 
     /* Save results to SD card */
     eth_tester_save_results("arp_scan.txt", furi_string_get_cstr(app->arp_text));
@@ -658,8 +717,13 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
         return;
     }
 
-    /* Build DHCP Discover */
-    uint8_t dhcp_pkt[548];
+    /* Build DHCP Discover (heap to save stack) */
+    uint8_t* dhcp_pkt = malloc(548);
+    if(!dhcp_pkt) {
+        furi_string_set(app->dhcp_text, "Memory alloc failed!\n");
+        close(dhcp_socket);
+        return;
+    }
     uint32_t xid;
     furi_hal_random_fill_buf((uint8_t*)&xid, sizeof(xid));
     uint16_t pkt_len = dhcp_build_discover(dhcp_pkt, app->mac_addr, xid);
@@ -667,6 +731,7 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
     /* Send to broadcast 255.255.255.255:67 */
     uint8_t bcast_ip[4] = {255, 255, 255, 255};
     int32_t sent = sendto(dhcp_socket, dhcp_pkt, pkt_len, bcast_ip, DHCP_SERVER_PORT);
+    free(dhcp_pkt);
     if(sent <= 0) {
         furi_string_set(app->dhcp_text, "Failed to send\nDHCP Discover!\n");
         close(dhcp_socket);
@@ -679,14 +744,19 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
     DhcpAnalyzeResult dhcp_result;
     bool got_offer = false;
     uint32_t start_tick = furi_get_tick();
-    uint8_t recv_buf[1024];
+    uint8_t* recv_buf = malloc(1024);
+    if(!recv_buf) {
+        furi_string_set(app->dhcp_text, "Memory alloc failed!\n");
+        close(dhcp_socket);
+        return;
+    }
 
     while(furi_get_tick() - start_tick < 10000) { /* 10 sec timeout */
         uint16_t rx_size = getSn_RX_RSR(dhcp_socket);
         if(rx_size > 0) {
             uint8_t from_ip[4];
             uint16_t from_port;
-            int32_t received = recvfrom(dhcp_socket, recv_buf, sizeof(recv_buf), from_ip, &from_port);
+            int32_t received = recvfrom(dhcp_socket, recv_buf, 1024, from_ip, &from_port);
             if(received > 0) {
                 if(dhcp_parse_offer(recv_buf, (uint16_t)received, xid, &dhcp_result)) {
                     got_offer = true;
@@ -697,6 +767,7 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
         furi_delay_ms(50);
     }
 
+    free(recv_buf);
     close(dhcp_socket);
 
     /* Restore network settings */
@@ -709,9 +780,12 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
     furi_string_reset(app->dhcp_text);
 
     if(got_offer) {
-        char result_buf[768];
-        dhcp_format_result(&dhcp_result, result_buf, sizeof(result_buf));
-        furi_string_set(app->dhcp_text, result_buf);
+        char* result_buf = malloc(768);
+        if(result_buf) {
+            dhcp_format_result(&dhcp_result, result_buf, 768);
+            furi_string_set(app->dhcp_text, result_buf);
+            free(result_buf);
+        }
     } else {
         furi_string_set(app->dhcp_text, "No DHCP server found.\n(waited 10 sec)\n");
     }
@@ -736,7 +810,11 @@ static void eth_tester_do_ping(EthTesterApp* app) {
     /* First get IP via DHCP */
     furi_string_set(app->ping_text, "Getting IP via DHCP...\n");
 
-    uint8_t dhcp_buffer[1024];
+    uint8_t* dhcp_buffer = malloc(1024);
+    if(!dhcp_buffer) {
+        furi_string_set(app->ping_text, "Memory alloc failed!\n");
+        return;
+    }
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
     net_info.dhcp = NETINFO_DHCP;
@@ -765,15 +843,20 @@ static void eth_tester_do_ping(EthTesterApp* app) {
         furi_delay_ms(10);
     }
     DHCP_stop();
+    free(dhcp_buffer);
 
     if(!got_ip) {
         furi_string_set(app->ping_text, "DHCP failed.\nCannot ping.\n");
         return;
     }
 
-    /* Ping the gateway */
+    /* Use custom IP if set, otherwise ping the gateway */
     uint8_t target_ip[4];
-    memcpy(target_ip, net_info.gw, 4);
+    if(app->ping_ip_custom[0] != 0) {
+        memcpy(target_ip, app->ping_ip_custom, 4);
+    } else {
+        memcpy(target_ip, net_info.gw, 4);
+    }
 
     char target_str[16], my_ip_str[16];
     pkt_format_ip(target_ip, target_str);

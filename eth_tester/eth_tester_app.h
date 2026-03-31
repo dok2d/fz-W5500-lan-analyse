@@ -5,6 +5,7 @@
 #include <gui/view_dispatcher.h>
 #include <gui/modules/submenu.h>
 #include <gui/modules/text_box.h>
+#include <gui/modules/text_input.h>
 #include <notification/notification_messages.h>
 
 /* Forward declarations */
@@ -18,6 +19,7 @@ typedef enum {
     EthTesterViewArpScan,
     EthTesterViewDhcpAnalyze,
     EthTesterViewPing,
+    EthTesterViewPingInput,
     EthTesterViewStats,
     EthTesterViewCount,
 } EthTesterView;
@@ -57,6 +59,7 @@ struct EthTesterApp {
     TextBox* text_box_dhcp;
     TextBox* text_box_ping;
     TextBox* text_box_stats;
+    TextInput* text_input_ping;
     NotificationApp* notifications;
 
     /* W5500 state */
@@ -69,6 +72,10 @@ struct EthTesterApp {
 
     /* DHCP timer (1 second periodic for DHCP_time_handler) */
     FuriTimer* dhcp_timer;
+
+    /* Custom ping target IP (parsed from user input) */
+    uint8_t ping_ip_custom[4];
+    char ping_ip_input[16]; /* text input buffer "xxx.xxx.xxx.xxx" */
 
     /* Packet statistics */
     PacketStats stats;
