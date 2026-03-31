@@ -16,6 +16,7 @@
 typedef struct {
     char filename[HISTORY_FILENAME_LEN];
     char type[16]; /* Scan type extracted from filename */
+    char label[HISTORY_FILENAME_LEN]; /* Display label for submenu */
 } HistoryEntry;
 
 /* History browser state */

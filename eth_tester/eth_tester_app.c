@@ -2450,10 +2450,9 @@ static void eth_tester_history_populate(EthTesterApp* app) {
     for(uint16_t i = 0; i < count; i++) {
         HistoryEntry* e = &app->history_state->files[i];
 
-        /* Build display label: "[type] MM-DD HH:MM" */
-        char label[48];
+        /* Build display label into persistent struct field */
         if(strlen(e->filename) > 15 && e->filename[8] == '_') {
-            snprintf(label, sizeof(label),
+            snprintf(e->label, sizeof(e->label),
                 "[%s] %.2s-%.2s %.2s:%.2s",
                 e->type,
                 e->filename + 4,
@@ -2461,12 +2460,12 @@ static void eth_tester_history_populate(EthTesterApp* app) {
                 e->filename + 9,
                 e->filename + 11);
         } else {
-            snprintf(label, sizeof(label), "%s", e->filename);
+            snprintf(e->label, sizeof(e->label), "%s", e->filename);
         }
 
         submenu_add_item(
             app->submenu_history,
-            label,
+            e->label,
             i,
             eth_tester_history_file_callback,
             app);
