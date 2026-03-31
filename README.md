@@ -20,7 +20,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | **CDP Listener** | Cisco Discovery Protocol parsing --- device ID, platform, software version, native VLAN, duplex |
 | **ARP Scanner** | Active subnet scan with batch requests, OUI vendor lookup (~120 vendors), duplicate detection |
 | **DHCP Analyzer** | Discover-only analysis (no IP lease taken), option fingerprinting, full offer parsing |
-| **ICMP Ping** | Echo request/reply to gateway with RTT measurement |
+| **ICMP Ping** | Echo request/reply to any IP (custom input) with RTT measurement |
 | **Packet Statistics** | Frame counters by type (unicast/broadcast/multicast) and EtherType (IPv4/ARP/IPv6/LLDP/CDP) |
 | **SD Card Export** | All scan results saved to `/ext/apps_data/eth_tester/` as plain text |
 
@@ -57,8 +57,9 @@ GND  (G)    →   GND (pin 8 or 11)
 
 ```bash
 cd eth_tester
-ufbt build
-ufbt install    # with Flipper connected via USB
+ufbt build              # build only
+ufbt launch             # build and run on Flipper via USB
+ufbt install            # install .fap to Flipper's SD card
 ```
 
 The compiled `.fap` file will appear in `dist/`. You can also copy it manually to the Flipper's SD card at `/ext/apps/GPIO/`.
@@ -107,13 +108,13 @@ Instantly shows link status, negotiated speed and duplex, MAC address. Use this 
 Passively listens for up to 60 seconds. Most managed switches send LLDP every 30 seconds. Shows switch name, port, VLAN, management IP, and device capabilities.
 
 ### ARP Scan
-Acquires an IP via DHCP, then scans the local subnet (max /24). Sends ARP requests in batches of 16 with 15ms delays. Shows IP, MAC, and vendor for each responding host.
+Acquires an IP via DHCP, then scans the local subnet (dynamically determined from the subnet mask). Sends ARP requests in batches of 16 with 15ms delays. Shows IP, MAC, and vendor for each responding host. Real-time progress is displayed during the scan.
 
 ### DHCP Analyze
 Sends a single DHCP Discover and analyzes the Offer response. Does **not** take an IP lease --- safe to run on production networks. Shows server IP, offered address, gateway, DNS, domain, NTP, lease times, and a DHCP option fingerprint string.
 
 ### Ping
-Gets an IP via DHCP, then pings the default gateway 4 times with 3-second timeout. Shows RTT for each attempt.
+Prompts for a target IP address (default: `8.8.8.8`), gets a local IP via DHCP, then pings the target 4 times with 3-second timeout. Shows RTT for each attempt in real time.
 
 ### Statistics
 Captures raw Ethernet frames for 10 seconds (or shows accumulated stats from previous LLDP/CDP sessions). Breaks down traffic by destination type and EtherType.
@@ -122,7 +123,7 @@ Captures raw Ethernet frames for 10 seconds (or shows accumulated stats from pre
 
 - **W5500 MACRAW mode**: Socket 0 with `MFEN=0` (promiscuous --- receives all frames including multicast)
 - **No extra threads**: Single-threaded event loop, compatible with FreeRTOS on Flipper
-- **Memory-safe**: All buffers are statically sized, no `malloc` in hot paths, bounds checking on all TLV parsers
+- **Memory-safe**: Large buffers heap-allocated to avoid stack overflow (4 KB app stack), bounds checking on all TLV parsers
 - **Endianness**: Manual big-endian parsing (`(buf[0] << 8) | buf[1]`) --- no float printf, no `htons`/`ntohs`
 
 ## OUI Vendor Database
@@ -162,7 +163,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 | **CDP Listener** | Парсинг Cisco Discovery Protocol --- ID устройства, платформа, версия ПО, Native VLAN, дуплекс |
 | **ARP Scanner** | Активное сканирование подсети пакетами по 16 штук, определение вендора по OUI (~120 производителей) |
 | **DHCP Analyzer** | Анализ только Discover/Offer (IP-адрес не берётся!), фингерпринтинг, полный разбор Offer |
-| **ICMP Ping** | Echo Request/Reply до шлюза с измерением RTT |
+| **ICMP Ping** | Echo Request/Reply на любой IP (ввод вручную) с измерением RTT |
 | **Статистика пакетов** | Счётчики фреймов по типу (unicast/broadcast/multicast) и EtherType (IPv4/ARP/IPv6/LLDP/CDP) |
 | **Экспорт на SD** | Все результаты сохраняются в `/ext/apps_data/eth_tester/` в текстовом формате |
 
@@ -199,8 +200,9 @@ GND  (G)     →    GND (пин 8 или 11)
 
 ```bash
 cd eth_tester
-ufbt build
-ufbt install    # при подключённом Flipper по USB
+ufbt build              # только сборка
+ufbt launch             # сборка и запуск на Flipper через USB
+ufbt install            # установка .fap на SD-карту Flipper
 ```
 
 Скомпилированный `.fap` файл появится в `dist/`. Его также можно скопировать вручную на SD-карту Flipper'а в `/ext/apps/GPIO/`.
@@ -249,13 +251,13 @@ eth_tester/
 Пассивно слушает до 60 секунд. Большинство управляемых коммутаторов отправляют LLDP каждые 30 секунд. Показывает имя коммутатора, порт, VLAN, management IP, capabilities устройства.
 
 ### ARP Scan
-Получает IP через DHCP, затем сканирует локальную подсеть (максимум /24). Отправляет ARP-запросы пачками по 16 с задержкой 15 мс. Показывает IP, MAC и вендора для каждого ответившего хоста.
+Получает IP через DHCP, затем сканирует локальную подсеть (диапазон определяется динамически по маске подсети). Отправляет ARP-запросы пачками по 16 с задержкой 15 мс. Показывает IP, MAC и вендора для каждого ответившего хоста. Прогресс отображается в реальном времени.
 
 ### DHCP Analyze
 Отправляет один DHCP Discover и анализирует ответ Offer. **Не берёт IP-адрес** --- безопасно для использования в продуктивных сетях. Показывает IP сервера, предложенный адрес, шлюз, DNS, домен, NTP, время аренды и строку фингерпринта DHCP-опций.
 
 ### Ping
-Получает IP через DHCP, затем пингует шлюз по умолчанию 4 раза с таймаутом 3 секунды. Показывает RTT для каждой попытки.
+Предлагает ввести IP-адрес цели (по умолчанию `8.8.8.8`), получает локальный IP через DHCP, затем пингует цель 4 раза с таймаутом 3 секунды. Показывает RTT для каждой попытки в реальном времени.
 
 ### Статистика
 Захватывает сырые Ethernet-фреймы 10 секунд (или показывает накопленную статистику от предыдущих LLDP/CDP сессий). Разбивает трафик по типу назначения и EtherType.
@@ -264,7 +266,7 @@ eth_tester/
 
 - **W5500 MACRAW режим**: Socket 0 с `MFEN=0` (принимает все фреймы, включая multicast)
 - **Без дополнительных потоков**: один поток в event loop, совместимо с FreeRTOS на Flipper
-- **Безопасность памяти**: все буферы статического размера, нет `malloc` в горячих путях, проверка границ во всех TLV-парсерах
+- **Безопасность памяти**: большие буферы выделяются в куче (стек приложения всего 4 КБ), проверка границ во всех TLV-парсерах
 - **Порядок байтов**: ручной парсинг big-endian (`(buf[0] << 8) | buf[1]`) --- нет float printf, нет `htons`/`ntohs`
 
 ## База данных OUI-вендоров

@@ -3,6 +3,7 @@
 #include <furi.h>
 #include <furi_hal.h>
 #include <socket.h>
+#include <wizchip_conf.h>
 #include <string.h>
 
 #define TAG "ICMP"
@@ -42,7 +43,14 @@ bool icmp_ping(
     result->rtt_ms = 0;
     result->success = false;
 
-    /* Open socket in IPRAW mode for ICMP (protocol 1) */
+    /* Close any previous socket state */
+    close(socket_num);
+
+    /* Set IP protocol register to ICMP before opening IPRAW socket.
+     * W5500 header defines Sn_PROTO address but not setSn_PROTO macro. */
+    WIZCHIP_WRITE(Sn_PROTO(socket_num), IP_PROTO_ICMP);
+
+    /* Open socket in IPRAW mode for ICMP */
     int8_t ret = socket(socket_num, Sn_MR_IPRAW, IP_PROTO_ICMP, 0);
     if(ret != socket_num) {
         FURI_LOG_E(TAG, "Failed to open IPRAW socket: %d", ret);
@@ -71,8 +79,8 @@ bool icmp_ping(
     icmp_buf[2] = (uint8_t)(cksum >> 8);
     icmp_buf[3] = (uint8_t)(cksum & 0xFF);
 
-    /* Send ICMP request */
-    int32_t sent = sendto(socket_num, icmp_buf, ICMP_PACKET_SIZE, (uint8_t*)target_ip, 0);
+    /* Send ICMP request (port must be non-zero for WIZnet sendto validation) */
+    int32_t sent = sendto(socket_num, icmp_buf, ICMP_PACKET_SIZE, (uint8_t*)target_ip, 1);
     if(sent <= 0) {
         FURI_LOG_E(TAG, "Failed to send ICMP request: %ld", sent);
         close(socket_num);
