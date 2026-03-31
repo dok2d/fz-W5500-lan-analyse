@@ -67,6 +67,9 @@ struct EthTesterApp {
     uint8_t link_duplex;  /* 0 = half, 1 = full */
     uint8_t mac_addr[6];
 
+    /* DHCP timer (1 second periodic for DHCP_time_handler) */
+    FuriTimer* dhcp_timer;
+
     /* Packet statistics */
     PacketStats stats;
 

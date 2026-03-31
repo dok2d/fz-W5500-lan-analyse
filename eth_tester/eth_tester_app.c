@@ -27,6 +27,36 @@
 
 #define TAG "ETH"
 
+/* ==================== WIZnet library compatibility stubs ==================== */
+
+/*
+ * eth_printf: called by WIZnet DHCP/ICMP library for debug output.
+ * We forward it to Flipper's FURI_LOG system.
+ */
+void eth_printf(const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    FuriString* fstr = furi_string_alloc_vprintf(format, args);
+    va_end(args);
+    FURI_LOG_D(TAG, "%s", furi_string_get_cstr(fstr));
+    furi_string_free(fstr);
+}
+
+/*
+ * ping_wait_ms: called by WIZnet ping/traceroute library.
+ */
+void ping_wait_ms(int ms) {
+    furi_delay_ms(ms);
+}
+
+/*
+ * DHCP timer callback for FuriTimer (1 second periodic).
+ */
+static void dhcp_timer_callback(void* context) {
+    UNUSED(context);
+    DHCP_time_handler();
+}
+
 /* Default MAC address (WIZnet OUI range) */
 #define DEFAULT_MAC \
     { 0x00, 0x08, 0xDC, 0x47, 0x47, 0x54 }
@@ -48,6 +78,7 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app);
 static void eth_tester_do_ping(EthTesterApp* app);
 static void eth_tester_do_stats(EthTesterApp* app);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
+static void eth_tester_save_results(const char* filename, const char* content);
 
 /* ==================== App alloc / free ==================== */
 
@@ -58,6 +89,10 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Set default MAC */
     uint8_t default_mac[6] = DEFAULT_MAC;
     memcpy(app->mac_addr, default_mac, 6);
+
+    /* DHCP timer: 1 second periodic, needed by WIZnet DHCP_run() */
+    app->dhcp_timer = furi_timer_alloc(dhcp_timer_callback, FuriTimerTypePeriodic, NULL);
+    furi_timer_start(app->dhcp_timer, 1000);
 
     /* Allocate text buffers */
     app->link_info_text = furi_string_alloc();
@@ -81,7 +116,6 @@ static EthTesterApp* eth_tester_app_alloc(void) {
 
     /* ViewDispatcher */
     app->view_dispatcher = view_dispatcher_alloc();
-    view_dispatcher_enable_queue(app->view_dispatcher);
     view_dispatcher_attach_to_gui(app->view_dispatcher, app->gui, ViewDispatcherTypeFullscreen);
 
     /* Main menu (Submenu view) */
@@ -158,6 +192,10 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->dhcp_text);
     furi_string_free(app->ping_text);
     furi_string_free(app->stats_text);
+
+    /* Stop and free DHCP timer */
+    furi_timer_stop(app->dhcp_timer);
+    furi_timer_free(app->dhcp_timer);
 
     /* Deinit W5500 if initialized */
     if(app->w5500_initialized) {
