@@ -79,6 +79,7 @@ static uint8_t frame_buf[FRAME_BUF_SIZE];
 static void eth_tester_submenu_callback(void* context, uint32_t index);
 static uint32_t eth_tester_navigation_exit_callback(void* context);
 static uint32_t eth_tester_navigation_submenu_callback(void* context);
+static uint32_t eth_tester_navigation_history_callback(void* context);
 static bool eth_tester_nav_event_cb(void* context);
 static bool eth_tester_custom_event_cb(void* context, uint32_t event);
 static void eth_tester_worker_stop(EthTesterApp* app);
