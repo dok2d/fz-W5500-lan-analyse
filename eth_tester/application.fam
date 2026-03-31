@@ -1,0 +1,34 @@
+App(
+    appid="eth_tester",
+    name="LAN Tester",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="eth_tester_app",
+    stack_size=4 * 1024,
+    fap_category="GPIO",
+    fap_icon="assets/icon.png",
+    fap_icon_assets="assets",
+    fap_author="dok2d",
+    fap_version="0.1",
+    requires=[
+        "gui",
+    ],
+    fap_private_libs=[
+        Lib(
+            name="ioLibrary_Driver",
+            fap_include_paths=[
+                "Ethernet/W5500",
+                "Ethernet",
+                "Internet/DHCP",
+                "Internet/DNS",
+                "Internet/ICMP",
+            ],
+            sources=[
+                "Ethernet/W5500/*.c",
+                "Ethernet/*.c",
+                "Internet/DHCP/*.c",
+                "Internet/DNS/*.c",
+                "Internet/ICMP/*.c",
+            ],
+        ),
+    ],
+)
