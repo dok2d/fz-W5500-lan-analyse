@@ -934,7 +934,14 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemPingSweep:
-        /* Direct start — auto-detects network from DHCP */
+        /* Pre-populate CIDR from cached DHCP network if available */
+        if(app->dhcp_valid) {
+            uint8_t net[4];
+            for(int i = 0; i < 4; i++) net[i] = app->dhcp_ip[i] & app->dhcp_mask[i];
+            uint8_t pfx = arp_mask_to_prefix(app->dhcp_mask);
+            snprintf(app->ping_sweep_ip_input, sizeof(app->ping_sweep_ip_input),
+                "%d.%d.%d.%d/%d", net[0], net[1], net[2], net[3], pfx);
+        }
         eth_tester_show_view(app, app->text_box_ping_sweep, EthTesterViewPingSweep, app->ping_sweep_text, "Starting ping sweep...\n");
         eth_tester_worker_start(app, EthTesterMenuItemPingSweep, EthTesterViewPingSweep);
         break;
@@ -958,6 +965,11 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemPortScan:
+        /* Pre-populate target with DHCP gateway if available */
+        if(app->dhcp_valid && (app->dhcp_gw[0] | app->dhcp_gw[1] | app->dhcp_gw[2] | app->dhcp_gw[3])) {
+            snprintf(app->port_scan_ip_input, sizeof(app->port_scan_ip_input),
+                "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+        }
         text_input_reset(app->text_input_port_scan);
         text_input_set_header_text(app->text_input_port_scan, "Target IP for scan:");
         text_input_set_result_callback(
