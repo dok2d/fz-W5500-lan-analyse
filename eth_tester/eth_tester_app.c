@@ -789,16 +789,6 @@ static void eth_tester_cont_ping_ip_input_callback(void* context) {
     eth_tester_worker_start(app, EthTesterMenuItemContPing, EthTesterViewContPing);
 }
 
-/* ==================== Ping Sweep input callback ==================== */
-
-static void eth_tester_ping_sweep_input_callback(void* context) {
-    EthTesterApp* app = context;
-    furi_assert(app);
-
-    furi_string_set(app->ping_sweep_text, "Initializing...\n");
-    text_box_set_text(app->text_box_ping_sweep, furi_string_get_cstr(app->ping_sweep_text));
-    eth_tester_worker_start(app, EthTesterMenuItemPingSweep, EthTesterViewPingSweep);
-}
 
 /* ==================== Traceroute IP input callback ==================== */
 
