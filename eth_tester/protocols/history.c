@@ -51,7 +51,13 @@ uint16_t history_list(HistoryState* state) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* dir = storage_file_alloc(storage);
 
-    if(!storage_dir_open(dir, HISTORY_DIR)) {
+    /* Build dir path, strip trailing slash if present (FatFS compat) */
+    char dir_path[128];
+    snprintf(dir_path, sizeof(dir_path), "%s", HISTORY_DIR);
+    size_t plen = strlen(dir_path);
+    if(plen > 1 && dir_path[plen - 1] == '/') dir_path[plen - 1] = '\0';
+
+    if(!storage_dir_open(dir, dir_path)) {
         storage_file_free(dir);
         furi_record_close(RECORD_STORAGE);
         return 0;

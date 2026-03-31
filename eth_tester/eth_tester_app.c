@@ -104,7 +104,7 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app);
 static void eth_tester_history_populate(EthTesterApp* app);
 static void eth_tester_history_file_callback(void* context, uint32_t index);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
-static void eth_tester_save_results(const char* filename, const char* content);
+static bool eth_tester_save_results(const char* filename, const char* content);
 static void eth_tester_save_and_notify(const char* type, FuriString* text);
 
 /* ==================== Continuous Ping view model & callbacks ==================== */
@@ -379,8 +379,8 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_input_get_view(app->text_input_port_scan), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPortScanInput, text_input_get_view(app->text_input_port_scan));
 
-    /* Default port scan target */
-    strncpy(app->port_scan_ip_input, "192.168.1.1", sizeof(app->port_scan_ip_input));
+    /* Port scan target defaults to empty — filled from DHCP gateway when available */
+    app->port_scan_ip_input[0] = '\0';
 
     /* MAC Changer views */
     app->text_box_mac_changer = text_box_alloc();
@@ -415,8 +415,8 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_input_get_view(app->text_input_ping_sweep), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPingSweepInput, text_input_get_view(app->text_input_ping_sweep));
 
-    /* Default ping sweep - will use DHCP subnet */
-    strncpy(app->ping_sweep_ip_input, "192.168.1.0/24", sizeof(app->ping_sweep_ip_input));
+    /* Ping sweep defaults to empty — auto-detected from DHCP at scan time */
+    app->ping_sweep_ip_input[0] = '\0';
 
     /* mDNS/SSDP Discovery view */
     app->text_box_discovery = text_box_alloc();
@@ -2878,7 +2878,7 @@ static void eth_tester_do_stats(EthTesterApp* app) {
 
 /* ==================== Save results to SD card ==================== */
 
-static void eth_tester_save_results(const char* type, const char* content) {
+static bool eth_tester_save_results(const char* type, const char* content) {
     /* Extract scan type from filename (remove .txt extension if present) */
     char scan_type[32];
     strncpy(scan_type, type, sizeof(scan_type) - 1);
@@ -2888,13 +2888,13 @@ static void eth_tester_save_results(const char* type, const char* content) {
         scan_type[len - 4] = '\0';
     }
 
-    history_save(scan_type, content);
+    return history_save(scan_type, content);
 }
 
-/* Save results and append "Saved to History" to the display text */
+/* Save results and append status to the display text */
 static void eth_tester_save_and_notify(const char* type, FuriString* text) {
-    eth_tester_save_results(type, furi_string_get_cstr(text));
-    furi_string_cat_str(text, "\nSaved to History\n");
+    bool ok = eth_tester_save_results(type, furi_string_get_cstr(text));
+    furi_string_cat_str(text, ok ? "\nSaved to History\n" : "\nHistory save failed\n");
 }
 
 /* ==================== Entry point ==================== */
