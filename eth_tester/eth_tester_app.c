@@ -7,6 +7,7 @@
 #include "protocols/icmp.h"
 #include "protocols/dns_lookup.h"
 #include "protocols/wol.h"
+#include "protocols/ping_graph.h"
 #include "utils/packet_utils.h"
 #include "utils/oui_lookup.h"
 
@@ -81,6 +82,7 @@ static void eth_tester_do_ping(EthTesterApp* app);
 static void eth_tester_do_stats(EthTesterApp* app);
 static void eth_tester_do_dns_lookup(EthTesterApp* app);
 static void eth_tester_do_wol(EthTesterApp* app);
+static void eth_tester_do_cont_ping(EthTesterApp* app);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static void eth_tester_save_results(const char* filename, const char* content);
 
@@ -136,6 +138,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "DNS Lookup", EthTesterMenuItemDnsLookup, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Continuous Ping", EthTesterMenuItemContPing, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
@@ -201,6 +204,26 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(byte_input_get_view(app->byte_input_wol), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewWolInput, byte_input_get_view(app->byte_input_wol));
 
+    /* Continuous Ping views */
+    app->view_cont_ping = view_alloc();
+    view_allocate_model(app->view_cont_ping, ViewModelTypeLocking, sizeof(ContPingViewModel));
+    view_set_draw_callback(app->view_cont_ping, cont_ping_draw_callback);
+    view_set_input_callback(app->view_cont_ping, cont_ping_input_callback);
+    view_set_context(app->view_cont_ping, app);
+    with_view_model(
+        app->view_cont_ping,
+        ContPingViewModel * vm,
+        { vm->app = app; },
+        false);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewContPing, app->view_cont_ping);
+
+    app->text_input_cont_ping = text_input_alloc();
+    view_set_previous_callback(text_input_get_view(app->text_input_cont_ping), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewContPingInput, text_input_get_view(app->text_input_cont_ping));
+
+    /* Default continuous ping target */
+    strncpy(app->cont_ping_ip_input, "8.8.8.8", sizeof(app->cont_ping_ip_input));
+
     return app;
 }
 
@@ -220,6 +243,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDnsInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewWol);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewWolInput);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewContPing);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewContPingInput);
 
     submenu_free(app->submenu);
     text_box_free(app->text_box_link);
@@ -233,6 +258,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_input_free(app->text_input_dns);
     text_box_free(app->text_box_wol);
     byte_input_free(app->byte_input_wol);
+    view_free(app->view_cont_ping);
+    text_input_free(app->text_input_cont_ping);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -350,6 +377,149 @@ static void eth_tester_ping_ip_input_callback(void* context) {
     eth_tester_update_view(app->text_box_ping, app->ping_text);
 }
 
+/* ==================== Continuous Ping view callbacks ==================== */
+
+/* Model for the continuous ping custom view */
+typedef struct {
+    EthTesterApp* app;
+} ContPingViewModel;
+
+static void cont_ping_draw_callback(Canvas* canvas, void* model) {
+    ContPingViewModel* vm = model;
+    EthTesterApp* app = vm->app;
+    PingGraphState* pg = app->ping_graph;
+
+    canvas_clear(canvas);
+
+    if(!pg) {
+        canvas_set_font(canvas, FontPrimary);
+        canvas_draw_str(canvas, 2, 12, "Initializing...");
+        return;
+    }
+
+    /* Screen: 128x64
+     * Top area (0-10): text stats
+     * Graph area (12-63): line graph
+     */
+
+    /* Draw stats text at top */
+    canvas_set_font(canvas, FontSecondary);
+
+    char buf[64];
+    uint32_t cur = 0;
+    if(pg->sample_count > 0) {
+        uint32_t last = ping_graph_get_sample(pg, pg->sample_count - 1);
+        cur = (last == PING_RTT_TIMEOUT) ? 0 : last;
+    }
+    uint32_t avg = ping_graph_avg_rtt(pg);
+    uint8_t loss = ping_graph_loss_percent(pg);
+
+    snprintf(buf, sizeof(buf), "Cur:%lums Avg:%lums", (unsigned long)cur, (unsigned long)avg);
+    canvas_draw_str(canvas, 0, 8, buf);
+
+    uint32_t mn = (pg->rtt_min == UINT32_MAX) ? 0 : pg->rtt_min;
+    snprintf(
+        buf,
+        sizeof(buf),
+        "Min:%lu Max:%lu Loss:%d%%",
+        (unsigned long)mn,
+        (unsigned long)pg->rtt_max,
+        loss);
+    canvas_draw_str(canvas, 0, 18, buf);
+
+    /* Graph area: y=22 to y=63, height=42 pixels, width=128 pixels */
+    uint8_t graph_top = 22;
+    uint8_t graph_bottom = 63;
+    uint8_t graph_height = graph_bottom - graph_top;
+    uint8_t graph_width = 128;
+
+    /* Draw graph border */
+    canvas_draw_line(canvas, 0, graph_top, 0, graph_bottom);
+    canvas_draw_line(canvas, 0, graph_bottom, graph_width - 1, graph_bottom);
+
+    uint16_t count = ping_graph_visible_count(pg);
+    if(count == 0) return;
+
+    /* Find max RTT for auto-scaling (exclude timeouts) */
+    uint32_t max_rtt = 1; /* Minimum scale 1ms */
+    for(uint16_t i = 0; i < count; i++) {
+        uint32_t s = ping_graph_get_sample(pg, i);
+        if(s != PING_RTT_TIMEOUT && s > max_rtt) {
+            max_rtt = s;
+        }
+    }
+    /* Add 10% headroom */
+    max_rtt = max_rtt + max_rtt / 10 + 1;
+
+    /* Draw samples as line graph, right-aligned */
+    uint16_t start_x = (count < graph_width) ? (graph_width - count) : 0;
+    uint16_t start_sample = (count > graph_width) ? (count - graph_width) : 0;
+
+    int16_t prev_y = -1;
+    for(uint16_t i = 0; i < count && (start_x + i - start_sample) < graph_width; i++) {
+        uint16_t si = start_sample + i;
+        if(si >= count) break;
+
+        uint32_t rtt = ping_graph_get_sample(pg, si);
+        uint8_t x = (uint8_t)(start_x + i - start_sample);
+
+        if(rtt == PING_RTT_TIMEOUT) {
+            /* Draw timeout marker as dot at top */
+            canvas_draw_dot(canvas, x, graph_top + 1);
+            canvas_draw_dot(canvas, x, graph_top + 2);
+            prev_y = -1;
+        } else {
+            /* Scale RTT to graph height */
+            uint32_t scaled = (rtt * graph_height) / max_rtt;
+            if(scaled > graph_height) scaled = graph_height;
+            int16_t y = (int16_t)(graph_bottom - scaled);
+
+            if(prev_y >= 0) {
+                canvas_draw_line(canvas, x - 1, (uint8_t)prev_y, x, (uint8_t)y);
+            } else {
+                canvas_draw_dot(canvas, x, (uint8_t)y);
+            }
+            prev_y = y;
+        }
+    }
+}
+
+static bool cont_ping_input_callback(InputEvent* event, void* context) {
+    EthTesterApp* app = context;
+
+    if(event->type == InputTypeShort && event->key == InputKeyBack) {
+        /* Stop the ping loop */
+        if(app->ping_graph) {
+            app->ping_graph->running = false;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+/* ==================== Continuous Ping IP input callback ==================== */
+
+static void eth_tester_cont_ping_ip_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    if(!eth_tester_parse_ip(app->cont_ping_ip_input, app->cont_ping_target)) {
+        /* Show error then return to menu */
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
+        return;
+    }
+
+    /* Switch to the graph view */
+    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewContPing);
+
+    /* Run the ping loop */
+    eth_tester_do_cont_ping(app);
+
+    /* When done, return to menu */
+    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
+}
+
 /* ==================== DNS hostname input callback ==================== */
 
 static void eth_tester_dns_input_callback(void* context) {
@@ -445,6 +615,19 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             app->wol_mac_input,
             6);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewWolInput);
+        break;
+
+    case EthTesterMenuItemContPing:
+        text_input_reset(app->text_input_cont_ping);
+        text_input_set_header_text(app->text_input_cont_ping, "Ping target IP:");
+        text_input_set_result_callback(
+            app->text_input_cont_ping,
+            eth_tester_cont_ping_ip_input_callback,
+            app,
+            app->cont_ping_ip_input,
+            sizeof(app->cont_ping_ip_input),
+            false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewContPingInput);
         break;
 
     default:
@@ -1222,6 +1405,119 @@ static void eth_tester_do_wol(EthTesterApp* app) {
             "Failed to send!\n",
             mac_str);
     }
+}
+
+/* ==================== Continuous Ping ==================== */
+
+static void eth_tester_do_cont_ping(EthTesterApp* app) {
+    if(!eth_tester_ensure_w5500(app)) return;
+    if(!w5500_hal_get_link_status()) return;
+
+    /* Get IP via DHCP */
+    uint8_t* dhcp_buffer = malloc(1024);
+    if(!dhcp_buffer) return;
+
+    wiz_NetInfo net_info;
+    wizchip_getnetinfo(&net_info);
+    net_info.dhcp = NETINFO_DHCP;
+    memset(net_info.ip, 0, 4);
+    memset(net_info.sn, 0, 4);
+    memset(net_info.gw, 0, 4);
+    wizchip_setnetinfo(&net_info);
+
+    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
+
+    bool got_ip = false;
+    uint32_t dhcp_start = furi_get_tick();
+    while(furi_get_tick() - dhcp_start < 15000) {
+        uint8_t dhcp_ret = DHCP_run();
+        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
+            getIPfromDHCP(net_info.ip);
+            getSNfromDHCP(net_info.sn);
+            getGWfromDHCP(net_info.gw);
+            getDNSfromDHCP(net_info.dns);
+            net_info.dhcp = NETINFO_DHCP;
+            wizchip_setnetinfo(&net_info);
+            got_ip = true;
+            break;
+        }
+        if(dhcp_ret == DHCP_FAILED) break;
+        furi_delay_ms(10);
+    }
+    DHCP_stop();
+    free(dhcp_buffer);
+
+    if(!got_ip) return;
+
+    /* Allocate ping graph state */
+    PingGraphState* pg = malloc(sizeof(PingGraphState));
+    if(!pg) return;
+    ping_graph_init(pg);
+    app->ping_graph = pg;
+
+    /* Update view model */
+    with_view_model(
+        app->view_cont_ping,
+        ContPingViewModel * vm,
+        { vm->app = app; },
+        true);
+
+    /* Continuous ping loop */
+    uint16_t seq = 1;
+    while(pg->running) {
+        PingResult result;
+        bool ok = icmp_ping(W5500_PING_SOCKET, app->cont_ping_target, seq, PING_GRAPH_TIMEOUT_MS, &result);
+
+        if(ok) {
+            ping_graph_add_sample(pg, result.rtt_ms);
+        } else {
+            ping_graph_add_sample(pg, PING_RTT_TIMEOUT);
+        }
+
+        /* Trigger view redraw */
+        with_view_model(
+            app->view_cont_ping,
+            ContPingViewModel * vm,
+            { UNUSED(vm); },
+            true);
+
+        seq++;
+
+        /* Wait for the remainder of the interval (account for ping duration) */
+        uint32_t elapsed = ok ? result.rtt_ms : PING_GRAPH_TIMEOUT_MS;
+        if(elapsed < PING_GRAPH_INTERVAL_MS) {
+            /* Check running flag periodically during wait */
+            uint32_t remaining = PING_GRAPH_INTERVAL_MS - elapsed;
+            uint32_t wait_start = furi_get_tick();
+            while(pg->running && (furi_get_tick() - wait_start < remaining)) {
+                furi_delay_ms(50);
+            }
+        }
+    }
+
+    /* Save results to SD card */
+    FuriString* log = furi_string_alloc();
+    char target_str[16];
+    pkt_format_ip(app->cont_ping_target, target_str);
+    furi_string_printf(
+        log,
+        "Continuous Ping: %s\n"
+        "Sent: %lu Received: %lu\n"
+        "Loss: %d%%\n"
+        "Min: %lu ms Avg: %lu ms Max: %lu ms\n",
+        target_str,
+        (unsigned long)pg->total_sent,
+        (unsigned long)pg->total_received,
+        ping_graph_loss_percent(pg),
+        (unsigned long)((pg->rtt_min == UINT32_MAX) ? 0 : pg->rtt_min),
+        (unsigned long)ping_graph_avg_rtt(pg),
+        (unsigned long)pg->rtt_max);
+    eth_tester_save_results("cont_ping.txt", furi_string_get_cstr(log));
+    furi_string_free(log);
+
+    /* Cleanup */
+    app->ping_graph = NULL;
+    free(pg);
 }
 
 /* ==================== Packet statistics ==================== */

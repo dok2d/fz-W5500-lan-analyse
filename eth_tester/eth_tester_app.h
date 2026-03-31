@@ -7,7 +7,9 @@
 #include <gui/modules/text_box.h>
 #include <gui/modules/text_input.h>
 #include <gui/modules/byte_input.h>
+#include <gui/view.h>
 #include <notification/notification_messages.h>
+#include "protocols/ping_graph.h"
 
 /* Forward declarations */
 typedef struct EthTesterApp EthTesterApp;
@@ -26,6 +28,8 @@ typedef enum {
     EthTesterViewDnsInput,
     EthTesterViewWol,
     EthTesterViewWolInput,
+    EthTesterViewContPing,
+    EthTesterViewContPingInput,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -39,6 +43,7 @@ typedef enum {
     EthTesterMenuItemStats,
     EthTesterMenuItemDnsLookup,
     EthTesterMenuItemWol,
+    EthTesterMenuItemContPing,
 } EthTesterMenuItem;
 
 /* Packet statistics counters */
@@ -71,6 +76,8 @@ struct EthTesterApp {
     TextInput* text_input_ping;
     TextInput* text_input_dns;
     ByteInput* byte_input_wol;
+    View* view_cont_ping;
+    TextInput* text_input_cont_ping;
     NotificationApp* notifications;
 
     /* W5500 state */
@@ -97,6 +104,11 @@ struct EthTesterApp {
 
     /* Wake-on-LAN state */
     uint8_t wol_mac_input[6]; /* byte input buffer for MAC */
+
+    /* Continuous ping state */
+    char cont_ping_ip_input[16]; /* text input buffer */
+    uint8_t cont_ping_target[4]; /* parsed target IP */
+    PingGraphState* ping_graph;  /* heap-allocated ping graph state */
 
     /* Text buffers for views */
     FuriString* link_info_text;
