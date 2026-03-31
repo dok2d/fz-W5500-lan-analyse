@@ -10,6 +10,7 @@
 #include "protocols/ping_graph.h"
 #include "protocols/port_scan.h"
 #include "protocols/mac_changer.h"
+#include "protocols/traceroute.h"
 #include "utils/packet_utils.h"
 #include "utils/oui_lookup.h"
 
@@ -87,6 +88,7 @@ static void eth_tester_do_wol(EthTesterApp* app);
 static void eth_tester_do_cont_ping(EthTesterApp* app);
 static void eth_tester_do_port_scan(EthTesterApp* app);
 static void eth_tester_do_mac_changer(EthTesterApp* app);
+static void eth_tester_do_traceroute(EthTesterApp* app);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static void eth_tester_save_results(const char* filename, const char* content);
 
@@ -115,6 +117,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->wol_text = furi_string_alloc();
     app->port_scan_text = furi_string_alloc();
     app->mac_changer_text = furi_string_alloc();
+    app->traceroute_text = furi_string_alloc();
 
     /* Set initial text */
     furi_string_set(app->link_info_text, "Press OK to read\nlink status...\n");
@@ -127,6 +130,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     furi_string_set(app->wol_text, "Wake-on-LAN ready.\n");
     furi_string_set(app->port_scan_text, "Port Scanner ready.\n");
     furi_string_set(app->mac_changer_text, "MAC Changer ready.\n");
+    furi_string_set(app->traceroute_text, "Traceroute ready.\n");
 
     /* Open GUI */
     app->gui = furi_record_open(RECORD_GUI);
@@ -149,6 +153,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "Continuous Ping", EthTesterMenuItemContPing, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Port Scanner", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
@@ -257,6 +262,19 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(byte_input_get_view(app->byte_input_mac_changer), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMacChangerInput, byte_input_get_view(app->byte_input_mac_changer));
 
+    /* Traceroute views */
+    app->text_box_traceroute = text_box_alloc();
+    text_box_set_font(app->text_box_traceroute, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_traceroute), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewTraceroute, text_box_get_view(app->text_box_traceroute));
+
+    app->text_input_traceroute = text_input_alloc();
+    view_set_previous_callback(text_input_get_view(app->text_input_traceroute), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewTracerouteInput, text_input_get_view(app->text_input_traceroute));
+
+    /* Default traceroute target */
+    strncpy(app->traceroute_ip_input, "8.8.8.8", sizeof(app->traceroute_ip_input));
+
     /* Load saved MAC from SD card if available */
     if(mac_changer_load(app->mac_addr)) {
         FURI_LOG_I(TAG, "Loaded custom MAC from SD");
@@ -287,6 +305,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPortScanInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChanger);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChangerInput);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTraceroute);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTracerouteInput);
 
     submenu_free(app->submenu);
     text_box_free(app->text_box_link);
@@ -306,6 +326,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_input_free(app->text_input_port_scan);
     text_box_free(app->text_box_mac_changer);
     byte_input_free(app->byte_input_mac_changer);
+    text_box_free(app->text_box_traceroute);
+    text_input_free(app->text_input_traceroute);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -320,6 +342,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->wol_text);
     furi_string_free(app->port_scan_text);
     furi_string_free(app->mac_changer_text);
+    furi_string_free(app->traceroute_text);
 
     /* Stop and free DHCP timer */
     furi_timer_stop(app->dhcp_timer);
@@ -568,6 +591,23 @@ static void eth_tester_cont_ping_ip_input_callback(void* context) {
     view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
 }
 
+/* ==================== Traceroute IP input callback ==================== */
+
+static void eth_tester_traceroute_ip_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    if(!eth_tester_parse_ip(app->traceroute_ip_input, app->traceroute_target)) {
+        furi_string_set(app->traceroute_text, "Invalid IP address!\n");
+        eth_tester_show_view(app, app->text_box_traceroute, EthTesterViewTraceroute, app->traceroute_text, "Invalid IP address!\n");
+        return;
+    }
+
+    eth_tester_show_view(app, app->text_box_traceroute, EthTesterViewTraceroute, app->traceroute_text, "Initializing...\n");
+    eth_tester_do_traceroute(app);
+    eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+}
+
 /* ==================== MAC changer byte input callback ==================== */
 
 static void eth_tester_mac_changer_input_callback(void* context) {
@@ -706,6 +746,19 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             app->wol_mac_input,
             6);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewWolInput);
+        break;
+
+    case EthTesterMenuItemTraceroute:
+        text_input_reset(app->text_input_traceroute);
+        text_input_set_header_text(app->text_input_traceroute, "Traceroute target IP:");
+        text_input_set_result_callback(
+            app->text_input_traceroute,
+            eth_tester_traceroute_ip_input_callback,
+            app,
+            app->traceroute_ip_input,
+            sizeof(app->traceroute_ip_input),
+            false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewTracerouteInput);
         break;
 
     case EthTesterMenuItemMacChanger:
@@ -1566,6 +1619,111 @@ static void eth_tester_do_mac_changer(EthTesterApp* app) {
         mac_str,
         is_default ? "(default)" : "(custom)",
         new_mac_str);
+}
+
+/* ==================== Traceroute ==================== */
+
+static void eth_tester_do_traceroute(EthTesterApp* app) {
+    furi_string_reset(app->traceroute_text);
+
+    if(!eth_tester_ensure_w5500(app)) {
+        furi_string_set(app->traceroute_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    if(!w5500_hal_get_link_status()) {
+        furi_string_set(app->traceroute_text, "No Link!\nConnect cable.\n");
+        return;
+    }
+
+    /* Get IP via DHCP */
+    furi_string_set(app->traceroute_text, "Getting IP via DHCP...\n");
+    eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+
+    uint8_t* dhcp_buffer = malloc(1024);
+    if(!dhcp_buffer) {
+        furi_string_set(app->traceroute_text, "Memory alloc failed!\n");
+        return;
+    }
+    wiz_NetInfo net_info;
+    wizchip_getnetinfo(&net_info);
+    net_info.dhcp = NETINFO_DHCP;
+    memset(net_info.ip, 0, 4);
+    memset(net_info.sn, 0, 4);
+    memset(net_info.gw, 0, 4);
+    wizchip_setnetinfo(&net_info);
+
+    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
+
+    bool got_ip = false;
+    uint32_t dhcp_start = furi_get_tick();
+    while(furi_get_tick() - dhcp_start < 15000) {
+        uint8_t dhcp_ret = DHCP_run();
+        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
+            getIPfromDHCP(net_info.ip);
+            getSNfromDHCP(net_info.sn);
+            getGWfromDHCP(net_info.gw);
+            getDNSfromDHCP(net_info.dns);
+            net_info.dhcp = NETINFO_DHCP;
+            wizchip_setnetinfo(&net_info);
+            got_ip = true;
+            break;
+        }
+        if(dhcp_ret == DHCP_FAILED) break;
+        furi_delay_ms(10);
+    }
+    DHCP_stop();
+    free(dhcp_buffer);
+
+    if(!got_ip) {
+        furi_string_set(app->traceroute_text, "DHCP failed.\n");
+        return;
+    }
+
+    char target_str[16];
+    pkt_format_ip(app->traceroute_target, target_str);
+
+    furi_string_printf(
+        app->traceroute_text,
+        "=== Traceroute ===\n"
+        "Target: %s\n\n",
+        target_str);
+    eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+
+    /* Run traceroute */
+    for(uint8_t ttl = 1; ttl <= TRACEROUTE_MAX_TTL; ttl++) {
+        TracerouteHop hop;
+        bool got_reply = traceroute_send_hop(
+            W5500_TRACEROUTE_SOCKET,
+            app->traceroute_target,
+            ttl,
+            ttl,
+            TRACEROUTE_HOP_TIMEOUT_MS,
+            &hop);
+
+        if(got_reply) {
+            char hop_ip_str[16];
+            pkt_format_ip(hop.hop_ip, hop_ip_str);
+            furi_string_cat_printf(
+                app->traceroute_text,
+                "%2d  %s  %lu ms\n",
+                ttl,
+                hop_ip_str,
+                (unsigned long)hop.rtt_ms);
+        } else {
+            furi_string_cat_printf(app->traceroute_text, "%2d  * * *\n", ttl);
+        }
+
+        eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+
+        /* Stop if destination reached */
+        if(got_reply && hop.is_destination) {
+            furi_string_cat_str(app->traceroute_text, "\nDestination reached.\n");
+            break;
+        }
+    }
+
+    eth_tester_save_results("traceroute.txt", furi_string_get_cstr(app->traceroute_text));
 }
 
 /* ==================== Port Scanner ==================== */
