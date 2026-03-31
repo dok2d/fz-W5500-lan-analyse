@@ -283,6 +283,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "[System]", 0xFC, NULL, NULL);
     submenu_add_item(app->submenu, "  MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "  History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  About", EthTesterMenuItemAbout, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
@@ -440,6 +441,19 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_box_get_view(app->text_box_stp_vlan), eth_tester_worker_back);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewStpVlan, text_box_get_view(app->text_box_stp_vlan));
 
+    /* About view */
+    app->text_box_about = text_box_alloc();
+    text_box_set_font(app->text_box_about, TextBoxFontText);
+    text_box_set_text(app->text_box_about,
+        "=== LAN Analyzer ===\n"
+        "W5500 Ethernet Tool\n\n"
+        "Version: 0.2\n"
+        "Author: dok2d\n\n"
+        "github.com/dok2d/\n"
+        "fz-W5500-lan-analyse\n");
+    view_set_previous_callback(text_box_get_view(app->text_box_about), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewAbout, text_box_get_view(app->text_box_about));
+
     /* Load saved MAC from SD card if available */
     if(mac_changer_load(app->mac_addr)) {
         FURI_LOG_I(TAG, "Loaded custom MAC from SD");
@@ -481,6 +495,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewStpVlan);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHistory);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHistoryFile);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewAbout);
 
     submenu_free(app->submenu);
     text_box_free(app->text_box_link);
@@ -508,6 +523,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_box_free(app->text_box_stp_vlan);
     text_box_free(app->text_box_history);
     text_box_free(app->text_box_history_file);
+    text_box_free(app->text_box_about);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -925,6 +941,10 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             sizeof(app->cont_ping_ip_input),
             false);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewContPingInput);
+        break;
+
+    case EthTesterMenuItemAbout:
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewAbout);
         break;
 
     default:

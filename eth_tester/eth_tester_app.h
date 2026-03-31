@@ -42,6 +42,7 @@ typedef enum {
     EthTesterViewStpVlan,
     EthTesterViewHistory,
     EthTesterViewHistoryFile,
+    EthTesterViewAbout,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -63,6 +64,7 @@ typedef enum {
     EthTesterMenuItemDiscovery,
     EthTesterMenuItemStpVlan,
     EthTesterMenuItemHistory,
+    EthTesterMenuItemAbout,
 } EthTesterMenuItem;
 
 /* Packet statistics counters */
@@ -109,6 +111,7 @@ struct EthTesterApp {
     TextBox* text_box_stp_vlan;
     TextBox* text_box_history;
     TextBox* text_box_history_file;
+    TextBox* text_box_about;
     NotificationApp* notifications;
 
     /* Worker thread for non-blocking operations */
