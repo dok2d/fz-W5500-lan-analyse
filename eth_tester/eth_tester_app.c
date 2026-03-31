@@ -280,6 +280,9 @@ static void eth_tester_ping_ip_input_callback(void* context) {
     EthTesterApp* app = context;
     furi_assert(app);
 
+    /* Switch to result view immediately so user sees progress */
+    eth_tester_show_view(app, app->text_box_ping, EthTesterViewPing, app->ping_text, "Initializing...\n");
+
     /* Parse entered IP */
     if(eth_tester_parse_ip(app->ping_ip_input, app->ping_ip_custom)) {
         eth_tester_do_ping(app);
@@ -287,8 +290,24 @@ static void eth_tester_ping_ip_input_callback(void* context) {
         furi_string_set(app->ping_text, "Invalid IP address!\n");
         memset(app->ping_ip_custom, 0, 4);
     }
-    text_box_set_text(app->text_box_ping, furi_string_get_cstr(app->ping_text));
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPing);
+    eth_tester_update_view(app->text_box_ping, app->ping_text);
+}
+
+/* ==================== View update helpers ==================== */
+
+/* Switch to a text box view and show initial status text.
+ * This lets the user see progress immediately instead of a frozen menu. */
+static void eth_tester_show_view(EthTesterApp* app, TextBox* tb, EthTesterView view, FuriString* text, const char* initial) {
+    furi_string_set(text, initial);
+    text_box_set_text(tb, furi_string_get_cstr(text));
+    view_dispatcher_switch_to_view(app->view_dispatcher, view);
+    furi_delay_ms(1); /* yield so GUI thread renders */
+}
+
+/* Update text box contents while the view is already visible */
+static void eth_tester_update_view(TextBox* tb, FuriString* text) {
+    text_box_set_text(tb, furi_string_get_cstr(text));
+    furi_delay_ms(1);
 }
 
 /* ==================== Submenu callback ==================== */
@@ -299,27 +318,27 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
 
     switch(index) {
     case EthTesterMenuItemLinkInfo:
+        eth_tester_show_view(app, app->text_box_link, EthTesterViewLinkInfo, app->link_info_text, "Reading link status...\n");
         eth_tester_do_link_info(app);
-        text_box_set_text(app->text_box_link, furi_string_get_cstr(app->link_info_text));
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewLinkInfo);
+        eth_tester_update_view(app->text_box_link, app->link_info_text);
         break;
 
     case EthTesterMenuItemLldpCdp:
+        eth_tester_show_view(app, app->text_box_lldp, EthTesterViewLldp, app->lldp_text, "Listening for LLDP/CDP...\n");
         eth_tester_do_lldp_cdp(app);
-        text_box_set_text(app->text_box_lldp, furi_string_get_cstr(app->lldp_text));
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewLldp);
+        eth_tester_update_view(app->text_box_lldp, app->lldp_text);
         break;
 
     case EthTesterMenuItemArpScan:
+        eth_tester_show_view(app, app->text_box_arp, EthTesterViewArpScan, app->arp_text, "Initializing W5500...\n");
         eth_tester_do_arp_scan(app);
-        text_box_set_text(app->text_box_arp, furi_string_get_cstr(app->arp_text));
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewArpScan);
+        eth_tester_update_view(app->text_box_arp, app->arp_text);
         break;
 
     case EthTesterMenuItemDhcpAnalyze:
+        eth_tester_show_view(app, app->text_box_dhcp, EthTesterViewDhcpAnalyze, app->dhcp_text, "Initializing W5500...\n");
         eth_tester_do_dhcp_analyze(app);
-        text_box_set_text(app->text_box_dhcp, furi_string_get_cstr(app->dhcp_text));
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewDhcpAnalyze);
+        eth_tester_update_view(app->text_box_dhcp, app->dhcp_text);
         break;
 
     case EthTesterMenuItemPing:
@@ -336,9 +355,9 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemStats:
+        eth_tester_show_view(app, app->text_box_stats, EthTesterViewStats, app->stats_text, "Initializing W5500...\n");
         eth_tester_do_stats(app);
-        text_box_set_text(app->text_box_stats, furi_string_get_cstr(app->stats_text));
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewStats);
+        eth_tester_update_view(app->text_box_stats, app->stats_text);
         break;
 
     default:
@@ -399,6 +418,7 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
     }
 
     furi_string_set(app->lldp_text, "Listening for\nLLDP/CDP...\n(up to 60 sec)\n");
+    eth_tester_update_view(app->text_box_lldp, app->lldp_text);
 
     /* Open MACRAW socket */
     if(!w5500_hal_open_macraw()) {
@@ -491,6 +511,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     }
 
     furi_string_set(app->arp_text, "Getting IP via DHCP...\n");
+    eth_tester_update_view(app->text_box_arp, app->arp_text);
 
     /*
      * First, get our IP via the W5500's built-in DHCP.
@@ -557,7 +578,8 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     char ip_str[16];
     pkt_format_ip(net_info.ip, ip_str);
     furi_string_printf(
-        app->arp_text, "Scanning %s/%d\n%d hosts...\n", ip_str, prefix, num_hosts);
+        app->arp_text, "My IP: %s/%d\nScanning %d hosts...\n", ip_str, prefix, num_hosts);
+    eth_tester_update_view(app->text_box_arp, app->arp_text);
 
     /* Open MACRAW for sending ARP requests and receiving replies */
     if(!w5500_hal_open_macraw()) {
@@ -606,6 +628,13 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
             batch_count = 0;
             furi_delay_ms(ARP_BATCH_DELAY_MS);
 
+            /* Update progress */
+            furi_string_printf(
+                app->arp_text,
+                "My IP: %s/%d\nScanning: %d/%d sent\nFound: %d hosts\n",
+                ip_str, prefix, scan->total_sent, num_hosts, scan->count);
+            eth_tester_update_view(app->text_box_arp, app->arp_text);
+
             /* Collect any pending replies */
             for(uint8_t i = 0; i < 20; i++) {
                 uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
@@ -628,6 +657,11 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     }
 
     /* Wait for late replies */
+    furi_string_printf(
+        app->arp_text,
+        "My IP: %s/%d\nAll %d sent, waiting\nfor replies... (%d found)\n",
+        ip_str, prefix, num_hosts, scan->count);
+    eth_tester_update_view(app->text_box_arp, app->arp_text);
     uint32_t tail_start = furi_get_tick();
     while(furi_get_tick() - tail_start < ARP_TAIL_WAIT_MS) {
         uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
@@ -704,6 +738,7 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
     }
 
     furi_string_set(app->dhcp_text, "Sending DHCP\nDiscover...\n");
+    eth_tester_update_view(app->text_box_dhcp, app->dhcp_text);
 
     /*
      * Use UDP socket directly to send DHCP Discover and receive Offer
@@ -754,6 +789,8 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
     }
 
     FURI_LOG_I(TAG, "DHCP Discover sent (xid=0x%08lX)", (unsigned long)xid);
+    furi_string_set(app->dhcp_text, "Waiting for DHCP\nOffer... (10s)\n");
+    eth_tester_update_view(app->text_box_dhcp, app->dhcp_text);
 
     /* Wait for DHCP Offer */
     DhcpAnalyzeResult dhcp_result;
@@ -824,6 +861,7 @@ static void eth_tester_do_ping(EthTesterApp* app) {
 
     /* First get IP via DHCP */
     furi_string_set(app->ping_text, "Getting IP via DHCP...\n");
+    eth_tester_update_view(app->text_box_ping, app->ping_text);
 
     uint8_t* dhcp_buffer = malloc(1024);
     if(!dhcp_buffer) {
@@ -882,6 +920,7 @@ static void eth_tester_do_ping(EthTesterApp* app) {
         "My IP: %s\nPing %s\n\n",
         my_ip_str,
         target_str);
+    eth_tester_update_view(app->text_box_ping, app->ping_text);
 
     /* Send 4 pings */
     for(uint16_t i = 1; i <= 4; i++) {
@@ -896,6 +935,7 @@ static void eth_tester_do_ping(EthTesterApp* app) {
         } else {
             furi_string_cat_printf(app->ping_text, "#%d: timeout\n", i);
         }
+        eth_tester_update_view(app->text_box_ping, app->ping_text);
         furi_delay_ms(100);
     }
 }
@@ -963,6 +1003,7 @@ static void eth_tester_do_stats(EthTesterApp* app) {
     /* If no frames counted yet, do a quick capture */
     if(app->stats.total_frames == 0) {
         furi_string_set(app->stats_text, "Capturing frames...\n(10 seconds)\n");
+        eth_tester_update_view(app->text_box_stats, app->stats_text);
 
         if(!w5500_hal_open_macraw()) {
             furi_string_set(app->stats_text, "Failed to open\nMACRAW!\n");
