@@ -259,22 +259,30 @@ static EthTesterApp* eth_tester_app_alloc(void) {
 
     /* Main menu (Submenu view) */
     app->submenu = submenu_alloc();
-    submenu_add_item(app->submenu, "Link Info", EthTesterMenuItemLinkInfo, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "LLDP/CDP", EthTesterMenuItemLldpCdp, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "ARP Scan", EthTesterMenuItemArpScan, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "DHCP Analyze", EthTesterMenuItemDhcpAnalyze, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "DNS Lookup", EthTesterMenuItemDnsLookup, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Continuous Ping", EthTesterMenuItemContPing, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Port Scanner", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "mDNS/SSDP Scan", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "STP/VLAN Detect", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
+    /* --- Network Info --- */
+    submenu_add_item(app->submenu, "[Network Info]", 0xFF, NULL, NULL);
+    submenu_add_item(app->submenu, "  Link Info", EthTesterMenuItemLinkInfo, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  LLDP/CDP", EthTesterMenuItemLldpCdp, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  DHCP Analyze", EthTesterMenuItemDhcpAnalyze, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
+    /* --- Scanning --- */
+    submenu_add_item(app->submenu, "[Scanning]", 0xFE, NULL, NULL);
+    submenu_add_item(app->submenu, "  ARP Scan", EthTesterMenuItemArpScan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  Port Scanner", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  mDNS/SSDP", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  STP/VLAN", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
+    /* --- Tools --- */
+    submenu_add_item(app->submenu, "[Tools]", 0xFD, NULL, NULL);
+    submenu_add_item(app->submenu, "  Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  Continuous Ping", EthTesterMenuItemContPing, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  DNS Lookup", EthTesterMenuItemDnsLookup, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
+    /* --- System --- */
+    submenu_add_item(app->submenu, "[System]", 0xFC, NULL, NULL);
+    submenu_add_item(app->submenu, "  MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "  History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
