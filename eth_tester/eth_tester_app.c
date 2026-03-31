@@ -994,7 +994,7 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
     uint32_t timeout_ms = 60000; /* 60 seconds */
     bool found = false;
 
-    while(furi_get_tick() - start_tick < timeout_ms) {
+    while(furi_get_tick() - start_tick < timeout_ms && app->worker_running) {
         uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
         if(recv_len >= ETH_HEADER_SIZE) {
             /* Count frame for statistics */
@@ -1094,7 +1094,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
 
     bool got_ip = false;
     uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000) { /* 15 sec timeout */
+    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) { /* 15 sec timeout */
         uint8_t dhcp_ret = DHCP_run();
         if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
             getIPfromDHCP(net_info.ip);
@@ -1172,7 +1172,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     uint32_t last_ip = pkt_read_u32_be(end_ip);
     uint16_t batch_count = 0;
 
-    while(current_ip <= last_ip) {
+    while(current_ip <= last_ip && app->worker_running) {
         /* Build and send ARP request */
         uint8_t target[4];
         pkt_write_u32_be(target, current_ip);
@@ -1222,7 +1222,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
         ip_str, prefix, num_hosts, scan->count);
     eth_tester_update_view(app->text_box_arp, app->arp_text);
     uint32_t tail_start = furi_get_tick();
-    while(furi_get_tick() - tail_start < ARP_TAIL_WAIT_MS) {
+    while(furi_get_tick() - tail_start < ARP_TAIL_WAIT_MS && app->worker_running) {
         uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
         if(recv_len > 0) {
             uint8_t sender_mac[6], sender_ip[4];
@@ -1362,7 +1362,7 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
         return;
     }
 
-    while(furi_get_tick() - start_tick < 10000) { /* 10 sec timeout */
+    while(furi_get_tick() - start_tick < 10000 && app->worker_running) { /* 10 sec timeout */
         uint16_t rx_size = getSn_RX_RSR(dhcp_socket);
         if(rx_size > 0) {
             uint8_t from_ip[4];
@@ -1439,7 +1439,7 @@ static void eth_tester_do_ping(EthTesterApp* app) {
 
     bool got_ip = false;
     uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000) {
+    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
         uint8_t dhcp_ret = DHCP_run();
         if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
             getIPfromDHCP(net_info.ip);
@@ -1482,7 +1482,7 @@ static void eth_tester_do_ping(EthTesterApp* app) {
     eth_tester_update_view(app->text_box_ping, app->ping_text);
 
     /* Send 4 pings */
-    for(uint16_t i = 1; i <= 4; i++) {
+    for(uint16_t i = 1; i <= 4 && app->worker_running; i++) {
         PingResult result;
         bool ok = icmp_ping(W5500_PING_SOCKET, target_ip, i, 3000, &result);
         if(ok) {
@@ -1535,7 +1535,7 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
 
     bool got_ip = false;
     uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000) {
+    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
         uint8_t dhcp_ret = DHCP_run();
         if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
             getIPfromDHCP(net_info.ip);
@@ -1644,7 +1644,7 @@ static void eth_tester_do_wol(EthTesterApp* app) {
 
     bool got_ip = false;
     uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000) {
+    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
         uint8_t dhcp_ret = DHCP_run();
         if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
             getIPfromDHCP(net_info.ip);
@@ -1783,7 +1783,7 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
 
     bool got_ip = false;
     uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000) {
+    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
         uint8_t dhcp_ret = DHCP_run();
         if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
             getIPfromDHCP(net_info.ip);
@@ -1817,7 +1817,7 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
     eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
 
     /* Run traceroute */
-    for(uint8_t ttl = 1; ttl <= TRACEROUTE_MAX_TTL; ttl++) {
+    for(uint8_t ttl = 1; ttl <= TRACEROUTE_MAX_TTL && app->worker_running; ttl++) {
         TracerouteHop hop;
         bool got_reply = traceroute_send_hop(
             W5500_TRACEROUTE_SOCKET,
@@ -1909,7 +1909,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
 
     bool got_ip = false;
     uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000) {
+    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
         uint8_t dhcp_ret = DHCP_run();
         if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
             getIPfromDHCP(net_info.ip);
@@ -1967,7 +1967,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
     uint16_t alive = 0;
     FuriString* results = furi_string_alloc();
 
-    while(current <= last && scanned < num_hosts) {
+    while(current <= last && scanned < num_hosts && app->worker_running) {
         uint8_t target[4];
         pkt_write_u32_be(target, current);
 
@@ -2058,7 +2058,7 @@ static void eth_tester_do_discovery(EthTesterApp* app) {
 
     bool got_ip = false;
     uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000) {
+    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
         uint8_t dhcp_ret = DHCP_run();
         if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
             getIPfromDHCP(net_info.ip);
@@ -2110,7 +2110,7 @@ static void eth_tester_do_discovery(EthTesterApp* app) {
     uint8_t recv_buf[512];
     uint32_t start_tick = furi_get_tick();
 
-    while(furi_get_tick() - start_tick < DISCOVERY_TIMEOUT_MS && device_count < DISCOVERY_MAX_DEVICES) {
+    while(furi_get_tick() - start_tick < DISCOVERY_TIMEOUT_MS && device_count < DISCOVERY_MAX_DEVICES && app->worker_running) {
         /* Check mDNS socket */
         if(mdns_ok) {
             uint16_t rx = getSn_RX_RSR(W5500_MDNS_SOCKET);
@@ -2234,7 +2234,7 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
     uint32_t timeout_ms = 30000;
     uint32_t last_update = 0;
 
-    while(furi_get_tick() - start_tick < timeout_ms) {
+    while(furi_get_tick() - start_tick < timeout_ms && app->worker_running) {
         uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
         if(recv_len >= ETH_HEADER_SIZE) {
             /* Count frame for stats */
@@ -2414,7 +2414,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
 
     bool got_ip = false;
     uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000) {
+    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
         uint8_t dhcp_ret = DHCP_run();
         if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
             getIPfromDHCP(net_info.ip);
@@ -2462,7 +2462,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
     /* Build results string progressively */
     FuriString* results = furi_string_alloc();
 
-    for(uint16_t i = 0; i < port_count; i++) {
+    for(uint16_t i = 0; i < port_count && app->worker_running; i++) {
         uint16_t port = ports[i];
 
         PortState state = port_scan_tcp(
@@ -2554,7 +2554,7 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
 
     bool got_ip = false;
     uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000) {
+    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
         uint8_t dhcp_ret = DHCP_run();
         if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
             getIPfromDHCP(net_info.ip);
@@ -2589,7 +2589,7 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
 
     /* Continuous ping loop */
     uint16_t seq = 1;
-    while(pg->running) {
+    while(app->worker_running) {
         PingResult result;
         bool ok = icmp_ping(W5500_PING_SOCKET, app->cont_ping_target, seq, PING_GRAPH_TIMEOUT_MS, &result);
 
@@ -2614,7 +2614,7 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
             /* Check running flag periodically during wait */
             uint32_t remaining = PING_GRAPH_INTERVAL_MS - elapsed;
             uint32_t wait_start = furi_get_tick();
-            while(pg->running && (furi_get_tick() - wait_start < remaining)) {
+            while(app->worker_running && (furi_get_tick() - wait_start < remaining)) {
                 furi_delay_ms(50);
             }
         }
@@ -2716,7 +2716,7 @@ static void eth_tester_do_stats(EthTesterApp* app) {
         }
 
         uint32_t start_tick = furi_get_tick();
-        while(furi_get_tick() - start_tick < 10000) {
+        while(furi_get_tick() - start_tick < 10000 && app->worker_running) {
             uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
             if(recv_len >= ETH_HEADER_SIZE) {
                 eth_tester_count_frame(app, frame_buf, recv_len);
