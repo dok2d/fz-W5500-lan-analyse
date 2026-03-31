@@ -99,6 +99,107 @@ static void eth_tester_do_history(EthTesterApp* app);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static void eth_tester_save_results(const char* filename, const char* content);
 
+/* ==================== Continuous Ping view model & callbacks ==================== */
+
+typedef struct {
+    EthTesterApp* app;
+} ContPingViewModel;
+
+static void cont_ping_draw_callback(Canvas* canvas, void* model) {
+    ContPingViewModel* vm = model;
+    EthTesterApp* app = vm->app;
+    PingGraphState* pg = app->ping_graph;
+
+    canvas_clear(canvas);
+
+    if(!pg) {
+        canvas_set_font(canvas, FontPrimary);
+        canvas_draw_str(canvas, 2, 12, "Initializing...");
+        return;
+    }
+
+    canvas_set_font(canvas, FontSecondary);
+
+    char buf[64];
+    uint32_t cur = 0;
+    if(pg->sample_count > 0) {
+        uint32_t last = ping_graph_get_sample(pg, pg->sample_count - 1);
+        cur = (last == PING_RTT_TIMEOUT) ? 0 : last;
+    }
+    uint32_t avg = ping_graph_avg_rtt(pg);
+    uint8_t loss = ping_graph_loss_percent(pg);
+
+    snprintf(buf, sizeof(buf), "Cur:%lums Avg:%lums", (unsigned long)cur, (unsigned long)avg);
+    canvas_draw_str(canvas, 0, 8, buf);
+
+    uint32_t mn = (pg->rtt_min == UINT32_MAX) ? 0 : pg->rtt_min;
+    snprintf(
+        buf, sizeof(buf),
+        "Min:%lu Max:%lu Loss:%d%%",
+        (unsigned long)mn, (unsigned long)pg->rtt_max, loss);
+    canvas_draw_str(canvas, 0, 18, buf);
+
+    uint8_t graph_top = 22;
+    uint8_t graph_bottom = 63;
+    uint8_t graph_height = graph_bottom - graph_top;
+    uint8_t graph_width = 128;
+
+    canvas_draw_line(canvas, 0, graph_top, 0, graph_bottom);
+    canvas_draw_line(canvas, 0, graph_bottom, graph_width - 1, graph_bottom);
+
+    uint16_t count = ping_graph_visible_count(pg);
+    if(count == 0) return;
+
+    uint32_t max_rtt = 1;
+    for(uint16_t i = 0; i < count; i++) {
+        uint32_t s = ping_graph_get_sample(pg, i);
+        if(s != PING_RTT_TIMEOUT && s > max_rtt) max_rtt = s;
+    }
+    max_rtt = max_rtt + max_rtt / 10 + 1;
+
+    uint16_t start_x = (count < graph_width) ? (graph_width - count) : 0;
+    uint16_t start_sample = (count > graph_width) ? (count - graph_width) : 0;
+
+    int16_t prev_y = -1;
+    for(uint16_t i = 0; i < count && (start_x + i - start_sample) < graph_width; i++) {
+        uint16_t si = start_sample + i;
+        if(si >= count) break;
+
+        uint32_t rtt = ping_graph_get_sample(pg, si);
+        uint8_t x = (uint8_t)(start_x + i - start_sample);
+
+        if(rtt == PING_RTT_TIMEOUT) {
+            canvas_draw_dot(canvas, x, graph_top + 1);
+            canvas_draw_dot(canvas, x, graph_top + 2);
+            prev_y = -1;
+        } else {
+            uint32_t scaled = (rtt * graph_height) / max_rtt;
+            if(scaled > graph_height) scaled = graph_height;
+            int16_t y = (int16_t)(graph_bottom - scaled);
+
+            if(prev_y >= 0) {
+                canvas_draw_line(canvas, x - 1, (uint8_t)prev_y, x, (uint8_t)y);
+            } else {
+                canvas_draw_dot(canvas, x, (uint8_t)y);
+            }
+            prev_y = y;
+        }
+    }
+}
+
+static bool cont_ping_input_callback(InputEvent* event, void* context) {
+    EthTesterApp* app = context;
+
+    if(event->type == InputTypeShort && event->key == InputKeyBack) {
+        if(app->ping_graph) {
+            app->ping_graph->running = false;
+        }
+        return true;
+    }
+
+    return false;
+}
+
 /* ==================== App alloc / free ==================== */
 
 static EthTesterApp* eth_tester_app_alloc(void) {
@@ -244,7 +345,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_context(app->view_cont_ping, app);
     with_view_model(
         app->view_cont_ping,
-        ContPingViewModel * vm,
+        ContPingViewModel* vm,
         { vm->app = app; },
         false);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewContPing, app->view_cont_ping);
@@ -518,127 +619,6 @@ static void eth_tester_ping_ip_input_callback(void* context) {
     eth_tester_update_view(app->text_box_ping, app->ping_text);
 }
 
-/* ==================== Continuous Ping view callbacks ==================== */
-
-/* Model for the continuous ping custom view */
-typedef struct {
-    EthTesterApp* app;
-} ContPingViewModel;
-
-static void cont_ping_draw_callback(Canvas* canvas, void* model) {
-    ContPingViewModel* vm = model;
-    EthTesterApp* app = vm->app;
-    PingGraphState* pg = app->ping_graph;
-
-    canvas_clear(canvas);
-
-    if(!pg) {
-        canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str(canvas, 2, 12, "Initializing...");
-        return;
-    }
-
-    /* Screen: 128x64
-     * Top area (0-10): text stats
-     * Graph area (12-63): line graph
-     */
-
-    /* Draw stats text at top */
-    canvas_set_font(canvas, FontSecondary);
-
-    char buf[64];
-    uint32_t cur = 0;
-    if(pg->sample_count > 0) {
-        uint32_t last = ping_graph_get_sample(pg, pg->sample_count - 1);
-        cur = (last == PING_RTT_TIMEOUT) ? 0 : last;
-    }
-    uint32_t avg = ping_graph_avg_rtt(pg);
-    uint8_t loss = ping_graph_loss_percent(pg);
-
-    snprintf(buf, sizeof(buf), "Cur:%lums Avg:%lums", (unsigned long)cur, (unsigned long)avg);
-    canvas_draw_str(canvas, 0, 8, buf);
-
-    uint32_t mn = (pg->rtt_min == UINT32_MAX) ? 0 : pg->rtt_min;
-    snprintf(
-        buf,
-        sizeof(buf),
-        "Min:%lu Max:%lu Loss:%d%%",
-        (unsigned long)mn,
-        (unsigned long)pg->rtt_max,
-        loss);
-    canvas_draw_str(canvas, 0, 18, buf);
-
-    /* Graph area: y=22 to y=63, height=42 pixels, width=128 pixels */
-    uint8_t graph_top = 22;
-    uint8_t graph_bottom = 63;
-    uint8_t graph_height = graph_bottom - graph_top;
-    uint8_t graph_width = 128;
-
-    /* Draw graph border */
-    canvas_draw_line(canvas, 0, graph_top, 0, graph_bottom);
-    canvas_draw_line(canvas, 0, graph_bottom, graph_width - 1, graph_bottom);
-
-    uint16_t count = ping_graph_visible_count(pg);
-    if(count == 0) return;
-
-    /* Find max RTT for auto-scaling (exclude timeouts) */
-    uint32_t max_rtt = 1; /* Minimum scale 1ms */
-    for(uint16_t i = 0; i < count; i++) {
-        uint32_t s = ping_graph_get_sample(pg, i);
-        if(s != PING_RTT_TIMEOUT && s > max_rtt) {
-            max_rtt = s;
-        }
-    }
-    /* Add 10% headroom */
-    max_rtt = max_rtt + max_rtt / 10 + 1;
-
-    /* Draw samples as line graph, right-aligned */
-    uint16_t start_x = (count < graph_width) ? (graph_width - count) : 0;
-    uint16_t start_sample = (count > graph_width) ? (count - graph_width) : 0;
-
-    int16_t prev_y = -1;
-    for(uint16_t i = 0; i < count && (start_x + i - start_sample) < graph_width; i++) {
-        uint16_t si = start_sample + i;
-        if(si >= count) break;
-
-        uint32_t rtt = ping_graph_get_sample(pg, si);
-        uint8_t x = (uint8_t)(start_x + i - start_sample);
-
-        if(rtt == PING_RTT_TIMEOUT) {
-            /* Draw timeout marker as dot at top */
-            canvas_draw_dot(canvas, x, graph_top + 1);
-            canvas_draw_dot(canvas, x, graph_top + 2);
-            prev_y = -1;
-        } else {
-            /* Scale RTT to graph height */
-            uint32_t scaled = (rtt * graph_height) / max_rtt;
-            if(scaled > graph_height) scaled = graph_height;
-            int16_t y = (int16_t)(graph_bottom - scaled);
-
-            if(prev_y >= 0) {
-                canvas_draw_line(canvas, x - 1, (uint8_t)prev_y, x, (uint8_t)y);
-            } else {
-                canvas_draw_dot(canvas, x, (uint8_t)y);
-            }
-            prev_y = y;
-        }
-    }
-}
-
-static bool cont_ping_input_callback(InputEvent* event, void* context) {
-    EthTesterApp* app = context;
-
-    if(event->type == InputTypeShort && event->key == InputKeyBack) {
-        /* Stop the ping loop */
-        if(app->ping_graph) {
-            app->ping_graph->running = false;
-        }
-        return true;
-    }
-
-    return false;
-}
-
 /* ==================== Continuous Ping IP input callback ==================== */
 
 static void eth_tester_cont_ping_ip_input_callback(void* context) {
@@ -687,32 +667,6 @@ static void eth_tester_traceroute_ip_input_callback(void* context) {
     eth_tester_show_view(app, app->text_box_traceroute, EthTesterViewTraceroute, app->traceroute_text, "Initializing...\n");
     eth_tester_do_traceroute(app);
     eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
-}
-
-/* ==================== MAC changer byte input callback ==================== */
-
-static void eth_tester_mac_changer_input_callback(void* context) {
-    EthTesterApp* app = context;
-    furi_assert(app);
-
-    /* Apply the custom MAC */
-    memcpy(app->mac_addr, app->mac_changer_input, 6);
-    w5500_hal_set_mac(app->mac_addr);
-    mac_changer_save(app->mac_addr);
-
-    char mac_str[18];
-    pkt_format_mac(app->mac_addr, mac_str);
-
-    furi_string_printf(
-        app->mac_changer_text,
-        "=== MAC Changer ===\n"
-        "Custom MAC set:\n%s\n\n"
-        "Saved to SD card.\n"
-        "Takes full effect on\n"
-        "next DHCP/reconnect.\n",
-        mac_str);
-    eth_tester_show_view(app, app->text_box_mac_changer, EthTesterViewMacChanger, app->mac_changer_text,
-        furi_string_get_cstr(app->mac_changer_text));
 }
 
 /* ==================== Port scan IP input callback ==================== */
@@ -2569,7 +2523,7 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
     /* Update view model */
     with_view_model(
         app->view_cont_ping,
-        ContPingViewModel * vm,
+        ContPingViewModel* vm,
         { vm->app = app; },
         true);
 
@@ -2588,7 +2542,7 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
         /* Trigger view redraw */
         with_view_model(
             app->view_cont_ping,
-            ContPingViewModel * vm,
+            ContPingViewModel* vm,
             { UNUSED(vm); },
             true);
 

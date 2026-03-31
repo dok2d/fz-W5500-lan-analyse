@@ -9,14 +9,14 @@
 #define TAG "HISTORY"
 
 void history_make_filename(const char* type, char* out, uint16_t out_size) {
-    FuriHalRtcDateTime dt;
+    DateTime dt;
     furi_hal_rtc_get_datetime(&dt);
 
     snprintf(
         out, out_size,
         "%04d%02d%02d_%02d%02d%02d_%s.txt",
-        dt.year, dt.month, dt.day,
-        dt.hour, dt.minute, dt.second,
+        (int)dt.year, (int)dt.month, (int)dt.day,
+        (int)dt.hour, (int)dt.minute, (int)dt.second,
         type);
 }
 
