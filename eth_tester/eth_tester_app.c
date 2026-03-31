@@ -264,31 +264,23 @@ static EthTesterApp* eth_tester_app_alloc(void) {
 
     /* Main menu (Submenu view) */
     app->submenu = submenu_alloc();
-    /* --- Network Info --- */
-    submenu_add_item(app->submenu, "[Network Info]", 0xFF, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  Link Info", EthTesterMenuItemLinkInfo, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  LLDP/CDP", EthTesterMenuItemLldpCdp, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  DHCP Analyze", EthTesterMenuItemDhcpAnalyze, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
-    /* --- Scanning --- */
-    submenu_add_item(app->submenu, "[Scanning]", 0xFE, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  ARP Scan", EthTesterMenuItemArpScan, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  Port Scanner", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  mDNS/SSDP", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  STP/VLAN", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
-    /* --- Tools --- */
-    submenu_add_item(app->submenu, "[Tools]", 0xFD, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  Continuous Ping", EthTesterMenuItemContPing, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  DNS Lookup", EthTesterMenuItemDnsLookup, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
-    /* --- System --- */
-    submenu_add_item(app->submenu, "[System]", 0xFC, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "  About", EthTesterMenuItemAbout, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Link Info", EthTesterMenuItemLinkInfo, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "LLDP/CDP", EthTesterMenuItemLldpCdp, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "DHCP Analyze", EthTesterMenuItemDhcpAnalyze, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "ARP Scan", EthTesterMenuItemArpScan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Port Scanner", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "mDNS/SSDP", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "STP/VLAN", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Continuous Ping", EthTesterMenuItemContPing, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "DNS Lookup", EthTesterMenuItemDnsLookup, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "About", EthTesterMenuItemAbout, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
@@ -682,11 +674,25 @@ static void eth_tester_worker_stop(EthTesterApp* app) {
 }
 
 static void eth_tester_worker_start(EthTesterApp* app, uint32_t op, EthTesterView result_view) {
-    eth_tester_worker_stop(app);
+    /* If old worker is done, clean it up (non-blocking) */
+    if(app->worker_thread) {
+        app->worker_running = false;
+        if(furi_thread_get_state(app->worker_thread) == FuriThreadStateStopped) {
+            furi_thread_join(app->worker_thread);
+            furi_thread_free(app->worker_thread);
+            app->worker_thread = NULL;
+        } else {
+            /* Old worker still running — force stop and wait (brief) */
+            furi_thread_join(app->worker_thread);
+            furi_thread_free(app->worker_thread);
+            app->worker_thread = NULL;
+        }
+    }
+
     app->worker_op = op;
     app->worker_running = true;
 
-    /* Switch to result view */
+    /* Switch to result view BEFORE starting thread */
     view_dispatcher_switch_to_view(app->view_dispatcher, result_view);
 
     app->worker_thread = furi_thread_alloc_ex("EthWorker", 8 * 1024,
@@ -938,25 +944,9 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemPingSweep:
-        /* Auto-fill CIDR from cached DHCP if available */
-        if(app->dhcp_valid) {
-            uint8_t prefix = arp_mask_to_prefix(app->dhcp_mask);
-            uint32_t net = pkt_read_u32_be(app->dhcp_ip) & pkt_read_u32_be(app->dhcp_mask);
-            uint8_t net_ip[4];
-            pkt_write_u32_be(net_ip, net);
-            snprintf(app->ping_sweep_ip_input, sizeof(app->ping_sweep_ip_input),
-                "%d.%d.%d.%d/%d", net_ip[0], net_ip[1], net_ip[2], net_ip[3], prefix);
-        }
-        text_input_reset(app->text_input_ping_sweep);
-        text_input_set_header_text(app->text_input_ping_sweep, "CIDR (e.g. 192.168.1.0/24):");
-        text_input_set_result_callback(
-            app->text_input_ping_sweep,
-            eth_tester_ping_sweep_input_callback,
-            app,
-            app->ping_sweep_ip_input,
-            sizeof(app->ping_sweep_ip_input),
-            false);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPingSweepInput);
+        /* Direct start — auto-detects network from DHCP */
+        eth_tester_show_view(app, app->text_box_ping_sweep, EthTesterViewPingSweep, app->ping_sweep_text, "Starting ping sweep...\n");
+        eth_tester_worker_start(app, EthTesterMenuItemPingSweep, EthTesterViewPingSweep);
         break;
 
     case EthTesterMenuItemTraceroute:
