@@ -79,7 +79,6 @@ static uint8_t frame_buf[FRAME_BUF_SIZE];
 static void eth_tester_submenu_callback(void* context, uint32_t index);
 static uint32_t eth_tester_navigation_exit_callback(void* context);
 static uint32_t eth_tester_navigation_submenu_callback(void* context);
-static uint32_t eth_tester_worker_back(void* context);
 static bool eth_tester_nav_event_cb(void* context);
 static bool eth_tester_custom_event_cb(void* context, uint32_t event);
 static void eth_tester_worker_stop(EthTesterApp* app);
@@ -296,32 +295,32 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* TextBox views for each feature */
     app->text_box_link = text_box_alloc();
     text_box_set_font(app->text_box_link, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_link), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_link), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewLinkInfo, text_box_get_view(app->text_box_link));
 
     app->text_box_lldp = text_box_alloc();
     text_box_set_font(app->text_box_lldp, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_lldp), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_lldp), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewLldp, text_box_get_view(app->text_box_lldp));
 
     app->text_box_arp = text_box_alloc();
     text_box_set_font(app->text_box_arp, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_arp), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_arp), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewArpScan, text_box_get_view(app->text_box_arp));
 
     app->text_box_dhcp = text_box_alloc();
     text_box_set_font(app->text_box_dhcp, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_dhcp), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_dhcp), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDhcpAnalyze, text_box_get_view(app->text_box_dhcp));
 
     app->text_box_ping = text_box_alloc();
     text_box_set_font(app->text_box_ping, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_ping), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_ping), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPing, text_box_get_view(app->text_box_ping));
 
     app->text_box_stats = text_box_alloc();
     text_box_set_font(app->text_box_stats, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_stats), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_stats), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewStats, text_box_get_view(app->text_box_stats));
 
     /* TextInput for ping target IP */
@@ -335,7 +334,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* DNS Lookup views */
     app->text_box_dns = text_box_alloc();
     text_box_set_font(app->text_box_dns, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_dns), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_dns), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDnsLookup, text_box_get_view(app->text_box_dns));
 
     app->text_input_dns = text_input_alloc();
@@ -348,7 +347,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Wake-on-LAN views */
     app->text_box_wol = text_box_alloc();
     text_box_set_font(app->text_box_wol, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_wol), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_wol), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewWol, text_box_get_view(app->text_box_wol));
 
     app->byte_input_wol = byte_input_alloc();
@@ -378,7 +377,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Port Scanner views */
     app->text_box_port_scan = text_box_alloc();
     text_box_set_font(app->text_box_port_scan, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_port_scan), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_port_scan), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPortScan, text_box_get_view(app->text_box_port_scan));
 
     app->text_input_port_scan = text_input_alloc();
@@ -391,7 +390,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* MAC Changer views */
     app->text_box_mac_changer = text_box_alloc();
     text_box_set_font(app->text_box_mac_changer, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_mac_changer), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_mac_changer), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMacChanger, text_box_get_view(app->text_box_mac_changer));
 
     app->byte_input_mac_changer = byte_input_alloc();
@@ -401,7 +400,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Traceroute views */
     app->text_box_traceroute = text_box_alloc();
     text_box_set_font(app->text_box_traceroute, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_traceroute), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_traceroute), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewTraceroute, text_box_get_view(app->text_box_traceroute));
 
     app->text_input_traceroute = text_input_alloc();
@@ -414,7 +413,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Ping Sweep views */
     app->text_box_ping_sweep = text_box_alloc();
     text_box_set_font(app->text_box_ping_sweep, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_ping_sweep), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_ping_sweep), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPingSweep, text_box_get_view(app->text_box_ping_sweep));
 
     app->text_input_ping_sweep = text_input_alloc();
@@ -427,24 +426,24 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* mDNS/SSDP Discovery view */
     app->text_box_discovery = text_box_alloc();
     text_box_set_font(app->text_box_discovery, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_discovery), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_discovery), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDiscovery, text_box_get_view(app->text_box_discovery));
 
     /* History views */
     app->text_box_history = text_box_alloc();
     text_box_set_font(app->text_box_history, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_history), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_history), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistory, text_box_get_view(app->text_box_history));
 
     app->text_box_history_file = text_box_alloc();
     text_box_set_font(app->text_box_history_file, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_history_file), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_history_file), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistoryFile, text_box_get_view(app->text_box_history_file));
 
     /* STP/VLAN Detection view */
     app->text_box_stp_vlan = text_box_alloc();
     text_box_set_font(app->text_box_stp_vlan, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_stp_vlan), eth_tester_worker_back);
+    view_set_previous_callback(text_box_get_view(app->text_box_stp_vlan), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewStpVlan, text_box_get_view(app->text_box_stp_vlan));
 
     /* About view */
@@ -585,27 +584,12 @@ static uint32_t eth_tester_navigation_submenu_callback(void* context) {
 
 /* ==================== Worker thread ==================== */
 
-/* Worker previous_callback: returns VIEW_NONE to trigger nav_event_cb */
-static uint32_t eth_tester_worker_back(void* context) {
-    UNUSED(context);
-    return VIEW_NONE;
-}
-
-/* Navigation event callback: handles Back on worker views and app exit */
+/* Navigation event callback: stop worker on app exit */
 static bool eth_tester_nav_event_cb(void* context) {
     EthTesterApp* app = context;
-    if(app->worker_thread) {
-        /* Stop worker, join, clean up */
-        app->worker_running = false;
-        furi_thread_join(app->worker_thread);
-        furi_thread_free(app->worker_thread);
-        app->worker_thread = NULL;
-        /* Go to menu (not exit) */
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
-        return true;
-    }
-    /* No worker — exit app (Back pressed on main menu) */
-    return false;
+    /* Stop any running worker before exiting */
+    eth_tester_worker_stop(app);
+    return false; /* Allow app to exit */
 }
 
 static bool eth_tester_custom_event_cb(void* context, uint32_t event) {
@@ -1989,15 +1973,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
         return;
     }
 
-    /* Parse CIDR input */
-    uint8_t base_ip[4];
-    uint8_t prefix;
-    if(!parse_cidr(app->ping_sweep_ip_input, base_ip, &prefix)) {
-        furi_string_set(app->ping_sweep_text, "Invalid CIDR format!\nUse: 192.168.1.0/24\n");
-        return;
-    }
-
-    /* Get IP via DHCP */
+    /* Get IP via DHCP first (needed for network access + auto-detect) */
     furi_string_set(app->ping_sweep_text, "Getting IP via DHCP...\n");
     eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
 
@@ -2042,13 +2018,30 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
         return;
     }
 
-    /* Calculate range from CIDR */
+    /* Parse CIDR input; if invalid, auto-detect from DHCP network */
+    uint8_t base_ip[4];
+    uint8_t prefix;
     uint8_t mask[4];
-    uint32_t mask32 = prefix ? (0xFFFFFFFF << (32 - prefix)) : 0;
-    mask[0] = (uint8_t)(mask32 >> 24);
-    mask[1] = (uint8_t)(mask32 >> 16);
-    mask[2] = (uint8_t)(mask32 >> 8);
-    mask[3] = (uint8_t)(mask32);
+
+    if(parse_cidr(app->ping_sweep_ip_input, base_ip, &prefix)) {
+        /* User provided valid CIDR */
+        uint32_t mask32 = prefix ? (0xFFFFFFFF << (32 - prefix)) : 0;
+        mask[0] = (uint8_t)(mask32 >> 24);
+        mask[1] = (uint8_t)(mask32 >> 16);
+        mask[2] = (uint8_t)(mask32 >> 8);
+        mask[3] = (uint8_t)(mask32);
+    } else {
+        /* Auto-detect from DHCP */
+        wiz_NetInfo auto_info;
+        wizchip_getnetinfo(&auto_info);
+        memcpy(base_ip, auto_info.ip, 4);
+        memcpy(mask, auto_info.sn, 4);
+        prefix = arp_mask_to_prefix(mask);
+        /* Calculate network address */
+        for(int i = 0; i < 4; i++) base_ip[i] &= mask[i];
+        snprintf(app->ping_sweep_ip_input, sizeof(app->ping_sweep_ip_input),
+            "%d.%d.%d.%d/%d", base_ip[0], base_ip[1], base_ip[2], base_ip[3], prefix);
+    }
 
     uint8_t start_ip[4], end_ip[4];
     uint16_t num_hosts = arp_calc_scan_range(base_ip, mask, start_ip, end_ip);
