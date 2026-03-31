@@ -36,6 +36,15 @@
 
 #define TAG "ETH"
 
+/* Internal worker operations (beyond EthTesterMenuItem range) */
+#define WORKER_OP_PING_SWEEP_DETECT 100
+
+/* Custom events sent from worker to main thread */
+#define CUSTOM_EVENT_PING_SWEEP_READY 1
+
+/* Global app pointer for navigation callbacks (single-instance app) */
+static EthTesterApp* g_app = NULL;
+
 /* ==================== WIZnet library compatibility stubs ==================== */
 
 /*
@@ -100,6 +109,7 @@ static void eth_tester_do_mac_changer(EthTesterApp* app);
 static void eth_tester_do_traceroute(EthTesterApp* app);
 static void eth_tester_do_discovery(EthTesterApp* app);
 static void eth_tester_do_ping_sweep(EthTesterApp* app);
+static void eth_tester_do_ping_sweep_detect(EthTesterApp* app);
 static void eth_tester_do_stp_vlan(EthTesterApp* app);
 static void eth_tester_history_populate(EthTesterApp* app);
 static void eth_tester_history_file_callback(void* context, uint32_t index);
@@ -213,6 +223,7 @@ static bool cont_ping_input_callback(InputEvent* event, void* context) {
 static EthTesterApp* eth_tester_app_alloc(void) {
     EthTesterApp* app = malloc(sizeof(EthTesterApp));
     memset(app, 0, sizeof(EthTesterApp));
+    g_app = app;
 
     /* Set default MAC */
     uint8_t default_mac[6] = DEFAULT_MAC;
@@ -563,6 +574,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_record_close(RECORD_GUI);
     furi_record_close(RECORD_NOTIFICATION);
 
+    g_app = NULL;
     free(app);
 }
 
@@ -575,6 +587,8 @@ static uint32_t eth_tester_navigation_exit_callback(void* context) {
 
 static uint32_t eth_tester_navigation_submenu_callback(void* context) {
     UNUSED(context);
+    /* Signal worker to stop immediately so it doesn't block next action */
+    if(g_app) g_app->worker_running = false;
     return EthTesterViewMainMenu;
 }
 
@@ -593,9 +607,26 @@ static bool eth_tester_nav_event_cb(void* context) {
     return false; /* Allow app to exit */
 }
 
+static void eth_tester_ping_sweep_input_callback(void* context);
+
 static bool eth_tester_custom_event_cb(void* context, uint32_t event) {
-    UNUSED(context);
-    UNUSED(event);
+    EthTesterApp* app = context;
+
+    if(event == CUSTOM_EVENT_PING_SWEEP_READY) {
+        /* DHCP detection done — show input with pre-filled CIDR */
+        text_input_reset(app->text_input_ping_sweep);
+        text_input_set_header_text(app->text_input_ping_sweep, "Scan range (CIDR):");
+        text_input_set_result_callback(
+            app->text_input_ping_sweep,
+            eth_tester_ping_sweep_input_callback,
+            app,
+            app->ping_sweep_ip_input,
+            sizeof(app->ping_sweep_ip_input),
+            false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPingSweepInput);
+        return true;
+    }
+
     return false;
 }
 
@@ -665,6 +696,9 @@ static int32_t eth_tester_worker_fn(void* context) {
         break;
     case EthTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
+    case WORKER_OP_PING_SWEEP_DETECT:
+        eth_tester_do_ping_sweep_detect(app);
+        break;
     default:
         break;
     }
@@ -833,6 +867,17 @@ static void eth_tester_port_scan_ip_input_callback(void* context) {
     eth_tester_worker_start(app, EthTesterMenuItemPortScan, EthTesterViewPortScan);
 }
 
+/* ==================== Ping sweep CIDR input callback ==================== */
+
+static void eth_tester_ping_sweep_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    furi_string_set(app->ping_sweep_text, "Starting ping sweep...\n");
+    text_box_set_text(app->text_box_ping_sweep, furi_string_get_cstr(app->ping_sweep_text));
+    eth_tester_worker_start(app, EthTesterMenuItemPingSweep, EthTesterViewPingSweep);
+}
+
 /* ==================== DNS hostname input callback ==================== */
 
 static void eth_tester_dns_input_callback(void* context) {
@@ -941,16 +986,28 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemPingSweep:
-        /* Pre-populate CIDR from cached DHCP network if available */
         if(app->dhcp_valid) {
+            /* Already have DHCP — go straight to input */
             uint8_t net[4];
             for(int i = 0; i < 4; i++) net[i] = app->dhcp_ip[i] & app->dhcp_mask[i];
             uint8_t pfx = arp_mask_to_prefix(app->dhcp_mask);
             snprintf(app->ping_sweep_ip_input, sizeof(app->ping_sweep_ip_input),
                 "%d.%d.%d.%d/%d", net[0], net[1], net[2], net[3], pfx);
+            text_input_reset(app->text_input_ping_sweep);
+            text_input_set_header_text(app->text_input_ping_sweep, "Scan range (CIDR):");
+            text_input_set_result_callback(
+                app->text_input_ping_sweep,
+                eth_tester_ping_sweep_input_callback,
+                app,
+                app->ping_sweep_ip_input,
+                sizeof(app->ping_sweep_ip_input),
+                false);
+            view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPingSweepInput);
+        } else {
+            /* No DHCP yet — detect network first, then show input */
+            eth_tester_show_view(app, app->text_box_ping_sweep, EthTesterViewPingSweep, app->ping_sweep_text, "Detecting network...\n");
+            eth_tester_worker_start(app, WORKER_OP_PING_SWEEP_DETECT, EthTesterViewPingSweep);
         }
-        eth_tester_show_view(app, app->text_box_ping_sweep, EthTesterViewPingSweep, app->ping_sweep_text, "Starting ping sweep...\n");
-        eth_tester_worker_start(app, EthTesterMenuItemPingSweep, EthTesterViewPingSweep);
         break;
 
     case EthTesterMenuItemTraceroute:
@@ -1959,6 +2016,85 @@ static bool parse_cidr(const char* str, uint8_t base_ip[4], uint8_t* prefix) {
     return true;
 }
 
+/* Phase 1: detect network via DHCP, then signal main thread to show input */
+static void eth_tester_do_ping_sweep_detect(EthTesterApp* app) {
+    furi_string_reset(app->ping_sweep_text);
+
+    if(!eth_tester_ensure_w5500(app)) {
+        furi_string_set(app->ping_sweep_text, "W5500 Not Found!\n");
+        eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+        return;
+    }
+
+    if(!w5500_hal_get_link_status()) {
+        furi_string_set(app->ping_sweep_text, "No Link!\nConnect cable.\n");
+        eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+        return;
+    }
+
+    furi_string_set(app->ping_sweep_text, "Getting IP via DHCP...\n");
+    eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+
+    uint8_t* dhcp_buffer = malloc(1024);
+    if(!dhcp_buffer) {
+        furi_string_set(app->ping_sweep_text, "Memory alloc failed!\n");
+        eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+        return;
+    }
+
+    wiz_NetInfo net_info;
+    wizchip_getnetinfo(&net_info);
+    net_info.dhcp = NETINFO_DHCP;
+    memset(net_info.ip, 0, 4);
+    memset(net_info.sn, 0, 4);
+    memset(net_info.gw, 0, 4);
+    wizchip_setnetinfo(&net_info);
+
+    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
+
+    bool got_ip = false;
+    uint32_t dhcp_start = furi_get_tick();
+    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
+        uint8_t dhcp_ret = DHCP_run();
+        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
+            getIPfromDHCP(net_info.ip);
+            getSNfromDHCP(net_info.sn);
+            getGWfromDHCP(net_info.gw);
+            getDNSfromDHCP(net_info.dns);
+            net_info.dhcp = NETINFO_DHCP;
+            wizchip_setnetinfo(&net_info);
+            got_ip = true;
+            memcpy(app->dhcp_ip, net_info.ip, 4);
+            memcpy(app->dhcp_mask, net_info.sn, 4);
+            memcpy(app->dhcp_gw, net_info.gw, 4);
+            memcpy(app->dhcp_dns, net_info.dns, 4);
+            app->dhcp_valid = true;
+            break;
+        }
+        if(dhcp_ret == DHCP_FAILED) break;
+        furi_delay_ms(10);
+    }
+    DHCP_stop();
+    free(dhcp_buffer);
+
+    if(!got_ip || !app->worker_running) {
+        furi_string_set(app->ping_sweep_text, "DHCP failed.\n");
+        eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+        return;
+    }
+
+    /* Populate CIDR from detected network */
+    uint8_t net[4];
+    for(int i = 0; i < 4; i++) net[i] = app->dhcp_ip[i] & app->dhcp_mask[i];
+    uint8_t pfx = arp_mask_to_prefix(app->dhcp_mask);
+    snprintf(app->ping_sweep_ip_input, sizeof(app->ping_sweep_ip_input),
+        "%d.%d.%d.%d/%d", net[0], net[1], net[2], net[3], pfx);
+
+    /* Signal main thread to show input */
+    view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_PING_SWEEP_READY);
+}
+
+/* Phase 2: actual ping sweep scan */
 static void eth_tester_do_ping_sweep(EthTesterApp* app) {
     furi_string_reset(app->ping_sweep_text);
 
