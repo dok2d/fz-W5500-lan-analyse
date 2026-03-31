@@ -89,6 +89,7 @@ static void eth_tester_do_cont_ping(EthTesterApp* app);
 static void eth_tester_do_port_scan(EthTesterApp* app);
 static void eth_tester_do_mac_changer(EthTesterApp* app);
 static void eth_tester_do_traceroute(EthTesterApp* app);
+static void eth_tester_do_ping_sweep(EthTesterApp* app);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static void eth_tester_save_results(const char* filename, const char* content);
 
@@ -118,6 +119,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->port_scan_text = furi_string_alloc();
     app->mac_changer_text = furi_string_alloc();
     app->traceroute_text = furi_string_alloc();
+    app->ping_sweep_text = furi_string_alloc();
 
     /* Set initial text */
     furi_string_set(app->link_info_text, "Press OK to read\nlink status...\n");
@@ -131,6 +133,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     furi_string_set(app->port_scan_text, "Port Scanner ready.\n");
     furi_string_set(app->mac_changer_text, "MAC Changer ready.\n");
     furi_string_set(app->traceroute_text, "Traceroute ready.\n");
+    furi_string_set(app->ping_sweep_text, "Ping Sweep ready.\n");
 
     /* Open GUI */
     app->gui = furi_record_open(RECORD_GUI);
@@ -154,6 +157,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "Port Scanner", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
@@ -275,6 +279,19 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Default traceroute target */
     strncpy(app->traceroute_ip_input, "8.8.8.8", sizeof(app->traceroute_ip_input));
 
+    /* Ping Sweep views */
+    app->text_box_ping_sweep = text_box_alloc();
+    text_box_set_font(app->text_box_ping_sweep, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_ping_sweep), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPingSweep, text_box_get_view(app->text_box_ping_sweep));
+
+    app->text_input_ping_sweep = text_input_alloc();
+    view_set_previous_callback(text_input_get_view(app->text_input_ping_sweep), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPingSweepInput, text_input_get_view(app->text_input_ping_sweep));
+
+    /* Default ping sweep - will use DHCP subnet */
+    strncpy(app->ping_sweep_ip_input, "192.168.1.0/24", sizeof(app->ping_sweep_ip_input));
+
     /* Load saved MAC from SD card if available */
     if(mac_changer_load(app->mac_addr)) {
         FURI_LOG_I(TAG, "Loaded custom MAC from SD");
@@ -307,6 +324,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChangerInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTraceroute);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTracerouteInput);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingSweep);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingSweepInput);
 
     submenu_free(app->submenu);
     text_box_free(app->text_box_link);
@@ -328,6 +347,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     byte_input_free(app->byte_input_mac_changer);
     text_box_free(app->text_box_traceroute);
     text_input_free(app->text_input_traceroute);
+    text_box_free(app->text_box_ping_sweep);
+    text_input_free(app->text_input_ping_sweep);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -343,6 +364,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->port_scan_text);
     furi_string_free(app->mac_changer_text);
     furi_string_free(app->traceroute_text);
+    furi_string_free(app->ping_sweep_text);
 
     /* Stop and free DHCP timer */
     furi_timer_stop(app->dhcp_timer);
@@ -591,6 +613,17 @@ static void eth_tester_cont_ping_ip_input_callback(void* context) {
     view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
 }
 
+/* ==================== Ping Sweep input callback ==================== */
+
+static void eth_tester_ping_sweep_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    eth_tester_show_view(app, app->text_box_ping_sweep, EthTesterViewPingSweep, app->ping_sweep_text, "Initializing...\n");
+    eth_tester_do_ping_sweep(app);
+    eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+}
+
 /* ==================== Traceroute IP input callback ==================== */
 
 static void eth_tester_traceroute_ip_input_callback(void* context) {
@@ -746,6 +779,19 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             app->wol_mac_input,
             6);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewWolInput);
+        break;
+
+    case EthTesterMenuItemPingSweep:
+        text_input_reset(app->text_input_ping_sweep);
+        text_input_set_header_text(app->text_input_ping_sweep, "CIDR (192.168.1.0/24):");
+        text_input_set_result_callback(
+            app->text_input_ping_sweep,
+            eth_tester_ping_sweep_input_callback,
+            app,
+            app->ping_sweep_ip_input,
+            sizeof(app->ping_sweep_ip_input),
+            false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPingSweepInput);
         break;
 
     case EthTesterMenuItemTraceroute:
@@ -1724,6 +1770,176 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
     }
 
     eth_tester_save_results("traceroute.txt", furi_string_get_cstr(app->traceroute_text));
+}
+
+/* ==================== Ping Sweep ==================== */
+
+/* Parse CIDR notation "192.168.1.0/24" into base IP and prefix length */
+static bool parse_cidr(const char* str, uint8_t base_ip[4], uint8_t* prefix) {
+    unsigned int a, b, c, d, p;
+    if(sscanf(str, "%u.%u.%u.%u/%u", &a, &b, &c, &d, &p) != 5) return false;
+    if(a > 255 || b > 255 || c > 255 || d > 255 || p > 32) return false;
+    base_ip[0] = (uint8_t)a;
+    base_ip[1] = (uint8_t)b;
+    base_ip[2] = (uint8_t)c;
+    base_ip[3] = (uint8_t)d;
+    *prefix = (uint8_t)p;
+    return true;
+}
+
+static void eth_tester_do_ping_sweep(EthTesterApp* app) {
+    furi_string_reset(app->ping_sweep_text);
+
+    if(!eth_tester_ensure_w5500(app)) {
+        furi_string_set(app->ping_sweep_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    if(!w5500_hal_get_link_status()) {
+        furi_string_set(app->ping_sweep_text, "No Link!\nConnect cable.\n");
+        return;
+    }
+
+    /* Parse CIDR input */
+    uint8_t base_ip[4];
+    uint8_t prefix;
+    if(!parse_cidr(app->ping_sweep_ip_input, base_ip, &prefix)) {
+        furi_string_set(app->ping_sweep_text, "Invalid CIDR format!\nUse: 192.168.1.0/24\n");
+        return;
+    }
+
+    /* Get IP via DHCP */
+    furi_string_set(app->ping_sweep_text, "Getting IP via DHCP...\n");
+    eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+
+    uint8_t* dhcp_buffer = malloc(1024);
+    if(!dhcp_buffer) {
+        furi_string_set(app->ping_sweep_text, "Memory alloc failed!\n");
+        return;
+    }
+    wiz_NetInfo net_info;
+    wizchip_getnetinfo(&net_info);
+    net_info.dhcp = NETINFO_DHCP;
+    memset(net_info.ip, 0, 4);
+    memset(net_info.sn, 0, 4);
+    memset(net_info.gw, 0, 4);
+    wizchip_setnetinfo(&net_info);
+
+    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
+
+    bool got_ip = false;
+    uint32_t dhcp_start = furi_get_tick();
+    while(furi_get_tick() - dhcp_start < 15000) {
+        uint8_t dhcp_ret = DHCP_run();
+        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
+            getIPfromDHCP(net_info.ip);
+            getSNfromDHCP(net_info.sn);
+            getGWfromDHCP(net_info.gw);
+            getDNSfromDHCP(net_info.dns);
+            net_info.dhcp = NETINFO_DHCP;
+            wizchip_setnetinfo(&net_info);
+            got_ip = true;
+            break;
+        }
+        if(dhcp_ret == DHCP_FAILED) break;
+        furi_delay_ms(10);
+    }
+    DHCP_stop();
+    free(dhcp_buffer);
+
+    if(!got_ip) {
+        furi_string_set(app->ping_sweep_text, "DHCP failed.\n");
+        return;
+    }
+
+    /* Calculate range from CIDR */
+    uint8_t mask[4];
+    uint32_t mask32 = prefix ? (0xFFFFFFFF << (32 - prefix)) : 0;
+    mask[0] = (uint8_t)(mask32 >> 24);
+    mask[1] = (uint8_t)(mask32 >> 16);
+    mask[2] = (uint8_t)(mask32 >> 8);
+    mask[3] = (uint8_t)(mask32);
+
+    uint8_t start_ip[4], end_ip[4];
+    uint16_t num_hosts = arp_calc_scan_range(base_ip, mask, start_ip, end_ip);
+
+    if(num_hosts == 0) {
+        furi_string_set(app->ping_sweep_text, "No hosts in range.\n");
+        return;
+    }
+
+    /* Cap to reasonable number */
+    if(num_hosts > 254) num_hosts = 254;
+
+    furi_string_printf(
+        app->ping_sweep_text,
+        "=== Ping Sweep ===\n"
+        "Range: %s\n"
+        "Hosts: %d\n\n",
+        app->ping_sweep_ip_input,
+        num_hosts);
+    eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+
+    /* Sweep */
+    uint32_t current = pkt_read_u32_be(start_ip);
+    uint32_t last = pkt_read_u32_be(end_ip);
+    uint16_t scanned = 0;
+    uint16_t alive = 0;
+    FuriString* results = furi_string_alloc();
+
+    while(current <= last && scanned < num_hosts) {
+        uint8_t target[4];
+        pkt_write_u32_be(target, current);
+
+        PingResult result;
+        bool ok = icmp_ping(W5500_PING_SOCKET, target, (uint16_t)(scanned + 1), 500, &result);
+        scanned++;
+
+        if(ok) {
+            char ip_str[16];
+            pkt_format_ip(target, ip_str);
+            furi_string_cat_printf(results, "  %s: %lu ms\n", ip_str, (unsigned long)result.rtt_ms);
+            alive++;
+        }
+
+        /* Update progress every 5 hosts */
+        if(scanned % 5 == 0 || current == last) {
+            furi_string_printf(
+                app->ping_sweep_text,
+                "=== Ping Sweep ===\n"
+                "Range: %s\n"
+                "Progress: %d/%d\n"
+                "Alive: %d\n\n%s",
+                app->ping_sweep_ip_input,
+                scanned,
+                num_hosts,
+                alive,
+                furi_string_get_cstr(results));
+            eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+        }
+
+        current++;
+    }
+
+    /* Final results */
+    furi_string_printf(
+        app->ping_sweep_text,
+        "=== Ping Sweep ===\n"
+        "Range: %s\n"
+        "Scanned: %d\n"
+        "Alive: %d\n\n"
+        "Responding hosts:\n%s",
+        app->ping_sweep_ip_input,
+        scanned,
+        alive,
+        furi_string_get_cstr(results));
+
+    if(alive == 0) {
+        furi_string_cat_str(app->ping_sweep_text, "  (none)\n");
+    }
+
+    furi_string_free(results);
+    eth_tester_save_results("ping_sweep.txt", furi_string_get_cstr(app->ping_sweep_text));
 }
 
 /* ==================== Port Scanner ==================== */

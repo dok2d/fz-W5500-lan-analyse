@@ -36,6 +36,8 @@ typedef enum {
     EthTesterViewMacChangerInput,
     EthTesterViewTraceroute,
     EthTesterViewTracerouteInput,
+    EthTesterViewPingSweep,
+    EthTesterViewPingSweepInput,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -53,6 +55,7 @@ typedef enum {
     EthTesterMenuItemPortScan,
     EthTesterMenuItemMacChanger,
     EthTesterMenuItemTraceroute,
+    EthTesterMenuItemPingSweep,
 } EthTesterMenuItem;
 
 /* Packet statistics counters */
@@ -93,6 +96,8 @@ struct EthTesterApp {
     ByteInput* byte_input_mac_changer;
     TextBox* text_box_traceroute;
     TextInput* text_input_traceroute;
+    TextBox* text_box_ping_sweep;
+    TextInput* text_input_ping_sweep;
     NotificationApp* notifications;
 
     /* W5500 state */
@@ -136,6 +141,9 @@ struct EthTesterApp {
     char traceroute_ip_input[16]; /* text input buffer */
     uint8_t traceroute_target[4]; /* parsed target IP */
 
+    /* Ping sweep state */
+    char ping_sweep_ip_input[20]; /* "192.168.1.0/24" */
+
     /* Text buffers for views */
     FuriString* link_info_text;
     FuriString* lldp_text;
@@ -148,4 +156,5 @@ struct EthTesterApp {
     FuriString* port_scan_text;
     FuriString* mac_changer_text;
     FuriString* traceroute_text;
+    FuriString* ping_sweep_text;
 };
