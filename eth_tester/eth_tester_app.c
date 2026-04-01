@@ -951,7 +951,7 @@ static bool eth_tester_ensure_dhcp(EthTesterApp* app) {
 
 /**
  * Generate an ASCII progress bar like "[=========>    ] 75%"
- * buf must be at least 24 bytes.
+ * buf must be at least 28 bytes.
  */
 static void eth_tester_progress_bar(char* buf, size_t buf_size, uint16_t current, uint16_t total) {
     if(total == 0) total = 1;
@@ -2176,7 +2176,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
 
         /* Update progress every 5 hosts */
         if(scanned % 5 == 0 || current == last) {
-            char progress[24];
+            char progress[28];
             eth_tester_progress_bar(progress, sizeof(progress), scanned, num_hosts);
             furi_string_printf(
                 app->ping_sweep_text,
@@ -2643,7 +2643,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
 
         /* Update progress */
         {
-            char progress[24];
+            char progress[28];
             eth_tester_progress_bar(progress, sizeof(progress), i + 1, port_count);
             furi_string_printf(
                 app->port_scan_text,
