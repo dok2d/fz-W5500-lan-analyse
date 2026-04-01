@@ -474,7 +474,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->text_box_about = text_box_alloc();
     text_box_set_font(app->text_box_about, TextBoxFontText);
     text_box_set_text(app->text_box_about,
-        "=== LAN Analyzer ===\n\n"
+        "[LAN Analyzer]\n\n"
         "Ethernet network analysis\n"
         "tool for Flipper Zero\n"
         "using W5500 SPI module.\n\n"
@@ -1252,7 +1252,7 @@ static void eth_tester_do_link_info(EthTesterApp* app) {
 
     furi_string_printf(
         app->link_info_text,
-        "=== Link Info ===\n"
+        "[Link Info]\n"
         "Link: %s\n"
         "Speed: %s\n"
         "Duplex: %s\n"
@@ -1772,7 +1772,7 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
         pkt_format_ip(dns_result.resolved_ip, ip_str);
         furi_string_printf(
             app->dns_text,
-            "=== DNS Lookup ===\n"
+            "[DNS Lookup]\n"
             "Host: %s\n"
             "DNS: %s\n\n"
             "Result: %s\n",
@@ -1782,7 +1782,7 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
     } else {
         furi_string_printf(
             app->dns_text,
-            "=== DNS Lookup ===\n"
+            "[DNS Lookup]\n"
             "Host: %s\n"
             "DNS: %s\n\n"
             "%s\n",
@@ -1827,7 +1827,7 @@ static void eth_tester_do_wol(EthTesterApp* app) {
     if(ok) {
         furi_string_printf(
             app->wol_text,
-            "=== Wake-on-LAN ===\n"
+            "[Wake-on-LAN]\n"
             "Target: %s\n\n"
             "Magic packet sent!\n"
             "Press Back to return.\n",
@@ -1835,7 +1835,7 @@ static void eth_tester_do_wol(EthTesterApp* app) {
     } else {
         furi_string_printf(
             app->wol_text,
-            "=== Wake-on-LAN ===\n"
+            "[Wake-on-LAN]\n"
             "Target: %s\n\n"
             "Failed to send!\n",
             mac_str);
@@ -1896,7 +1896,7 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
 
     furi_string_printf(
         app->traceroute_text,
-        "=== Traceroute ===\n"
+        "[Traceroute]\n"
         "Target: %s\n\n",
         target_str);
     eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
@@ -2038,7 +2038,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
 
     furi_string_printf(
         app->ping_sweep_text,
-        "=== Ping Sweep ===\n"
+        "[Ping Sweep]\n"
         "Range: %s\n"
         "Hosts: %d\n\n",
         app->ping_sweep_ip_input,
@@ -2071,7 +2071,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
         if(scanned % 5 == 0 || current == last) {
             furi_string_printf(
                 app->ping_sweep_text,
-                "=== Ping Sweep ===\n"
+                "[Ping Sweep]\n"
                 "Range: %s\n"
                 "Progress: %d/%d\n"
                 "Alive: %d\n\n%s",
@@ -2089,7 +2089,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
     /* Final results */
     furi_string_printf(
         app->ping_sweep_text,
-        "=== Ping Sweep ===\n"
+        "[Ping Sweep]\n"
         "Range: %s\n"
         "Scanned: %d\n"
         "Alive: %d\n\n"
@@ -2220,7 +2220,7 @@ static void eth_tester_do_discovery(EthTesterApp* app) {
     /* Format results */
     furi_string_printf(
         app->discovery_text,
-        "=== Discovery ===\n"
+        "[Discovery]\n"
         "Found %d device(s)\n\n",
         device_count);
 
@@ -2356,7 +2356,7 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
         stp_format_bpdu(&bpdu, bpdu_buf, sizeof(bpdu_buf));
         furi_string_cat_str(app->stp_vlan_text, bpdu_buf);
     } else {
-        furi_string_set(app->stp_vlan_text, "=== STP/VLAN ===\nNo BPDU detected.\n");
+        furi_string_set(app->stp_vlan_text, "[STP/VLAN]\nNo BPDU detected.\n");
     }
 
     furi_string_cat_str(app->stp_vlan_text, "\n--- VLANs ---\n");
@@ -2484,7 +2484,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
 
     furi_string_printf(
         app->port_scan_text,
-        "=== Port Scan ===\n"
+        "[Port Scan]\n"
         "Target: %s\n"
         "Ports: Top %d\n\n"
         "Scanning...\n",
@@ -2533,7 +2533,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
         /* Update progress */
         furi_string_printf(
             app->port_scan_text,
-            "=== Port Scan ===\n"
+            "[Port Scan]\n"
             "Target: %s\n"
             "Progress: %d/%d\n\n"
             "Open ports:\n%s",
@@ -2547,7 +2547,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
     /* Final results */
     furi_string_printf(
         app->port_scan_text,
-        "=== Port Scan ===\n"
+        "[Port Scan]\n"
         "Target: %s\n"
         "Scanned: %d ports\n\n"
         "Open: %d  Closed: %d\n"
@@ -2743,12 +2743,12 @@ static void eth_tester_do_stats(EthTesterApp* app) {
     PacketStats* s = &app->stats;
     furi_string_printf(
         app->stats_text,
-        "=== Packet Stats ===\n"
+        "[Packet Stats]\n"
         "Total: %lu\n"
         "Unicast: %lu\n"
         "Broadcast: %lu\n"
         "Multicast: %lu\n"
-        "\n=== By EtherType ===\n"
+        "\n[By EtherType]\n"
         "IPv4: %lu\n"
         "ARP: %lu\n"
         "IPv6: %lu\n"
