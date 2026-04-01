@@ -14,6 +14,8 @@
 #include "protocols/discovery.h"
 #include "protocols/stp_vlan.h"
 #include "protocols/history.h"
+#include "bridge/eth_bridge.h"
+#include "usb_eth/usb_eth.h"
 #include "utils/packet_utils.h"
 #include "utils/oui_lookup.h"
 
@@ -156,6 +158,7 @@ static void eth_tester_do_discovery(EthTesterApp* app);
 static void eth_tester_do_ping_sweep(EthTesterApp* app);
 static void eth_tester_do_ping_sweep_detect(EthTesterApp* app);
 static void eth_tester_do_stp_vlan(EthTesterApp* app);
+static void eth_tester_do_eth_bridge(EthTesterApp* app);
 static void eth_tester_history_populate(EthTesterApp* app);
 static void eth_tester_history_file_callback(void* context, uint32_t index);
 static void eth_tester_history_delete_callback(void* context, uint32_t index);
@@ -413,6 +416,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->submenu_cat_tools = submenu_alloc();
     submenu_add_item(app->submenu_cat_tools, "Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu_cat_tools, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_tools, "ETH Bridge", EthTesterMenuItemEthBridge, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu_cat_tools), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatTools, submenu_get_view(app->submenu_cat_tools));
 
@@ -520,6 +524,14 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->byte_input_mac_changer = byte_input_alloc();
     view_set_previous_callback(byte_input_get_view(app->byte_input_mac_changer), eth_tester_nav_back_tools);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMacChangerInput, byte_input_get_view(app->byte_input_mac_changer));
+
+    /* ETH Bridge view */
+    app->text_box_bridge = text_box_alloc();
+    text_box_set_font(app->text_box_bridge, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_bridge), eth_tester_nav_back_tools);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewEthBridge, text_box_get_view(app->text_box_bridge));
+    app->bridge_state = malloc(sizeof(EthBridgeState));
+    app->bridge_text = furi_string_alloc();
 
     /* Traceroute views */
     app->text_box_traceroute = text_box_alloc();
@@ -663,6 +675,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatDiag);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatTools);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewSettings);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewEthBridge);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_netinfo);
@@ -687,6 +700,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_input_free(app->text_input_port_scan);
     text_box_free(app->text_box_mac_changer);
     byte_input_free(app->byte_input_mac_changer);
+    text_box_free(app->text_box_bridge);
+    if(app->bridge_state) free(app->bridge_state);
     text_box_free(app->text_box_traceroute);
     text_input_free(app->text_input_traceroute);
     text_box_free(app->text_box_ping_sweep);
@@ -715,6 +730,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->ping_sweep_text);
     furi_string_free(app->discovery_text);
     furi_string_free(app->stp_vlan_text);
+    furi_string_free(app->bridge_text);
     /* history_text removed — history now uses submenu */
     furi_string_free(app->history_file_text);
 
@@ -904,6 +920,10 @@ static int32_t eth_tester_worker_fn(void* context) {
     case EthTesterMenuItemStpVlan:
         eth_tester_do_stp_vlan(app);
         eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
+        break;
+    case EthTesterMenuItemEthBridge:
+        eth_tester_do_eth_bridge(app);
+        eth_tester_update_view(app->text_box_bridge, app->bridge_text);
         break;
     case EthTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
@@ -1426,6 +1446,11 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             sizeof(app->cont_ping_ip_input),
             false);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewContPingInput);
+        break;
+
+    case EthTesterMenuItemEthBridge:
+        eth_tester_show_view(app, app->text_box_bridge, EthTesterViewEthBridge, app->bridge_text, "Starting ETH Bridge...\n");
+        eth_tester_worker_start(app, EthTesterMenuItemEthBridge, EthTesterViewEthBridge);
         break;
 
     case EthTesterMenuItemAbout:
@@ -3053,6 +3078,119 @@ static void eth_tester_save_and_notify(EthTesterApp* app, const char* type, Furi
     if(app->setting_sound) {
         notification_message(app->notifications, &sequence_success);
     }
+}
+
+/* ==================== ETH Bridge ==================== */
+
+static void eth_tester_do_eth_bridge(EthTesterApp* app) {
+    furi_string_reset(app->bridge_text);
+
+    /* Step 1: Initialize W5500 */
+    if(!eth_tester_ensure_w5500(app)) {
+        furi_string_set(app->bridge_text, "W5500 Not Found!\nCheck SPI wiring.\n");
+        if(app->setting_sound) notification_message(app->notifications, &sequence_error);
+        return;
+    }
+
+    /* Step 2: Check link */
+    if(!w5500_hal_get_link_status()) {
+        furi_string_set(app->bridge_text, "No LAN link!\nConnect Ethernet cable.\n");
+        if(app->setting_sound) notification_message(app->notifications, &sequence_error);
+        return;
+    }
+
+    /* Read PHY info for display */
+    bool link_up = false;
+    uint8_t speed = 0, duplex = 0;
+    w5500_hal_get_phy_info(&link_up, &speed, &duplex);
+
+    /* Step 3: Open MACRAW socket (promiscuous mode) */
+    if(!w5500_hal_open_macraw()) {
+        furi_string_set(app->bridge_text, "Failed to open MACRAW!\n");
+        if(app->setting_sound) notification_message(app->notifications, &sequence_error);
+        return;
+    }
+
+    /* Step 4: Initialize USB CDC-ECM */
+    furi_string_set(app->bridge_text, "Starting USB Network...\n");
+    eth_tester_update_view(app->text_box_bridge, app->bridge_text);
+
+    if(!usb_eth_init()) {
+        furi_string_set(app->bridge_text, "USB init failed!\n");
+        w5500_hal_close_macraw();
+        if(app->setting_sound) notification_message(app->notifications, &sequence_error);
+        return;
+    }
+
+    /* Step 5: Initialize bridge state */
+    eth_bridge_init(app->bridge_state);
+
+    furi_string_printf(app->bridge_text,
+        "=== ETH Bridge ===\n\n"
+        "USB:  Waiting...\n"
+        "LAN:  Link Up %s/%s\n\n"
+        "-> LAN: 0 frames\n"
+        "<- LAN: 0 frames\n"
+        "Errors: 0\n\n"
+        "Press Back to stop\n",
+        speed ? "100M" : "10M",
+        duplex ? "Full" : "Half");
+    eth_tester_update_view(app->text_box_bridge, app->bridge_text);
+
+    if(app->setting_sound) notification_message(app->notifications, &sequence_success);
+
+    /* Step 6: Bridge loop */
+    uint32_t update_tick = 0;
+    while(app->worker_running) {
+        eth_bridge_poll(app->bridge_state, app->frame_buf, 1518);
+
+        /* Update display every ~500ms */
+        update_tick++;
+        if((update_tick & 0xFF) == 0) {
+            EthBridgeState* bs = app->bridge_state;
+
+            const char* usb_status = bs->usb_connected ? "Connected" : "Waiting...";
+            const char* lan_status = bs->lan_link_up ? "Link Up" : "Link Down";
+
+            furi_string_printf(app->bridge_text,
+                "=== ETH Bridge ===\n\n"
+                "USB:  %s\n"
+                "LAN:  %s %s/%s\n\n"
+                "-> LAN: %lu frames\n"
+                "<- LAN: %lu frames\n"
+                "Errors: %lu\n\n"
+                "Press Back to stop\n",
+                usb_status,
+                lan_status,
+                speed ? "100M" : "10M",
+                duplex ? "Full" : "Half",
+                bs->frames_usb_to_eth,
+                bs->frames_eth_to_usb,
+                bs->errors);
+            eth_tester_update_view(app->text_box_bridge, app->bridge_text);
+        }
+
+        /* Small delay to prevent busy-looping but keep throughput */
+        furi_delay_us(100);
+    }
+
+    /* Cleanup */
+    usb_eth_deinit();
+    w5500_hal_close_macraw();
+
+    EthBridgeState* bs = app->bridge_state;
+    furi_string_printf(app->bridge_text,
+        "=== Bridge Stopped ===\n\n"
+        "-> LAN: %lu frames\n"
+        "<- LAN: %lu frames\n"
+        "Errors: %lu\n\n"
+        "USB restored.\n",
+        bs->frames_usb_to_eth,
+        bs->frames_eth_to_usb,
+        bs->errors);
+
+    FURI_LOG_I(TAG, "ETH Bridge stopped: USB->ETH=%lu ETH->USB=%lu err=%lu",
+        bs->frames_usb_to_eth, bs->frames_eth_to_usb, bs->errors);
 }
 
 /* ==================== Entry point ==================== */
