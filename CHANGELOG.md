@@ -1,13 +1,11 @@
-# Changelog
+# [1.2.0]
 
-## [1.2.0] - 2026
-
-### Changed
+## Changed
 - **Renamed**: appid changed from `eth_tester` to `lan_tester`; SD card data path is now `/ext/apps_data/lan_tester/`
 
-## [1.1.0] - 2026
+# [1.1.0]
 
-### Added
+## Added
 - **Custom DNS Server**: configurable DNS server in Settings (default: 8.8.8.8), overrides DHCP-provided DNS
 - **Ping Settings**: configurable ping count (1-100), timeout (500-10000ms), and continuous ping interval (200-5000ms) in Settings
 - **Traceroute DNS Resolve**: traceroute now accepts hostnames in addition to IP addresses, with automatic DNS resolution
@@ -15,18 +13,18 @@
 - **Packet Capture**: standalone PCAP traffic dump in Tools — capture raw Ethernet frames to .pcap file on SD card without ETH Bridge
 - **Interactive Host List**: discovered hosts from Ping Sweep and ARP Scan are now clickable — select a host to Ping, Continuous Ping, Traceroute, Port Scan, or Wake-on-LAN directly
 
-### Fixed
+## Fixed
 - **Continuous Ping graph**: graph now correctly fills from right edge to left; increased sample buffer from 100 to 128 to fill full screen width
 - **Continuous Ping back button**: Back now properly exits the continuous ping view (was stuck on screen after pressing Back)
 - **Ping Sweep / ARP Scan back button**: first Back press stops running scan and shows "Scan stopped by user"; second Back returns to Discovery menu (was: immediately navigated away, killing scan silently)
 
-### Changed
+## Changed
 - **Settings**: added Custom DNS, DNS Server IP, Ping Count, Ping Timeout, Continuous Ping Interval items
 - **Traceroute**: replaced IP-only keyboard with TextInput supporting both IPs and hostnames
 
-## [1.0.0] - 2025
+# [1.0.0]
 
-### Added
+## Added
 - **File Manager**: web-based file manager for Flipper's microSD card in Tools category
   - HTTP server on port 80 accessible from any browser on the LAN
   - Browse directories, download files, upload files, create folders, delete files/folders
@@ -34,11 +32,15 @@
   - Reliable TCP send layer with SEND_OK polling for W5500's non-blocking send()
   - Streams large file downloads in chunks; handles multipart/form-data uploads
 
-### Changed
+## Changed
 - **MAC Changer** moved from Tools to Settings
 - **Settings** now includes: Auto-save, Sound & vibro, Clear History, MAC Changer
+- **PXE Server**: auto-detect external DHCP when entering settings — if found, disable own DHCP and populate Server IP/Client IP/Subnet from detected network
+- **PXE Server**: boot file selector with cycling (left/right arrows) when multiple .kpxe/.efi/.pxe/.0 files found (up to 8)
+- **PXE Server**: settings UI reordered — Start PXE first, then DHCP toggle, Boot File, IPs, Help
+- **PXE Server**: IP fields auto-populated from external DHCP when available
 
-### Security
+## Security
 - **File Manager**: path traversal protection — reject `..` in all URL paths
 - **File Manager**: XSS prevention — HTML-escape filenames in directory listings
 - **File Manager**: random auth token per session, displayed on Flipper screen, required for all HTTP requests
@@ -48,18 +50,12 @@
 - **DNS**: validate response source IP matches expected DNS server
 - **MAC**: unique MAC address per device (random on first boot, persisted to SD)
 
-### Changed
-- **PXE Server**: auto-detect external DHCP when entering settings — if found, disable own DHCP and populate Server IP/Client IP/Subnet from detected network
-- **PXE Server**: boot file selector with cycling (left/right arrows) when multiple .kpxe/.efi/.pxe/.0 files found (up to 8)
-- **PXE Server**: settings UI reordered — Start PXE first, then DHCP toggle, Boot File, IPs, Help
-- **PXE Server**: IP fields auto-populated from external DHCP when available
-
-### Fixed
+## Fixed
 - Force-close HTTP socket on back/exit to prevent Flipper freeze (WIZnet send() has internal while(1) with no timeout)
 
-## [0.11.0] - 2025
+# [0.11.0]
 
-### Added
+## Added
 - **PXE Server**: minimal PXE boot server in Tools category
   - Configurable Server IP, Client IP, Subnet via IP Keyboard before start
   - Optional DHCP server (toggle ON/OFF; OFF = TFTP-only mode)
@@ -68,9 +64,9 @@
   - Real-time progress bar with block counters
   - Resets to idle after each transfer (multi-client sequential)
 
-## [0.10.0] - 2025
+# [0.10.0]
 
-### Added
+## Added
 - **ETH Bridge**: new tool that turns Flipper Zero into a USB-to-Ethernet bridge
   - Phone/PC connects via USB CDC-ECM, Flipper bridges traffic to LAN via W5500 MACRAW at Layer 2
   - Host transparently gets an IP from the LAN's DHCP server
@@ -80,9 +76,9 @@
 - New `usb_eth/` module: USB CDC-ECM device implementation using Flipper's FuriHalUsbInterface
 - New `bridge/` module: bidirectional Ethernet frame forwarding engine
 
-## [0.9.0] - 2025
+# [0.9.0]
 
-### Added
+## Added
 - **Continuous Ping**: real-time RTT graph with min/max/avg/loss stats, target IP displayed on screen
 - **DNS Lookup**: resolve hostnames via UDP DNS (A-record) using DHCP-provided DNS server
 - **Wake-on-LAN**: send magic packets to any MAC address via broadcast UDP
@@ -101,7 +97,7 @@
 - **ASCII progress bars**: visual `[####........] 45%` for Ping Sweep and Port Scan
 - **Smart IP defaults**: ping/traceroute inputs pre-populated with DHCP gateway
 
-### Changed
+## Changed
 - **DHCP caching**: single DHCP negotiation shared across all operations (was: repeated per scan)
 - **Compact output**: ARP scan shows 2 lines per host (was: 3), Statistics uses single-screen layout
 - **Compact headers**: `[Xxx]` instead of `=== Xxx ===` — saves one line per screen
@@ -112,13 +108,13 @@
 - **frame_buf moved to heap**: reduces static memory footprint by 1.6 KB
 - **Stack safety**: 2 KB history read buffer moved from stack to heap
 
-### Fixed
+## Fixed
 - History file TextBox scroll (was broken by input callback override)
 - Version mismatch between application.fam and About screen
 
-## [0.1.0] - 2025
+# [0.1.0]
 
-### Added
+## Added
 - **Link Info** view: PHY status, speed, duplex, MAC address, W5500 version check
 - **LLDP Listener**: passive IEEE 802.1AB neighbor discovery with full TLV parsing (Types 0-8, 127)
 - **CDP Listener**: Cisco Discovery Protocol parser with LLC/SNAP detection
