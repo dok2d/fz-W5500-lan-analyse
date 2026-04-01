@@ -8,7 +8,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Build](https://img.shields.io/badge/build-ufbt-yellow)
-![Version](https://img.shields.io/badge/version-0.10-brightgreen)
+![Version](https://img.shields.io/badge/version-1.0a-brightgreen)
 
 ---
 
@@ -30,10 +30,11 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | **STP/VLAN** | Passive BPDU listener + 802.1Q VLAN tag detection |
 | **Statistics** | Frame counters by type (unicast/broadcast/multicast) and EtherType |
 | **Wake-on-LAN** | Send magic packets to any MAC address |
-| **MAC Changer** | Randomize or set custom MAC, persisted to SD card |
 | **ETH Bridge** | USB-to-Ethernet bridge: phone/PC gets LAN access via Flipper (CDC-ECM), optional PCAP traffic dump to SD card |
+| **PXE Server** | Minimal PXE boot server with built-in DHCP + TFTP, boots .kpxe/.efi files from SD card |
+| **File Manager** | Web-based file manager: browse, download, upload, delete files on microSD via HTTP from any browser on the LAN |
 | **History** | All scan results auto-saved with timestamps, browsable and deletable |
-| **Settings** | Toggle auto-save and sound/vibro notifications, clear history |
+| **Settings** | Toggle auto-save and sound/vibro, clear history, MAC Changer (randomize or set custom MAC, persisted to SD) |
 
 ### UX Highlights
 
@@ -124,6 +125,8 @@ eth_tester/
 │   ├── discovery.c / .h        # mDNS + SSDP service discovery
 │   ├── stp_vlan.c / .h         # STP BPDU parser + 802.1Q VLAN detection
 │   ├── mac_changer.c / .h      # Random/custom MAC with SD persistence
+│   ├── pxe_server.c / .h      # PXE boot server (DHCP + TFTP)
+│   ├── file_manager.c / .h    # Web-based SD card file manager (HTTP server)
 │   └── history.c / .h          # Timestamped result storage on SD card
 │
 ├── utils/
@@ -166,13 +169,15 @@ eth_tester/
 
 ### Tools
 - **Wake-on-LAN** — send magic packet to wake a device by MAC address.
-- **MAC Changer** — generate random MAC or enter custom, saved to SD.
 - **ETH Bridge** — turns Flipper into a USB-to-Ethernet bridge. Phone/PC connects via USB (CDC-ECM), traffic is bridged to LAN via W5500 at Layer 2. The host gets an IP from the LAN's DHCP server transparently. Live stats show frame counts and link status. Press **OK** to start/stop PCAP traffic recording to SD card (Wireshark-compatible `.pcap` files saved to `apps_data/eth_tester/pcap/`). Press Back to stop and restore USB.
+- **PXE Server** — minimal PXE boot server. Configure Server/Client IP and subnet, toggle built-in DHCP server. Serves .kpxe/.efi boot files from SD card (`apps_data/eth_tester/pxe/`) via TFTP. Connect Flipper directly to target machine to network-boot it.
+- **File Manager** — starts an HTTP server on port 80. Open `http://<flipper-ip>/` in any browser on the LAN to browse the microSD card, download/upload files, create folders, and delete items. Flipper gets its IP via DHCP; the address is displayed on screen.
 
 ### Settings
 - **Auto-save results** — ON/OFF, controls automatic history saving.
 - **Sound & vibro** — ON/OFF, controls LED/vibro notifications.
 - **Clear History** — delete all saved result files.
+- **MAC Changer** — generate random MAC or enter custom, saved to SD.
 
 ## Technical Details
 
@@ -228,10 +233,11 @@ MIT License. See [LICENSE](LICENSE) for details.
 | **STP/VLAN** | Пассивный захват BPDU + определение 802.1Q VLAN-тегов |
 | **Статистика** | Счётчики фреймов по типу и EtherType |
 | **Wake-on-LAN** | Отправка magic-пакетов на любой MAC-адрес |
-| **MAC Changer** | Рандомизация или ручной ввод MAC, сохранение на SD |
 | **ETH Bridge** | USB-Ethernet мост: телефон/ПК получает доступ в LAN через Flipper (CDC-ECM), опциональный PCAP-дамп трафика на SD |
+| **PXE Server** | Минимальный PXE-сервер с DHCP + TFTP, загрузка .kpxe/.efi файлов с SD-карты |
+| **File Manager** | Веб-менеджер файлов: просмотр, скачивание, загрузка, удаление файлов на microSD через HTTP из любого браузера в сети |
 | **История** | Все результаты автосохраняются с метками времени, просмотр и удаление |
-| **Настройки** | Переключение автосохранения и звука/вибрации, очистка истории |
+| **Настройки** | Автосохранение, звук/вибрация, очистка истории, MAC Changer (смена MAC с сохранением на SD) |
 
 ### UX-особенности
 
@@ -322,6 +328,8 @@ eth_tester/
 │   ├── discovery.c / .h        # mDNS + SSDP обнаружение
 │   ├── stp_vlan.c / .h         # STP BPDU + 802.1Q VLAN
 │   ├── mac_changer.c / .h      # Смена MAC с сохранением на SD
+│   ├── pxe_server.c / .h      # PXE-сервер (DHCP + TFTP)
+│   ├── file_manager.c / .h    # Веб-менеджер файлов SD (HTTP-сервер)
 │   └── history.c / .h          # Хранение результатов на SD
 │
 ├── utils/
@@ -364,13 +372,15 @@ eth_tester/
 
 ### Tools
 - **Wake-on-LAN** — отправка magic-пакета для пробуждения устройства по MAC.
-- **MAC Changer** — рандомный или пользовательский MAC, сохраняется на SD.
 - **ETH Bridge** — превращает Flipper в USB-Ethernet мост. Телефон/ПК подключается по USB (CDC-ECM), трафик прозрачно передаётся в LAN через W5500 на уровне L2. Хост получает IP от DHCP-сервера сети. На экране отображаются счётчики фреймов и статус соединений. Нажмите **OK** для старта/остановки записи PCAP-дампа на SD-карту (файлы `.pcap`, совместимые с Wireshark, сохраняются в `apps_data/eth_tester/pcap/`). Нажмите Back для остановки и восстановления USB.
+- **PXE Server** — минимальный PXE-сервер. Настройка IP сервера/клиента и подсети, встроенный DHCP-сервер (вкл/выкл). Раздаёт .kpxe/.efi файлы с SD-карты (`apps_data/eth_tester/pxe/`) по TFTP. Подключите Flipper напрямую к целевой машине для сетевой загрузки.
+- **File Manager** — запускает HTTP-сервер на порту 80. Откройте `http://<ip-flipper>/` в любом браузере в сети для просмотра microSD-карты, скачивания/загрузки файлов, создания папок и удаления. Flipper получает IP по DHCP; адрес отображается на экране.
 
 ### Settings
 - **Auto-save results** — вкл/выкл автосохранение результатов в историю.
 - **Sound & vibro** — вкл/выкл LED/вибро уведомления.
 - **Clear History** — удалить все сохранённые результаты.
+- **MAC Changer** — генерация случайного MAC или ручной ввод, сохраняется на SD.
 
 ## Технические детали
 

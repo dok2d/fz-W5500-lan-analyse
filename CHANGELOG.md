@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0a] - 2025
+
+### Added
+- **File Manager**: web-based file manager for Flipper's microSD card in Tools category
+  - HTTP server on port 80 accessible from any browser on the LAN
+  - Browse directories, download files, upload files, create folders, delete files/folders
+  - Dark theme web UI optimized for mobile and desktop
+  - Reliable TCP send layer with SEND_OK polling for W5500's non-blocking send()
+  - Streams large file downloads in chunks; handles multipart/form-data uploads
+
+### Changed
+- **MAC Changer** moved from Tools to Settings
+- **Settings** now includes: Auto-save, Sound & vibro, Clear History, MAC Changer
+
+### Fixed
+- Force-close HTTP socket on back/exit to prevent Flipper freeze (WIZnet send() has internal while(1) with no timeout)
+
 ## [0.11.0] - 2025
 
 ### Added

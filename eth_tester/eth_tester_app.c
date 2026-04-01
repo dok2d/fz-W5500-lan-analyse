@@ -15,6 +15,7 @@
 #include "protocols/stp_vlan.h"
 #include "protocols/history.h"
 #include "protocols/pxe_server.h"
+#include "protocols/file_manager.h"
 #include "bridge/eth_bridge.h"
 #include "usb_eth/usb_eth.h"
 #include "utils/packet_utils.h"
@@ -164,9 +165,12 @@ static void eth_tester_do_ping_sweep_detect(EthTesterApp* app);
 static void eth_tester_do_stp_vlan(EthTesterApp* app);
 static void eth_tester_do_eth_bridge(EthTesterApp* app);
 static void eth_tester_do_pxe_server(EthTesterApp* app);
+static void eth_tester_do_file_manager(EthTesterApp* app);
 static void eth_tester_history_populate(EthTesterApp* app);
 static void eth_tester_history_file_callback(void* context, uint32_t index);
 static void eth_tester_history_delete_callback(void* context, uint32_t index);
+static void eth_tester_mac_changer_input_callback(void* context);
+static void eth_tester_stop_worker_on_back(void);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static bool eth_tester_save_results(const char* filename, const char* content);
 static void eth_tester_save_and_notify(EthTesterApp* app, const char* type, FuriString* text);
@@ -410,8 +414,7 @@ static void settings_sound_changed(VariableItem* item) {
 
 static void settings_enter_callback(void* context, uint32_t index) {
     EthTesterApp* app = context;
-    if(index == 2) { /* "Clear History" is the 3rd item (index 2) */
-        /* Delete all history files */
+    if(index == 2) { /* "Clear History" */
         HistoryState* hs = malloc(sizeof(HistoryState));
         if(hs) {
             uint16_t count = history_list(hs);
@@ -423,10 +426,27 @@ static void settings_enter_callback(void* context, uint32_t index) {
         if(app->setting_sound) {
             notification_message(app->notifications, &sequence_success);
         }
+    } else if(index == 3) { /* "MAC Changer" */
+        mac_changer_generate_random(app->mac_changer_input);
+        byte_input_set_header_text(app->byte_input_mac_changer, "New MAC (edit or OK):");
+        byte_input_set_result_callback(
+            app->byte_input_mac_changer,
+            eth_tester_mac_changer_input_callback,
+            NULL,
+            app,
+            app->mac_changer_input,
+            6);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMacChangerInput);
     }
 }
 
 /* ==================== PXE Settings callbacks ==================== */
+
+static uint32_t eth_tester_nav_back_settings(void* context) {
+    UNUSED(context);
+    eth_tester_stop_worker_on_back();
+    return EthTesterViewSettings;
+}
 
 static uint32_t eth_tester_nav_back_pxe_settings(void* context) {
     UNUSED(context);
@@ -643,9 +663,9 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Category: Tools */
     app->submenu_cat_tools = submenu_alloc();
     submenu_add_item(app->submenu_cat_tools, "Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_tools, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu_cat_tools, "ETH Bridge", EthTesterMenuItemEthBridge, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu_cat_tools, "PXE Server", EthTesterMenuItemPxeServer, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_tools, "File Manager", EthTesterMenuItemFileManager, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu_cat_tools), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatTools, submenu_get_view(app->submenu_cat_tools));
 
@@ -738,11 +758,11 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* MAC Changer views */
     app->text_box_mac_changer = text_box_alloc();
     text_box_set_font(app->text_box_mac_changer, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_mac_changer), eth_tester_nav_back_tools);
+    view_set_previous_callback(text_box_get_view(app->text_box_mac_changer), eth_tester_nav_back_settings);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMacChanger, text_box_get_view(app->text_box_mac_changer));
 
     app->byte_input_mac_changer = byte_input_alloc();
-    view_set_previous_callback(byte_input_get_view(app->byte_input_mac_changer), eth_tester_nav_back_tools);
+    view_set_previous_callback(byte_input_get_view(app->byte_input_mac_changer), eth_tester_nav_back_settings);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMacChangerInput, byte_input_get_view(app->byte_input_mac_changer));
 
     /* ETH Bridge view (custom View with draw_callback, no TextBox) */
@@ -877,6 +897,13 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     variable_item_list_set_enter_callback(
         app->pxe_settings_list, pxe_settings_enter_callback, app);
 
+    /* File Manager views */
+    app->file_manager_text = furi_string_alloc();
+    app->text_box_file_manager = text_box_alloc();
+    text_box_set_font(app->text_box_file_manager, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_file_manager), eth_tester_nav_back_tools);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewFileManager, text_box_get_view(app->text_box_file_manager));
+
     /* Traceroute views */
     app->text_box_traceroute = text_box_alloc();
     text_box_set_font(app->text_box_traceroute, TextBoxFontText);
@@ -930,7 +957,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         "discover devices,\n"
         "analyze DHCP/LLDP/CDP,\n"
         "detect VLANs and STP.\n\n"
-        "v0.9 | by dok2d\n"
+        "v1.0a | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(text_box_get_view(app->text_box_about), eth_tester_navigation_submenu_callback);
@@ -954,6 +981,11 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     VariableItem* item_clear = variable_item_list_add(
         app->settings_list, "Clear History", 0, NULL, app);
     variable_item_set_current_value_text(item_clear, "Press OK");
+
+    /* MAC Changer — opens byte input for MAC address */
+    variable_item_list_add(
+        app->settings_list, "MAC Changer", 0, NULL, app);
+
     variable_item_list_set_enter_callback(
         app->settings_list, settings_enter_callback, app);
 
@@ -1011,6 +1043,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeServer);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeSettings);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeHelp);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewFileManager);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_netinfo);
@@ -1037,6 +1070,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_box_free(app->text_box_pxe);
     text_box_free(app->text_box_pxe_help);
     variable_item_list_free(app->pxe_settings_list);
+    text_box_free(app->text_box_file_manager);
     text_box_free(app->text_box_traceroute);
     text_box_free(app->text_box_ping_sweep);
     ip_keyboard_free(app->ip_keyboard);
@@ -1067,6 +1101,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     /* history_text removed — history now uses submenu */
     furi_string_free(app->history_file_text);
     furi_string_free(app->pxe_text);
+    furi_string_free(app->file_manager_text);
 
     /* Stop and free DHCP timer */
     furi_timer_stop(app->dhcp_timer);
@@ -1119,6 +1154,14 @@ static void eth_tester_stop_worker_on_back(void) {
             submenu_set_header(g_app->submenu, "Stopping...");
         }
         g_app->worker_running = false;
+        /* Force-close HTTP socket to unblock WIZnet's blocking send()/recv().
+         * Without this, the worker thread hangs in send()'s internal while(1)
+         * loop waiting for TX buffer free space, and furi_thread_join() blocks
+         * forever causing the Flipper to freeze. Socket 3 is shared across
+         * multiple tools that never run concurrently, so this is safe. */
+        if(g_app->worker_op == EthTesterMenuItemFileManager) {
+            close(FILEMGR_HTTP_SOCKET);
+        }
         eth_tester_update_menu_header(g_app);
     }
 }
@@ -1262,6 +1305,9 @@ static int32_t eth_tester_worker_fn(void* context) {
     case EthTesterMenuItemPxeServer:
         eth_tester_do_pxe_server(app);
         break;
+    case EthTesterMenuItemFileManager:
+        eth_tester_do_file_manager(app);
+        break;
     case EthTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
     case WORKER_OP_PING_SWEEP_DETECT:
@@ -1276,6 +1322,10 @@ static int32_t eth_tester_worker_fn(void* context) {
 static void eth_tester_worker_stop(EthTesterApp* app) {
     if(app->worker_thread) {
         app->worker_running = false;
+        /* Force-close file manager socket to unblock blocking send/recv */
+        if(app->worker_op == EthTesterMenuItemFileManager) {
+            close(FILEMGR_HTTP_SOCKET);
+        }
         furi_thread_join(app->worker_thread);
         furi_thread_free(app->worker_thread);
         app->worker_thread = NULL;
@@ -1286,6 +1336,9 @@ static void eth_tester_worker_start(EthTesterApp* app, uint32_t op, EthTesterVie
     /* If old worker is done, clean it up (non-blocking) */
     if(app->worker_thread) {
         app->worker_running = false;
+        if(app->worker_op == EthTesterMenuItemFileManager) {
+            close(FILEMGR_HTTP_SOCKET);
+        }
         if(furi_thread_get_state(app->worker_thread) == FuriThreadStateStopped) {
             furi_thread_join(app->worker_thread);
             furi_thread_free(app->worker_thread);
@@ -1735,17 +1788,7 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemMacChanger:
-        /* Pre-fill with random MAC, user can edit before confirming */
-        mac_changer_generate_random(app->mac_changer_input);
-        byte_input_set_header_text(app->byte_input_mac_changer, "New MAC (edit or OK):");
-        byte_input_set_result_callback(
-            app->byte_input_mac_changer,
-            eth_tester_mac_changer_input_callback,
-            NULL,
-            app,
-            app->mac_changer_input,
-            6);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMacChangerInput);
+        /* Now handled via Settings; kept here for safety */
         break;
 
     case EthTesterMenuItemPortScanFull:
@@ -1804,6 +1847,12 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
     case EthTesterMenuItemPxeServer:
         pxe_settings_refresh_boot_file(app);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeSettings);
+        break;
+
+    case EthTesterMenuItemFileManager:
+        furi_string_set(app->file_manager_text, "Starting File Manager...\n");
+        text_box_set_text(app->text_box_file_manager, furi_string_get_cstr(app->file_manager_text));
+        eth_tester_worker_start(app, EthTesterMenuItemFileManager, EthTesterViewFileManager);
         break;
 
     case EthTesterMenuItemAbout:
@@ -3693,6 +3742,87 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
         "[PXE Stopped]\nDHCP: %lu disc, %lu req\nTFTP: %lu req, %lu blk\nErr: %lu\n",
         state.dhcp_discovers, state.dhcp_requests,
         state.tftp_requests, state.tftp_blocks_sent, state.tftp_errors);
+    if(app->setting_sound) notification_message(app->notifications, &sequence_success);
+}
+
+/* ==================== File Manager ==================== */
+
+static void eth_tester_do_file_manager(EthTesterApp* app) {
+    FuriString* out = app->file_manager_text;
+    furi_string_reset(out);
+
+    /* Step 1: Init W5500 */
+    if(!eth_tester_ensure_w5500(app)) {
+        furi_string_cat(out, "[File Manager] W5500 Not Found!\nCheck SPI wiring.\n");
+        return;
+    }
+
+    /* Step 2: Check link */
+    if(!w5500_hal_get_link_status()) {
+        furi_string_cat(out, "[File Manager] No LAN link!\nConnect Ethernet cable.\n");
+        return;
+    }
+
+    /* Step 3: Run DHCP to get IP */
+    furi_string_set(out, "[File Manager]\nRunning DHCP...\n");
+    eth_tester_update_view(app->text_box_file_manager, out);
+
+    if(!eth_tester_ensure_dhcp(app)) {
+        furi_string_set(out, "[File Manager]\nDHCP failed!\n");
+        return;
+    }
+
+    /* Step 5: Start HTTP server */
+    FileManagerState fm_state;
+    if(!file_manager_start(&fm_state)) {
+        furi_string_cat(out, "[File Manager]\nFailed to start HTTP!\n");
+        return;
+    }
+
+    /* Step 6: Show compact status (fits 128x64 screen without scrolling) */
+    furi_string_printf(out,
+        "[File Manager] Running\n"
+        "http://%d.%d.%d.%d/\n"
+        "Req:0 Tx:0 Rx:0\n"
+        "\n"
+        "Press BACK to stop.",
+        app->dhcp_ip[0], app->dhcp_ip[1],
+        app->dhcp_ip[2], app->dhcp_ip[3]);
+    eth_tester_update_view(app->text_box_file_manager, out);
+
+    /* Step 7: Main loop */
+    uint32_t last_status = furi_get_tick();
+    while(app->worker_running && fm_state.running) {
+        file_manager_poll(&fm_state, app->frame_buf, 1024);
+
+        /* Update status every 2 seconds */
+        if(furi_get_tick() - last_status >= 2000) {
+            last_status = furi_get_tick();
+            furi_string_printf(out,
+                "[File Manager] Running\n"
+                "http://%d.%d.%d.%d/\n"
+                "Req:%lu Tx:%lu Rx:%lu\n"
+                "%s\n"
+                "Press BACK to stop.",
+                app->dhcp_ip[0], app->dhcp_ip[1],
+                app->dhcp_ip[2], app->dhcp_ip[3],
+                (unsigned long)fm_state.requests_served,
+                (unsigned long)fm_state.bytes_sent,
+                (unsigned long)fm_state.bytes_received,
+                fm_state.errors ? "Errors!" : "");
+            eth_tester_update_view(app->text_box_file_manager, out);
+        }
+    }
+
+    /* Cleanup */
+    file_manager_stop(&fm_state);
+
+    furi_string_printf(out,
+        "[File Manager] Stopped\n"
+        "Req:%lu Tx:%lu Rx:%lu",
+        (unsigned long)fm_state.requests_served,
+        (unsigned long)fm_state.bytes_sent,
+        (unsigned long)fm_state.bytes_received);
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 }
 
