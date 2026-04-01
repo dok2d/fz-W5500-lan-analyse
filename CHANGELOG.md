@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.12.0] - 2025
+## [1.0a] - 2025
 
 ### Added
 - **File Manager**: web-based file manager for Flipper's microSD card in Tools category
