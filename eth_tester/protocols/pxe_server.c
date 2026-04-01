@@ -316,8 +316,7 @@ static void pxe_tftp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
                     sendto(PXE_TFTP_SOCKET, buf, err_len, req_ip, req_port);
                     state->tftp_errors++;
                     FURI_LOG_W(TAG, "TFTP path traversal rejected: %s", filename);
-                    break; /* exit the if(len >= 4) block */
-                }
+                } else {
                 FURI_LOG_I(TAG, "TFTP RRQ: %s from %d.%d.%d.%d:%d",
                     filename, req_ip[0], req_ip[1], req_ip[2], req_ip[3], req_port);
 
@@ -366,6 +365,7 @@ static void pxe_tftp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
                     FURI_LOG_I(TAG, "TFTP transfer started: %s (%lu bytes)",
                         filename, state->tftp.file_size);
                 }
+                } /* end else (safe path) */
             }
         }
     }
