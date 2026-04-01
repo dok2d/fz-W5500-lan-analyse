@@ -147,6 +147,8 @@ static uint32_t eth_tester_navigation_submenu_callback(void* context);
 static uint32_t eth_tester_navigation_history_callback(void* context);
 static uint32_t eth_tester_nav_back_netinfo(void* context);
 static uint32_t eth_tester_nav_back_discovery(void* context);
+static uint32_t eth_tester_nav_back_ping_sweep(void* context);
+static uint32_t eth_tester_nav_back_arp_scan(void* context);
 static uint32_t eth_tester_nav_back_diag(void* context);
 static uint32_t eth_tester_nav_back_tools(void* context);
 static bool eth_tester_nav_event_cb(void* context);
@@ -774,7 +776,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
 
     app->text_box_arp = text_box_alloc();
     text_box_set_font(app->text_box_arp, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_arp), eth_tester_nav_back_discovery);
+    view_set_previous_callback(text_box_get_view(app->text_box_arp), eth_tester_nav_back_arp_scan);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewArpScan, text_box_get_view(app->text_box_arp));
 
     app->text_box_dhcp = text_box_alloc();
@@ -1015,7 +1017,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Ping Sweep views */
     app->text_box_ping_sweep = text_box_alloc();
     text_box_set_font(app->text_box_ping_sweep, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_ping_sweep), eth_tester_nav_back_discovery);
+    view_set_previous_callback(text_box_get_view(app->text_box_ping_sweep), eth_tester_nav_back_ping_sweep);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPingSweep, text_box_get_view(app->text_box_ping_sweep));
 
     /* Ping sweep defaults to empty — auto-detected from DHCP at scan time */
@@ -1282,6 +1284,36 @@ static uint32_t eth_tester_nav_back_netinfo(void* context) {
 
 static uint32_t eth_tester_nav_back_discovery(void* context) {
     UNUSED(context);
+    eth_tester_stop_worker_on_back();
+    return EthTesterViewCatDiscovery;
+}
+
+static uint32_t eth_tester_nav_back_ping_sweep(void* context) {
+    UNUSED(context);
+    if(g_app && g_app->worker_thread &&
+       furi_thread_get_state(g_app->worker_thread) != FuriThreadStateStopped &&
+       g_app->worker_op == EthTesterMenuItemPingSweep) {
+        /* Scan running: stop it but stay on results screen */
+        g_app->worker_running = false;
+        furi_string_cat_printf(g_app->ping_sweep_text, "\nScan stopped by user.\n");
+        eth_tester_update_view(g_app->text_box_ping_sweep, g_app->ping_sweep_text);
+        return EthTesterViewPingSweep;
+    }
+    eth_tester_stop_worker_on_back();
+    return EthTesterViewCatDiscovery;
+}
+
+static uint32_t eth_tester_nav_back_arp_scan(void* context) {
+    UNUSED(context);
+    if(g_app && g_app->worker_thread &&
+       furi_thread_get_state(g_app->worker_thread) != FuriThreadStateStopped &&
+       g_app->worker_op == EthTesterMenuItemArpScan) {
+        /* Scan running: stop it but stay on results screen */
+        g_app->worker_running = false;
+        furi_string_cat_printf(g_app->arp_text, "\nScan stopped by user.\n");
+        eth_tester_update_view(g_app->text_box_arp, g_app->arp_text);
+        return EthTesterViewArpScan;
+    }
     eth_tester_stop_worker_on_back();
     return EthTesterViewCatDiscovery;
 }
