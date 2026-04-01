@@ -126,7 +126,7 @@ static void lan_tester_settings_load(LanTesterApp* app) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);
     if(storage_file_open(file, SETTINGS_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
-        char buf[256];
+        char buf[384];
         uint16_t read = storage_file_read(file, buf, sizeof(buf) - 1);
         buf[read] = '\0';
         storage_file_close(file);
@@ -919,6 +919,9 @@ static void settings_enter_callback(void* context, uint32_t index) {
             app->autotest_dns_host,
             sizeof(app->autotest_dns_host),
             false);
+        /* Override back navigation to return to Settings (not Diagnostics) */
+        view_set_previous_callback(
+            text_input_get_view(app->text_input_dns), lan_tester_nav_back_settings);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewDnsInput);
     } else if(index == LanTesterSettingsItemAbout) {
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewAbout);
@@ -2875,6 +2878,9 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
             app->dns_hostname_input,
             sizeof(app->dns_hostname_input),
             false);
+        /* Restore back navigation to Diagnostics (may have been changed by AT settings) */
+        view_set_previous_callback(
+            text_input_get_view(app->text_input_dns), lan_tester_nav_back_diag);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewDnsInput);
         break;
 
@@ -5288,12 +5294,11 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
 
             /* Step 2: DHCP (Socket 1 — no conflict with LLDP) */
             if(!w5500_hal_get_link_status() || !app->autotest_running) {
-                /* Wait for LLDP thread to finish before bailing */
-                app->autotest_running = false;
+                /* Clean up LLDP thread before bailing */
+                app->autotest_lldp_done = false; /* signal thread to stop via autotest_running */
                 furi_thread_join(app->autotest_lldp_thread);
                 furi_thread_free(app->autotest_lldp_thread);
                 app->autotest_lldp_thread = NULL;
-                app->autotest_running = true;
                 furi_string_free(body);
                 state = AutoTestStateIdle;
                 continue;
@@ -5503,6 +5508,13 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                 furi_delay_ms(200);
             }
         }
+    }
+
+    /* Safety cleanup: join LLDP thread if still running (e.g. user pressed Back mid-test) */
+    if(app->autotest_lldp_thread) {
+        furi_thread_join(app->autotest_lldp_thread);
+        furi_thread_free(app->autotest_lldp_thread);
+        app->autotest_lldp_thread = NULL;
     }
 }
 
