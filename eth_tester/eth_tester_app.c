@@ -41,6 +41,7 @@
 
 /* Custom events sent from worker to main thread */
 #define CUSTOM_EVENT_PING_SWEEP_READY 1
+#define CUSTOM_EVENT_HISTORY_DELETE 2
 
 /* Global app pointer for navigation callbacks (single-instance app) */
 static EthTesterApp* g_app = NULL;
@@ -213,6 +214,18 @@ static bool cont_ping_input_callback(InputEvent* event, void* context) {
         if(app->ping_graph) {
             app->ping_graph->running = false;
         }
+        return true;
+    }
+
+    return false;
+}
+
+/* History file view: long-press OK to delete */
+static bool history_file_input_callback(InputEvent* event, void* context) {
+    EthTesterApp* app = context;
+
+    if(event->type == InputTypeLong && event->key == InputKeyOk) {
+        view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_HISTORY_DELETE);
         return true;
     }
 
@@ -446,6 +459,8 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->text_box_history_file = text_box_alloc();
     text_box_set_font(app->text_box_history_file, TextBoxFontText);
     view_set_previous_callback(text_box_get_view(app->text_box_history_file), eth_tester_navigation_history_callback);
+    view_set_input_callback(text_box_get_view(app->text_box_history_file), history_file_input_callback);
+    view_set_context(text_box_get_view(app->text_box_history_file), app);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistoryFile, text_box_get_view(app->text_box_history_file));
 
     /* STP/VLAN Detection view */
@@ -626,6 +641,19 @@ static bool eth_tester_custom_event_cb(void* context, uint32_t event) {
             sizeof(app->ping_sweep_ip_input),
             false);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPingSweepInput);
+        return true;
+    }
+
+    if(event == CUSTOM_EVENT_HISTORY_DELETE) {
+        /* Delete currently viewed history file */
+        if(app->history_state && app->history_selected < app->history_state->file_count) {
+            const char* filename = app->history_state->files[app->history_selected].filename;
+            history_delete_file(filename);
+            notification_message(app->notifications, &sequence_success);
+            /* Refresh history list and go back */
+            eth_tester_history_populate(app);
+            view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewHistory);
+        }
         return true;
     }
 
@@ -2399,11 +2427,13 @@ static void eth_tester_history_file_callback(void* context, uint32_t index) {
 
     if(!app->history_state || index >= app->history_state->file_count) return;
 
+    app->history_selected = index;
     const char* filename = app->history_state->files[index].filename;
 
     char buf[2048];
     if(history_read_file(filename, buf, sizeof(buf))) {
         furi_string_set(app->history_file_text, buf);
+        furi_string_cat_str(app->history_file_text, "\n[Hold OK to delete]\n");
     } else {
         furi_string_printf(app->history_file_text, "Failed to read:\n%s\n", filename);
     }

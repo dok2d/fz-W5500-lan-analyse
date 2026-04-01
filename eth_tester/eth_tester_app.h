@@ -113,6 +113,7 @@ struct EthTesterApp {
     Submenu* submenu_history;
     TextBox* text_box_history_file;
     HistoryState* history_state;
+    uint16_t history_selected; /* index of currently viewed file */
     TextBox* text_box_about;
     NotificationApp* notifications;
 
