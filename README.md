@@ -8,6 +8,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Build](https://img.shields.io/badge/build-ufbt-yellow)
+![Version](https://img.shields.io/badge/version-0.9-brightgreen)
 
 ---
 
@@ -16,13 +17,31 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | Feature | Description |
 |---|---|
 | **Link Info** | PHY link status, speed (10/100 Mbps), duplex (Half/Full), MAC address, W5500 version check |
-| **LLDP Listener** | Passive IEEE 802.1AB neighbor discovery --- system name, port ID, management IP, VLAN, capabilities |
-| **CDP Listener** | Cisco Discovery Protocol parsing --- device ID, platform, software version, native VLAN, duplex |
-| **ARP Scanner** | Active subnet scan with batch requests, OUI vendor lookup (~120 vendors), duplicate detection |
 | **DHCP Analyzer** | Discover-only analysis (no IP lease taken), option fingerprinting, full offer parsing |
-| **ICMP Ping** | Echo request/reply to any IP (custom input) with RTT measurement |
-| **Packet Statistics** | Frame counters by type (unicast/broadcast/multicast) and EtherType (IPv4/ARP/IPv6/LLDP/CDP) |
-| **SD Card Export** | All scan results saved to `/ext/apps_data/eth_tester/` as plain text |
+| **ARP Scanner** | Active subnet scan with batch requests, OUI vendor lookup (~120 vendors), duplicate detection |
+| **Ping** | Echo request/reply to any IP with RTT measurement (4 pings, 3s timeout) |
+| **Continuous Ping** | Real-time RTT graph with min/max/avg and packet loss percentage |
+| **DNS Lookup** | Resolve hostnames via UDP DNS using DHCP-provided DNS server |
+| **Traceroute** | ICMP-based hop-by-hop path discovery with per-hop RTT |
+| **Ping Sweep** | ICMP sweep of an entire subnet, CIDR auto-detected from DHCP |
+| **Port Scanner** | TCP connect scan with Top-20 (quick) and Top-100 (full) presets |
+| **LLDP/CDP** | Passive IEEE 802.1AB & Cisco CDP neighbor discovery with full TLV parsing |
+| **mDNS/SSDP** | Discover services and devices via multicast DNS and UPnP/SSDP |
+| **STP/VLAN** | Passive BPDU listener + 802.1Q VLAN tag detection |
+| **Statistics** | Frame counters by type (unicast/broadcast/multicast) and EtherType |
+| **Wake-on-LAN** | Send magic packets to any MAC address |
+| **MAC Changer** | Randomize or set custom MAC, persisted to SD card |
+| **History** | All scan results auto-saved with timestamps, browsable and deletable |
+| **Settings** | Toggle auto-save and sound/vibro notifications, clear history |
+
+### UX Highlights
+
+- **Hierarchical menu**: features grouped into Network Info, Discovery, Diagnostics, Tools
+- **Link status in header**: see UP/DOWN, speed, duplex without entering Link Info
+- **DHCP caching**: single negotiation shared across all operations — no repeated 15s waits
+- **Visual progress**: countdown timers for listeners, ASCII progress bars for scans
+- **LED/vibro feedback**: green blink on success, red on error (optional, toggle in Settings)
+- **Smart defaults**: IP inputs pre-populated with DHCP gateway
 
 ## Hardware
 
@@ -81,7 +100,16 @@ eth_tester/
 │   ├── cdp.c / cdp.h           # Cisco CDP parser (LLC/SNAP)
 │   ├── arp_scan.c / arp_scan.h  # ARP request builder & reply parser
 │   ├── dhcp_discover.c / .h     # DHCP Discover builder & Offer parser
-│   └── icmp.c / icmp.h         # ICMP Echo (ping) via IPRAW
+│   ├── icmp.c / icmp.h         # ICMP Echo (ping) via IPRAW
+│   ├── dns_lookup.c / .h       # DNS A-record resolver via UDP
+│   ├── wol.c / .h              # Wake-on-LAN magic packet
+│   ├── port_scan.c / .h        # TCP connect port scanner
+│   ├── traceroute.c / .h       # ICMP traceroute with TTL
+│   ├── ping_graph.c / .h       # Ring buffer RTT graph for continuous ping
+│   ├── discovery.c / .h        # mDNS + SSDP service discovery
+│   ├── stp_vlan.c / .h         # STP BPDU parser + 802.1Q VLAN detection
+│   ├── mac_changer.c / .h      # Random/custom MAC with SD persistence
+│   └── history.c / .h          # Timestamped result storage on SD card
 │
 ├── utils/
 │   ├── oui_lookup.c / .h       # MAC → Vendor (top ~120 OUI prefixes)
@@ -99,32 +127,44 @@ eth_tester/
 1. Connect the W5500 module to Flipper Zero using the wiring diagram above
 2. Plug an Ethernet cable into the W5500's RJ45 port
 3. Open **GPIO → LAN Tester** on the Flipper
-4. Select a function from the menu:
+4. The menu header shows link status (e.g. `LAN [UP 100M FD]`)
+5. Select a category and then a tool:
 
-### Link Info
-Instantly shows link status, negotiated speed and duplex, MAC address. Use this first to verify your hardware connection.
+### Network Info
+- **Link Info** — link status, speed, duplex, MAC. Use first to verify hardware.
+- **DHCP Analyze** — sends Discover, parses Offer. Does **not** take an IP lease.
+- **Statistics** — captures frames for 10s, shows breakdown by type and EtherType.
 
-### LLDP/CDP
-Passively listens for up to 60 seconds. Most managed switches send LLDP every 30 seconds. Shows switch name, port, VLAN, management IP, and device capabilities.
+### Discovery
+- **ARP Scan** — scans local subnet via DHCP-detected range, shows IP/MAC/vendor.
+- **Ping Sweep** — ICMP sweep of a CIDR range, auto-detected or manually entered.
+- **LLDP/CDP** — listens up to 60s for switch neighbor advertisements.
+- **mDNS/SSDP** — discovers services via multicast DNS and UPnP.
+- **STP/VLAN** — listens 30s for BPDU frames and 802.1Q VLAN tags.
 
-### ARP Scan
-Acquires an IP via DHCP, then scans the local subnet (dynamically determined from the subnet mask). Sends ARP requests in batches of 16 with 15ms delays. Shows IP, MAC, and vendor for each responding host. Real-time progress is displayed during the scan.
+### Diagnostics
+- **Ping** — 4 pings to any IP (default: gateway from DHCP).
+- **Continuous Ping** — live RTT graph with loss tracking, runs until Back.
+- **DNS Lookup** — resolves a hostname via the DHCP-provided DNS server.
+- **Traceroute** — hop-by-hop ICMP path discovery up to 30 hops.
+- **Port Scan (Top 20/100)** — TCP connect scan of common ports.
 
-### DHCP Analyze
-Sends a single DHCP Discover and analyzes the Offer response. Does **not** take an IP lease --- safe to run on production networks. Shows server IP, offered address, gateway, DNS, domain, NTP, lease times, and a DHCP option fingerprint string.
+### Tools
+- **Wake-on-LAN** — send magic packet to wake a device by MAC address.
+- **MAC Changer** — generate random MAC or enter custom, saved to SD.
 
-### Ping
-Prompts for a target IP address (default: `8.8.8.8`), gets a local IP via DHCP, then pings the target 4 times with 3-second timeout. Shows RTT for each attempt in real time.
-
-### Statistics
-Captures raw Ethernet frames for 10 seconds (or shows accumulated stats from previous LLDP/CDP sessions). Breaks down traffic by destination type and EtherType.
+### Settings
+- **Auto-save results** — ON/OFF, controls automatic history saving.
+- **Sound & vibro** — ON/OFF, controls LED/vibro notifications.
+- **Clear History** — delete all saved result files.
 
 ## Technical Details
 
 - **W5500 MACRAW mode**: Socket 0 with `MFEN=0` (promiscuous --- receives all frames including multicast)
-- **No extra threads**: Single-threaded event loop, compatible with FreeRTOS on Flipper
-- **Memory-safe**: Large buffers heap-allocated to avoid stack overflow (4 KB app stack), bounds checking on all TLV parsers
-- **Endianness**: Manual big-endian parsing (`(buf[0] << 8) | buf[1]`) --- no float printf, no `htons`/`ntohs`
+- **Worker thread**: 8 KB stack, non-blocking UI via ViewDispatcher + worker pattern
+- **DHCP caching**: single negotiation, result reused across all subsequent operations
+- **Memory-safe**: large buffers heap-allocated, frame buffer on heap (4 KB app stack), bounds checking on all parsers
+- **Endianness**: manual big-endian parsing --- no float printf, no `htons`/`ntohs`
 
 ## OUI Vendor Database
 
@@ -158,14 +198,32 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 | Функция | Описание |
 |---|---|
-| **Link Info** | Статус PHY-линка, скорость (10/100 Мбит/с), дуплекс (Half/Full), MAC-адрес, проверка версии W5500 |
-| **LLDP Listener** | Пассивное обнаружение соседей IEEE 802.1AB --- имя системы, порт, management IP, VLAN, capabilities |
-| **CDP Listener** | Парсинг Cisco Discovery Protocol --- ID устройства, платформа, версия ПО, Native VLAN, дуплекс |
-| **ARP Scanner** | Активное сканирование подсети пакетами по 16 штук, определение вендора по OUI (~120 производителей) |
-| **DHCP Analyzer** | Анализ только Discover/Offer (IP-адрес не берётся!), фингерпринтинг, полный разбор Offer |
-| **ICMP Ping** | Echo Request/Reply на любой IP (ввод вручную) с измерением RTT |
-| **Статистика пакетов** | Счётчики фреймов по типу (unicast/broadcast/multicast) и EtherType (IPv4/ARP/IPv6/LLDP/CDP) |
-| **Экспорт на SD** | Все результаты сохраняются в `/ext/apps_data/eth_tester/` в текстовом формате |
+| **Link Info** | Статус PHY-линка, скорость (10/100 Мбит/с), дуплекс, MAC-адрес, версия W5500 |
+| **DHCP Analyzer** | Анализ Discover/Offer (IP не берётся!), фингерпринтинг опций |
+| **ARP Scanner** | Сканирование подсети с определением вендора по OUI (~120 производителей) |
+| **Ping** | Echo Request/Reply на любой IP с измерением RTT (4 пинга, таймаут 3с) |
+| **Continuous Ping** | Графики RTT в реальном времени с min/max/avg и процентом потерь |
+| **DNS Lookup** | Разрешение имён через UDP DNS сервер из DHCP |
+| **Traceroute** | ICMP трассировка маршрута с RTT на каждый хоп |
+| **Ping Sweep** | ICMP-сканирование всей подсети, CIDR автоопределяется из DHCP |
+| **Port Scanner** | TCP connect-сканирование: Top-20 (быстро) и Top-100 (полно) |
+| **LLDP/CDP** | Пассивное обнаружение соседей IEEE 802.1AB и Cisco CDP |
+| **mDNS/SSDP** | Обнаружение сервисов через multicast DNS и UPnP/SSDP |
+| **STP/VLAN** | Пассивный захват BPDU + определение 802.1Q VLAN-тегов |
+| **Статистика** | Счётчики фреймов по типу и EtherType |
+| **Wake-on-LAN** | Отправка magic-пакетов на любой MAC-адрес |
+| **MAC Changer** | Рандомизация или ручной ввод MAC, сохранение на SD |
+| **История** | Все результаты автосохраняются с метками времени, просмотр и удаление |
+| **Настройки** | Переключение автосохранения и звука/вибрации, очистка истории |
+
+### UX-особенности
+
+- **Иерархическое меню**: функции сгруппированы в Network Info, Discovery, Diagnostics, Tools
+- **Статус линка в заголовке**: UP/DOWN, скорость, дуплекс видны сразу
+- **Кеширование DHCP**: одна DHCP-сессия на всё — не ждёте 15 секунд каждый раз
+- **Визуальный прогресс**: таймеры обратного отсчёта для прослушиваний, прогрессбары для сканов
+- **LED/вибро оповещения**: зелёный при успехе, красный при ошибке (опционально)
+- **Умные дефолты**: IP-поля предзаполнены шлюзом из DHCP
 
 ## Оборудование
 
@@ -222,13 +280,22 @@ eth_tester/
 ├── protocols/                   # Парсеры и генераторы протоколов
 │   ├── lldp.c / lldp.h         # Парсер IEEE 802.1AB LLDP
 │   ├── cdp.c / cdp.h           # Парсер Cisco CDP (LLC/SNAP)
-│   ├── arp_scan.c / arp_scan.h  # Построитель ARP-запросов и парсер ответов
-│   ├── dhcp_discover.c / .h     # Построитель DHCP Discover и парсер Offer
-│   └── icmp.c / icmp.h         # ICMP Echo (ping) через IPRAW
+│   ├── arp_scan.c / arp_scan.h  # ARP-запросы и парсер ответов
+│   ├── dhcp_discover.c / .h     # DHCP Discover/Offer
+│   ├── icmp.c / icmp.h         # ICMP Echo (ping) через IPRAW
+│   ├── dns_lookup.c / .h       # DNS A-запросы через UDP
+│   ├── wol.c / .h              # Wake-on-LAN magic packet
+│   ├── port_scan.c / .h        # TCP connect сканер портов
+│   ├── traceroute.c / .h       # ICMP traceroute с TTL
+│   ├── ping_graph.c / .h       # Кольцевой буфер RTT для continuous ping
+│   ├── discovery.c / .h        # mDNS + SSDP обнаружение
+│   ├── stp_vlan.c / .h         # STP BPDU + 802.1Q VLAN
+│   ├── mac_changer.c / .h      # Смена MAC с сохранением на SD
+│   └── history.c / .h          # Хранение результатов на SD
 │
-├── utils/                       # Утилиты
-│   ├── oui_lookup.c / .h       # MAC → Вендор (топ ~120 OUI-префиксов)
-│   └── packet_utils.c / .h     # Работа с байтовым порядком, контрольные суммы
+├── utils/
+│   ├── oui_lookup.c / .h       # MAC → Вендор (~120 OUI-префиксов)
+│   └── packet_utils.c / .h     # Байтовый порядок, контрольные суммы
 │
 ├── assets/
 │   └── icon.png                 # Иконка FAP 10x10
@@ -242,32 +309,44 @@ eth_tester/
 1. Подключите модуль W5500 к Flipper Zero по схеме выше
 2. Вставьте Ethernet-кабель в RJ45 разъём W5500
 3. Откройте **GPIO → LAN Tester** на Flipper'е
-4. Выберите функцию в меню:
+4. В заголовке меню отображается статус линка (напр. `LAN [UP 100M FD]`)
+5. Выберите категорию, затем инструмент:
 
-### Link Info
-Мгновенно показывает статус линка, согласованную скорость и дуплекс, MAC-адрес. Используйте первым для проверки подключения.
+### Network Info
+- **Link Info** — статус линка, скорость, дуплекс, MAC. Используйте первым.
+- **DHCP Analyze** — Discover/Offer без занятия адреса. Безопасно для прода.
+- **Statistics** — захват фреймов 10с, разбивка по типам и EtherType.
 
-### LLDP/CDP
-Пассивно слушает до 60 секунд. Большинство управляемых коммутаторов отправляют LLDP каждые 30 секунд. Показывает имя коммутатора, порт, VLAN, management IP, capabilities устройства.
+### Discovery
+- **ARP Scan** — сканирование подсети, IP/MAC/вендор для каждого хоста.
+- **Ping Sweep** — ICMP-свип по CIDR (автоопределение или ручной ввод).
+- **LLDP/CDP** — пассивное прослушивание до 60с для обнаружения свитча.
+- **mDNS/SSDP** — обнаружение сервисов через multicast DNS и UPnP.
+- **STP/VLAN** — прослушивание BPDU (30с) и определение VLAN-тегов.
 
-### ARP Scan
-Получает IP через DHCP, затем сканирует локальную подсеть (диапазон определяется динамически по маске подсети). Отправляет ARP-запросы пачками по 16 с задержкой 15 мс. Показывает IP, MAC и вендора для каждого ответившего хоста. Прогресс отображается в реальном времени.
+### Diagnostics
+- **Ping** — 4 пинга на любой IP (по умолчанию — шлюз из DHCP).
+- **Continuous Ping** — живой график RTT с отслеживанием потерь, до нажатия Back.
+- **DNS Lookup** — разрешение имени через DNS-сервер из DHCP.
+- **Traceroute** — ICMP-трассировка до 30 хопов.
+- **Port Scan (Top 20/100)** — TCP connect-сканирование популярных портов.
 
-### DHCP Analyze
-Отправляет один DHCP Discover и анализирует ответ Offer. **Не берёт IP-адрес** --- безопасно для использования в продуктивных сетях. Показывает IP сервера, предложенный адрес, шлюз, DNS, домен, NTP, время аренды и строку фингерпринта DHCP-опций.
+### Tools
+- **Wake-on-LAN** — отправка magic-пакета для пробуждения устройства по MAC.
+- **MAC Changer** — рандомный или пользовательский MAC, сохраняется на SD.
 
-### Ping
-Предлагает ввести IP-адрес цели (по умолчанию `8.8.8.8`), получает локальный IP через DHCP, затем пингует цель 4 раза с таймаутом 3 секунды. Показывает RTT для каждой попытки в реальном времени.
-
-### Статистика
-Захватывает сырые Ethernet-фреймы 10 секунд (или показывает накопленную статистику от предыдущих LLDP/CDP сессий). Разбивает трафик по типу назначения и EtherType.
+### Settings
+- **Auto-save results** — вкл/выкл автосохранение результатов в историю.
+- **Sound & vibro** — вкл/выкл LED/вибро уведомления.
+- **Clear History** — удалить все сохранённые результаты.
 
 ## Технические детали
 
-- **W5500 MACRAW режим**: Socket 0 с `MFEN=0` (принимает все фреймы, включая multicast)
-- **Без дополнительных потоков**: один поток в event loop, совместимо с FreeRTOS на Flipper
-- **Безопасность памяти**: большие буферы выделяются в куче (стек приложения всего 4 КБ), проверка границ во всех TLV-парсерах
-- **Порядок байтов**: ручной парсинг big-endian (`(buf[0] << 8) | buf[1]`) --- нет float printf, нет `htons`/`ntohs`
+- **W5500 MACRAW режим**: Socket 0 с `MFEN=0` (принимает все фреймы)
+- **Worker thread**: 8 КБ стек, неблокирующий UI через ViewDispatcher + worker
+- **Кеширование DHCP**: одна сессия, результат переиспользуется всеми операциями
+- **Безопасность памяти**: буферы в куче, frame_buf в куче (стек приложения 4 КБ)
+- **Порядок байтов**: ручной парсинг big-endian — нет float printf, нет `htons`/`ntohs`
 
 ## База данных OUI-вендоров
 
@@ -281,15 +360,6 @@ eth_tester/
 - **Wireshark-захват** --- SPI слишком медленный для полного capture на 100 Мбит
 - **SNMP-запросы** --- ASN.1 парсер слишком тяжёл для RAM
 - **TLS/HTTPS** --- нет криптобиблиотек в FAP SDK
-
-## Что можно добавить позже
-
-- STP/BPDU пассивный listener
-- 802.1Q VLAN tagging detection
-- ICMP ping с графиком RTT на экране
-- DNS lookup через UDP-сокет
-- mDNS / SSDP discovery
-- Сохранение профилей портов для сравнения
 
 ## Благодарности
 
