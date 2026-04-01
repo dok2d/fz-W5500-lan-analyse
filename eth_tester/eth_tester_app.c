@@ -348,23 +348,25 @@ static void cont_ping_draw_callback(Canvas* canvas, void* model) {
     uint16_t count = ping_graph_visible_count(pg);
     if(count == 0) return;
 
+    /* Determine how many samples to display (at most graph_width) */
+    uint16_t visible = (count > graph_width) ? graph_width : count;
+    uint16_t start_sample = count - visible;
+
     uint32_t max_rtt = 1;
-    for(uint16_t i = 0; i < count; i++) {
-        uint32_t s = ping_graph_get_sample(pg, i);
+    for(uint16_t i = 0; i < visible; i++) {
+        uint32_t s = ping_graph_get_sample(pg, start_sample + i);
         if(s != PING_RTT_TIMEOUT && s > max_rtt) max_rtt = s;
     }
     max_rtt = max_rtt + max_rtt / 10 + 1;
 
-    uint16_t start_x = (count < graph_width) ? (graph_width - count) : 0;
-    uint16_t start_sample = (count > graph_width) ? (count - graph_width) : 0;
+    /* Draw from right edge to left: newest sample at x = graph_width-1,
+     * oldest at x = graph_width - visible. When few samples, left side is empty. */
+    uint16_t x_offset = graph_width - visible;
 
     int16_t prev_y = -1;
-    for(uint16_t i = 0; i < count && (start_x + i - start_sample) < graph_width; i++) {
-        uint16_t si = start_sample + i;
-        if(si >= count) break;
-
-        uint32_t rtt = ping_graph_get_sample(pg, si);
-        uint8_t x = (uint8_t)(start_x + i - start_sample);
+    for(uint16_t i = 0; i < visible; i++) {
+        uint32_t rtt = ping_graph_get_sample(pg, start_sample + i);
+        uint8_t x = (uint8_t)(x_offset + i);
 
         if(rtt == PING_RTT_TIMEOUT) {
             canvas_draw_dot(canvas, x, graph_top + 1);

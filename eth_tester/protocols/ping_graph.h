@@ -3,8 +3,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* Maximum RTT samples to keep in ring buffer */
-#define PING_GRAPH_MAX_SAMPLES 100
+/* Maximum RTT samples to keep in ring buffer (>= screen width of 128) */
+#define PING_GRAPH_MAX_SAMPLES 128
 
 /* Ping interval in ms */
 #define PING_GRAPH_INTERVAL_MS 1000
