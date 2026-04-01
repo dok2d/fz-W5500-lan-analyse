@@ -46,6 +46,7 @@
 /* Custom events sent from worker to main thread */
 #define CUSTOM_EVENT_PING_SWEEP_READY 1
 #define CUSTOM_EVENT_HISTORY_DELETE 2
+#define CUSTOM_EVENT_CONT_PING_BACK 3
 
 /* Global app pointer for navigation callbacks (single-instance app) */
 static EthTesterApp* g_app = NULL;
@@ -394,6 +395,8 @@ static bool cont_ping_input_callback(InputEvent* event, void* context) {
         if(app->ping_graph) {
             app->ping_graph->running = false;
         }
+        app->worker_running = false;
+        view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_CONT_PING_BACK);
         return true;
     }
 
@@ -1314,6 +1317,14 @@ static void eth_tester_ping_sweep_input_callback(void* context);
 
 static bool eth_tester_custom_event_cb(void* context, uint32_t event) {
     EthTesterApp* app = context;
+
+    if(event == CUSTOM_EVENT_CONT_PING_BACK) {
+        /* Worker is stopping (worker_running = false). Wait for it to finish,
+         * then navigate back to Diagnostics submenu. */
+        eth_tester_worker_stop(app);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewCatDiag);
+        return true;
+    }
 
     if(event == CUSTOM_EVENT_PING_SWEEP_READY) {
         /* DHCP detection done — show input with pre-filled CIDR */
