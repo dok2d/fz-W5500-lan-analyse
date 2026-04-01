@@ -170,6 +170,7 @@ static void eth_tester_history_populate(EthTesterApp* app);
 static void eth_tester_history_file_callback(void* context, uint32_t index);
 static void eth_tester_history_delete_callback(void* context, uint32_t index);
 static void eth_tester_mac_changer_input_callback(void* context);
+static void eth_tester_stop_worker_on_back(void);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static bool eth_tester_save_results(const char* filename, const char* content);
 static void eth_tester_save_and_notify(EthTesterApp* app, const char* type, FuriString* text);
