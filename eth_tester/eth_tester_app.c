@@ -225,6 +225,7 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app);
 static void eth_tester_do_eth_bridge(EthTesterApp* app);
 static void eth_tester_do_pxe_server(EthTesterApp* app);
 static void eth_tester_do_file_manager(EthTesterApp* app);
+static void eth_tester_do_packet_capture(EthTesterApp* app);
 static void eth_tester_history_populate(EthTesterApp* app);
 static void eth_tester_history_file_callback(void* context, uint32_t index);
 static void eth_tester_history_delete_callback(void* context, uint32_t index);
@@ -342,6 +343,82 @@ static bool bridge_input_callback(InputEvent* event, void* context) {
         }
         return true;
     }
+    return false;
+}
+
+/* ==================== Packet Capture view model & callbacks ==================== */
+
+typedef struct {
+    EthTesterApp* app;
+} PacketCaptureViewModel;
+
+static void packet_capture_draw_callback(Canvas* canvas, void* model) {
+    PacketCaptureViewModel* vm = model;
+    EthTesterApp* app = vm->app;
+
+    canvas_clear(canvas);
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 2, 12, "Packet Capture");
+
+    canvas_set_font(canvas, FontSecondary);
+
+    if(app->pcap_state.active) {
+        uint32_t elapsed = (furi_get_tick() - app->pcap_start_tick) / 1000;
+        char buf[48];
+
+        canvas_draw_str(canvas, 2, 26, "Status: RECORDING");
+
+        snprintf(buf, sizeof(buf), "Frames: %lu",
+            (unsigned long)app->pcap_state.frames_written);
+        canvas_draw_str(canvas, 2, 38, buf);
+
+        snprintf(buf, sizeof(buf), "Size: %lu bytes",
+            (unsigned long)app->pcap_state.bytes_written);
+        canvas_draw_str(canvas, 2, 48, buf);
+
+        snprintf(buf, sizeof(buf), "Time: %lu sec", (unsigned long)elapsed);
+        canvas_draw_str(canvas, 2, 58, buf);
+
+        canvas_draw_str(canvas, 80, 58, "[OK] Stop");
+    } else {
+        canvas_draw_str(canvas, 2, 26, "Status: Idle");
+
+        if(app->pcap_state.frames_written > 0) {
+            char buf[48];
+            snprintf(buf, sizeof(buf), "Last: %lu frames, %lu B",
+                (unsigned long)app->pcap_state.frames_written,
+                (unsigned long)app->pcap_state.bytes_written);
+            canvas_draw_str(canvas, 2, 38, buf);
+        }
+
+        canvas_draw_str(canvas, 2, 58, "[OK] Start  [<] Back");
+    }
+}
+
+static bool packet_capture_input_callback(InputEvent* event, void* context) {
+    EthTesterApp* app = context;
+
+    if(event->type == InputTypeShort && event->key == InputKeyOk) {
+        if(!app->pcap_state.active) {
+            /* Start capture */
+            memset(&app->pcap_state, 0, sizeof(app->pcap_state));
+            app->pcap_start_tick = furi_get_tick();
+            eth_tester_worker_start(app, EthTesterMenuItemPacketCapture, EthTesterViewPacketCapture);
+        } else {
+            /* Stop capture */
+            app->worker_running = false;
+        }
+        return true;
+    }
+
+    if(event->type == InputTypeShort && event->key == InputKeyBack) {
+        if(app->pcap_state.active) {
+            app->worker_running = false;
+            return true;
+        }
+        return false; /* let ViewDispatcher handle back navigation */
+    }
+
     return false;
 }
 
@@ -881,6 +958,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu_cat_tools, "ETH Bridge", EthTesterMenuItemEthBridge, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu_cat_tools, "PXE Server", EthTesterMenuItemPxeServer, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu_cat_tools, "File Manager", EthTesterMenuItemFileManager, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_tools, "Packet Capture", EthTesterMenuItemPacketCapture, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu_cat_tools), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatTools, submenu_get_view(app->submenu_cat_tools));
 
@@ -1135,6 +1213,21 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_box_get_view(app->text_box_file_manager), eth_tester_nav_back_tools);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewFileManager, text_box_get_view(app->text_box_file_manager));
 
+    /* Packet Capture view */
+    app->view_packet_capture = view_alloc();
+    view_allocate_model(app->view_packet_capture, ViewModelTypeLocking, sizeof(PacketCaptureViewModel));
+    view_set_draw_callback(app->view_packet_capture, packet_capture_draw_callback);
+    view_set_input_callback(app->view_packet_capture, packet_capture_input_callback);
+    view_set_context(app->view_packet_capture, app);
+    view_set_previous_callback(app->view_packet_capture, eth_tester_nav_back_tools);
+    with_view_model(
+        app->view_packet_capture,
+        PacketCaptureViewModel* vm,
+        { vm->app = app; },
+        false);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPacketCapture, app->view_packet_capture);
+    memset(&app->pcap_state, 0, sizeof(app->pcap_state));
+
     /* Traceroute views */
     app->text_box_traceroute = text_box_alloc();
     text_box_set_font(app->text_box_traceroute, TextBoxFontText);
@@ -1332,6 +1425,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeSettings);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeHelp);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewFileManager);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPacketCapture);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_netinfo);
@@ -1355,6 +1449,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_box_free(app->text_box_mac_changer);
     byte_input_free(app->byte_input_mac_changer);
     view_free(app->view_bridge);
+    view_free(app->view_packet_capture);
     if(app->bridge_state) free(app->bridge_state);
     text_box_free(app->text_box_pxe);
     text_box_free(app->text_box_pxe_help);
@@ -1635,6 +1730,9 @@ static int32_t eth_tester_worker_fn(void* context) {
         break;
     case EthTesterMenuItemFileManager:
         eth_tester_do_file_manager(app);
+        break;
+    case EthTesterMenuItemPacketCapture:
+        eth_tester_do_packet_capture(app);
         break;
     case EthTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
@@ -2272,6 +2370,10 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         furi_string_set(app->file_manager_text, "Starting File Manager...\n");
         text_box_set_text(app->text_box_file_manager, furi_string_get_cstr(app->file_manager_text));
         eth_tester_worker_start(app, EthTesterMenuItemFileManager, EthTesterViewFileManager);
+        break;
+
+    case EthTesterMenuItemPacketCapture:
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPacketCapture);
         break;
 
     case EthTesterMenuItemAbout:
@@ -4220,6 +4322,58 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
         state.dhcp_discovers, state.dhcp_requests,
         state.tftp_requests, state.tftp_blocks_sent, state.tftp_errors);
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
+}
+
+/* ==================== Packet Capture ==================== */
+
+static void eth_tester_do_packet_capture(EthTesterApp* app) {
+    if(!eth_tester_ensure_w5500(app)) return;
+
+    if(!w5500_hal_open_macraw()) {
+        return;
+    }
+
+    if(!pcap_dump_start(&app->pcap_state)) {
+        w5500_hal_close_macraw();
+        return;
+    }
+
+    /* Trigger initial draw */
+    with_view_model(
+        app->view_packet_capture,
+        PacketCaptureViewModel* vm,
+        { UNUSED(vm); },
+        true);
+
+    while(app->worker_running) {
+        uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+        if(recv_len > 0) {
+            pcap_dump_frame(&app->pcap_state, app->frame_buf, recv_len);
+
+            /* Trigger view redraw periodically */
+            with_view_model(
+                app->view_packet_capture,
+                PacketCaptureViewModel* vm,
+                { UNUSED(vm); },
+                true);
+        } else {
+            furi_delay_ms(10);
+        }
+    }
+
+    pcap_dump_stop(&app->pcap_state);
+    w5500_hal_close_macraw();
+
+    /* Final redraw to show stopped state */
+    with_view_model(
+        app->view_packet_capture,
+        PacketCaptureViewModel* vm,
+        { UNUSED(vm); },
+        true);
+
+    if(app->setting_sound) {
+        notification_message(app->notifications, &sequence_success);
+    }
 }
 
 /* ==================== File Manager ==================== */

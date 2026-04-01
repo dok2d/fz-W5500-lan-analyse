@@ -14,6 +14,7 @@
 #include "protocols/history.h"
 #include "protocols/pxe_server.h"
 #include "bridge/eth_bridge.h"
+#include "bridge/pcap_dump.h"
 #include "ip_keyboard.h"
 
 /* Forward declarations */
@@ -56,6 +57,7 @@ typedef enum {
     EthTesterViewPxeSettings,
     EthTesterViewPxeHelp,
     EthTesterViewFileManager,
+    EthTesterViewPacketCapture,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -83,6 +85,7 @@ typedef enum {
     EthTesterMenuItemEthBridge,
     EthTesterMenuItemPxeServer,
     EthTesterMenuItemFileManager,
+    EthTesterMenuItemPacketCapture,
 } EthTesterMenuItem;
 
 /* Packet statistics counters */
@@ -244,6 +247,11 @@ struct EthTesterApp {
     PxeServerState pxe_scan;           /* cached boot file scan results */
     uint8_t pxe_boot_file_idx;         /* currently selected boot file */
     bool pxe_dhcp_probed;              /* external DHCP already probed? */
+
+    /* Packet Capture state */
+    View* view_packet_capture;
+    PcapDumpState pcap_state;
+    uint32_t pcap_start_tick;
 
     /* File Manager state */
     TextBox* text_box_file_manager;
