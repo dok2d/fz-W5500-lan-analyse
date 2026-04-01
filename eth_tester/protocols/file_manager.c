@@ -57,10 +57,33 @@ static void url_decode(char* dst, const char* src, size_t dst_size) {
 
 /* ==================== HTTP response helpers ==================== */
 
+/*
+ * Reliable send: WIZnet send() is non-blocking — it returns SOCK_BUSY (0)
+ * if the previous send hasn't completed yet. We must wait for SEND_OK
+ * before issuing the next send, and handle partial sends (len capped to
+ * TX buffer size = 2KB for socket 3).
+ */
+static bool http_send_buf(uint8_t sn, const uint8_t* data, uint16_t len) {
+    uint16_t sent_total = 0;
+    while(sent_total < len) {
+        int32_t ret = send(sn, (uint8_t*)(data + sent_total), len - sent_total);
+        if(ret > 0) {
+            sent_total += ret;
+        } else if(ret == SOCK_BUSY) {
+            /* Previous send still in flight — wait a bit and retry */
+            furi_delay_ms(1);
+        } else {
+            /* Error (SOCKERR_TIMEOUT, SOCKERR_SOCKSTATUS, etc.) */
+            return false;
+        }
+    }
+    return true;
+}
+
 static void http_send_str(uint8_t sn, const char* str) {
-    int32_t len = strlen(str);
+    uint16_t len = strlen(str);
     if(len > 0) {
-        send(sn, (uint8_t*)str, len);
+        http_send_buf(sn, (const uint8_t*)str, len);
     }
 }
 
@@ -290,13 +313,11 @@ static void handle_download(uint8_t sn, const char* sd_path, const char* filenam
         if(chunk > FILEMGR_CHUNK_SIZE) chunk = FILEMGR_CHUNK_SIZE;
         uint16_t read = storage_file_read(file, buf, chunk);
         if(read == 0) break;
-        int32_t sent = send(sn, buf, read);
-        if(sent <= 0) {
+        if(!http_send_buf(sn, buf, read)) {
             state->errors++;
             break;
         }
         state->bytes_sent += read;
-        furi_delay_ms(1);
     }
 
     storage_file_close(file);
