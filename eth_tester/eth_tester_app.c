@@ -1218,8 +1218,19 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
     uint32_t start_tick = furi_get_tick();
     uint32_t timeout_ms = 60000; /* 60 seconds */
     bool found = false;
+    uint32_t last_countdown = 0;
 
     while(furi_get_tick() - start_tick < timeout_ms && app->worker_running) {
+        /* Update countdown every second */
+        uint32_t elapsed_sec = (furi_get_tick() - start_tick) / 1000;
+        if(elapsed_sec != last_countdown) {
+            last_countdown = elapsed_sec;
+            uint32_t remaining = 60 - elapsed_sec;
+            furi_string_printf(app->lldp_text,
+                "Listening for\nLLDP/CDP...\n(%lus remaining)\n", (unsigned long)remaining);
+            eth_tester_update_view(app->text_box_lldp, app->lldp_text);
+        }
+
         uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
         if(recv_len >= ETH_HEADER_SIZE) {
             /* Count frame for statistics */
@@ -2195,7 +2206,7 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
         return;
     }
 
-    furi_string_set(app->stp_vlan_text, "Listening for BPDU\nand VLAN tags...\n(30 seconds)\n");
+    furi_string_set(app->stp_vlan_text, "Listening for BPDU\nand VLAN tags...\n(30s remaining)\n");
     eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
 
     /* Open MACRAW socket */
@@ -2213,8 +2224,19 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
     uint32_t start_tick = furi_get_tick();
     uint32_t timeout_ms = 30000;
     uint32_t last_update = 0;
+    uint32_t last_countdown = 0;
 
     while(furi_get_tick() - start_tick < timeout_ms && app->worker_running) {
+        /* Update countdown */
+        uint32_t elapsed_sec = (furi_get_tick() - start_tick) / 1000;
+        if(elapsed_sec != last_countdown && !bpdu.valid) {
+            last_countdown = elapsed_sec;
+            furi_string_printf(app->stp_vlan_text,
+                "Listening for BPDU\nand VLAN tags...\n(%lus remaining)\n",
+                (unsigned long)(30 - elapsed_sec));
+            eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
+        }
+
         uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
         if(recv_len >= ETH_HEADER_SIZE) {
             /* Count frame for stats */
@@ -2623,7 +2645,7 @@ static void eth_tester_do_stats(EthTesterApp* app) {
 
     /* If no frames counted yet, do a quick capture */
     if(app->stats.total_frames == 0) {
-        furi_string_set(app->stats_text, "Capturing frames...\n(10 seconds)\n");
+        furi_string_set(app->stats_text, "Capturing frames...\n(10s remaining)\n");
         eth_tester_update_view(app->text_box_stats, app->stats_text);
 
         if(!w5500_hal_open_macraw()) {
@@ -2632,10 +2654,21 @@ static void eth_tester_do_stats(EthTesterApp* app) {
         }
 
         uint32_t start_tick = furi_get_tick();
+        uint32_t last_sec = 0;
         while(furi_get_tick() - start_tick < 10000 && app->worker_running) {
             uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
             if(recv_len >= ETH_HEADER_SIZE) {
                 eth_tester_count_frame(app, frame_buf, recv_len);
+            }
+            /* Update countdown every second */
+            uint32_t sec = (furi_get_tick() - start_tick) / 1000;
+            if(sec != last_sec) {
+                last_sec = sec;
+                furi_string_printf(app->stats_text,
+                    "Capturing frames...\n(%lus remaining)\nFrames: %lu\n",
+                    (unsigned long)(10 - sec),
+                    (unsigned long)app->stats.total_frames);
+                eth_tester_update_view(app->text_box_stats, app->stats_text);
             }
             furi_delay_ms(10);
         }
