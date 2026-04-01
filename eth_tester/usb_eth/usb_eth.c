@@ -1,9 +1,9 @@
-#include "usb_eth.h"
-#include "usb_descriptors.h"
-
 #include <furi.h>
 #include <furi_hal.h>
 #include <furi_hal_usb.h>
+
+#include "usb_eth.h"
+#include "usb_descriptors.h"
 
 #define TAG "USB_ETH"
 

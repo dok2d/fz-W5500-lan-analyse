@@ -1,8 +1,9 @@
-#include "usb_descriptors.h"
-
+/* Must include furi.h first to get stdint.h before USB headers */
 #include <furi.h>
 #include <furi_hal.h>
-#include <furi_hal_usb.h>
+
+#include "usb_descriptors.h"
+
 #include <usb.h>
 #include <usb_cdc.h>
 
@@ -10,14 +11,23 @@
 
 #define TAG "USB_ECM"
 
+/* CDC ECM subclass (not defined in Flipper's usb_cdc.h) */
+#define USB_CDC_SUBCLASS_ECM 0x06
+
+/* CDC ECM protocol */
+#define USB_CDC_PROTO_NONE 0x00
+
+/* USB standard requests */
+#define USB_STD_SET_INTERFACE 0x0B
+
 /* ==================== CDC-ECM Descriptor Structures ==================== */
 
 /* CDC ECM Functional Descriptor (Table 3 in CDC ECM spec) */
 struct usb_cdc_ecm_descriptor {
-    uint8_t bLength;
+    uint8_t bFunctionLength;
     uint8_t bDescriptorType;
-    uint8_t bDescriptorSubtype;
-    uint8_t iMACAddress;        /* String index of MAC address */
+    uint8_t bDescriptorSubType;
+    uint8_t iMACAddress;
     uint32_t bmEthernetStatistics;
     uint16_t wMaxSegmentSize;
     uint16_t wNumberMCFilters;
@@ -46,27 +56,23 @@ struct ecm_config_desc {
 
 /* ==================== String Descriptors ==================== */
 
-/* String index assignments */
-#define STR_IDX_MANUFACTURER 1
-#define STR_IDX_PRODUCT      2
-#define STR_IDX_MAC          3
+/* String index for MAC address (index 3, after manufacturer=1 and product=2) */
+#define STR_IDX_MAC 3
 
-/* MAC address as a USB string: "001122334455" (12 hex chars as UTF-16) */
+/* MAC address string descriptor (dynamically built) */
 static struct usb_string_descriptor* ecm_str_mac = NULL;
+
+/* Manufacturer and product string descriptors */
+static const struct usb_string_descriptor ecm_str_manuf = USB_STRING_DESC("Flipper Devices");
+static const struct usb_string_descriptor ecm_str_prod = USB_STRING_DESC("Flipper ECM Network");
 
 /* ==================== Global State ==================== */
 
-/* Ring buffer for received frames from USB host */
-#define USB_RX_BUF_SIZE 2048
-static uint8_t usb_rx_buf[USB_RX_BUF_SIZE];
-static volatile uint16_t usb_rx_head = 0;
-static volatile uint16_t usb_rx_tail = 0;
-static volatile uint16_t usb_rx_frame_len = 0;  /* Length of current frame being assembled */
-
-/* Frame assembly buffer */
+/* Frame assembly buffer for received frames from USB host */
 #define USB_FRAME_BUF_SIZE 1520
 static uint8_t usb_rx_frame[USB_FRAME_BUF_SIZE];
 static volatile uint16_t usb_rx_frame_pos = 0;
+static volatile uint16_t usb_rx_frame_len = 0;
 static volatile bool usb_rx_frame_ready = false;
 
 /* TX state */
@@ -98,8 +104,8 @@ static const struct usb_device_descriptor ecm_dev_desc = {
     .idVendor = 0x0483,   /* STMicroelectronics */
     .idProduct = 0x5741,   /* Custom PID for ECM */
     .bcdDevice = VERSION_BCD(1, 0, 0),
-    .iManufacturer = STR_IDX_MANUFACTURER,
-    .iProduct = STR_IDX_PRODUCT,
+    .iManufacturer = 1,
+    .iProduct = 2,
     .iSerialNumber = 0,
     .bNumConfigurations = 1,
 };
@@ -129,22 +135,22 @@ static const struct ecm_config_desc ecm_cfg_desc = {
         .iInterface = 0,
     },
     .cdc_header = {
-        .bLength = sizeof(struct usb_cdc_header_desc),
+        .bFunctionLength = sizeof(struct usb_cdc_header_desc),
         .bDescriptorType = USB_DTYPE_CS_INTERFACE,
-        .bDescriptorSubtype = USB_DTYPE_CDC_HEADER,
+        .bDescriptorSubType = USB_DTYPE_CDC_HEADER,
         .bcdCDC = VERSION_BCD(1, 2, 0),
     },
     .cdc_union = {
-        .bLength = sizeof(struct usb_cdc_union_desc),
+        .bFunctionLength = sizeof(struct usb_cdc_union_desc),
         .bDescriptorType = USB_DTYPE_CS_INTERFACE,
-        .bDescriptorSubtype = USB_DTYPE_CDC_UNION,
+        .bDescriptorSubType = USB_DTYPE_CDC_UNION,
         .bMasterInterface0 = 0,
         .bSlaveInterface0 = 1,
     },
     .cdc_ecm = {
-        .bLength = sizeof(struct usb_cdc_ecm_descriptor),
+        .bFunctionLength = sizeof(struct usb_cdc_ecm_descriptor),
         .bDescriptorType = USB_DTYPE_CS_INTERFACE,
-        .bDescriptorSubtype = 0x0F, /* Ethernet Networking Functional Descriptor */
+        .bDescriptorSubType = 0x0F, /* Ethernet Networking Functional Descriptor */
         .iMACAddress = STR_IDX_MAC,
         .bmEthernetStatistics = 0,
         .wMaxSegmentSize = CDC_ECM_MAX_SEGMENT_SIZE,
@@ -205,9 +211,6 @@ static const struct ecm_config_desc ecm_cfg_desc = {
 
 /* ==================== String Descriptor Helpers ==================== */
 
-static const struct usb_string_descriptor ecm_str_manufacturer = USB_STRING_DESC("Flipper Devices");
-static const struct usb_string_descriptor ecm_str_product = USB_STRING_DESC("Flipper ECM Network");
-
 static void ecm_build_mac_string(const uint8_t mac[6]) {
     /* MAC string: "001122334455" as UTF-16LE (12 chars = 24 bytes + 2 header) */
     if(ecm_str_mac) {
@@ -226,51 +229,15 @@ static void ecm_build_mac_string(const uint8_t mac[6]) {
 
 /* ==================== USB Callbacks ==================== */
 
+/* Descriptor callback - handles string descriptor requests including MAC */
 static usbd_respond ecm_getdesc(usbd_ctlreq* req, void** address, uint16_t* length) {
     uint8_t dtype = req->wValue >> 8;
     uint8_t dindex = req->wValue & 0xFF;
 
-    switch(dtype) {
-    case USB_DTYPE_DEVICE:
-        *address = (void*)&ecm_dev_desc;
-        *length = sizeof(ecm_dev_desc);
+    if(dtype == USB_DTYPE_STRING && dindex == STR_IDX_MAC && ecm_str_mac) {
+        *address = (void*)ecm_str_mac;
+        *length = ecm_str_mac->bLength;
         return usbd_ack;
-
-    case USB_DTYPE_CONFIGURATION:
-        *address = (void*)&ecm_cfg_desc;
-        *length = sizeof(ecm_cfg_desc);
-        return usbd_ack;
-
-    case USB_DTYPE_STRING:
-        switch(dindex) {
-        case 0: {
-            /* Language ID descriptor (English) */
-            static const struct usb_string_descriptor lang = {
-                .bLength = 4,
-                .bDescriptorType = USB_DTYPE_STRING,
-                .wString = {0x0409},
-            };
-            *address = (void*)&lang;
-            *length = lang.bLength;
-            return usbd_ack;
-        }
-        case STR_IDX_MANUFACTURER:
-            *address = (void*)&ecm_str_manufacturer;
-            *length = ecm_str_manufacturer.bLength;
-            return usbd_ack;
-        case STR_IDX_PRODUCT:
-            *address = (void*)&ecm_str_product;
-            *length = ecm_str_product.bLength;
-            return usbd_ack;
-        case STR_IDX_MAC:
-            if(ecm_str_mac) {
-                *address = (void*)ecm_str_mac;
-                *length = ecm_str_mac->bLength;
-                return usbd_ack;
-            }
-            return usbd_fail;
-        }
-        break;
     }
     return usbd_fail;
 }
@@ -284,27 +251,18 @@ static const uint8_t ecm_notify_connected[] = {
     0x00, 0x00,  /* wLength: 0 */
 };
 
-static const uint8_t ecm_notify_speed[] = {
-    0xA1,  /* bmRequestType */
-    0x2A,  /* bNotification: CONNECTION_SPEED_CHANGE */
-    0x00, 0x00,  /* wValue */
-    0x00, 0x00,  /* wIndex: interface 0 */
-    0x08, 0x00,  /* wLength: 8 */
-    /* DL bitrate (10 Mbps) */
-    0x80, 0x96, 0x98, 0x00,
-    /* UL bitrate (10 Mbps) */
-    0x80, 0x96, 0x98, 0x00,
-};
-
 static void ecm_rx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep);
 static void ecm_tx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep);
 
-static usbd_respond ecm_control(usbd_device* dev, usbd_ctlreq* req) {
-    UNUSED(dev);
+static usbd_respond ecm_control(
+    usbd_device* dev,
+    usbd_ctlreq* req,
+    usbd_rqc_callback* callback) {
+    UNUSED(callback);
 
     /* Handle SET_INTERFACE for alt setting selection */
     if((req->bmRequestType & (USB_REQ_TYPE | USB_REQ_RECIPIENT)) ==
-       (USB_REQ_STANDARD | USB_REQ_RECIPIENT_INTERFACE)) {
+       (USB_REQ_STANDARD | USB_REQ_INTERFACE)) {
         if(req->bRequest == USB_STD_SET_INTERFACE) {
             if(req->wIndex == 1) {  /* Data interface */
                 if(req->wValue == 1) {
@@ -356,7 +314,8 @@ static void ecm_rx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
             usb_rx_frame_pos += len;
 
             /* If we got a short packet or buffer is nearly full, frame is complete */
-            if(len < CDC_ECM_EP_DATA_SIZE || usb_rx_frame_pos >= USB_FRAME_BUF_SIZE - CDC_ECM_EP_DATA_SIZE) {
+            if(len < CDC_ECM_EP_DATA_SIZE ||
+               usb_rx_frame_pos >= USB_FRAME_BUF_SIZE - CDC_ECM_EP_DATA_SIZE) {
                 usb_rx_frame_len = usb_rx_frame_pos;
                 usb_rx_frame_pos = 0;
                 usb_rx_frame_ready = true;
@@ -400,8 +359,8 @@ static usbd_respond ecm_ep_config(usbd_device* dev, uint8_t cfg) {
         usbd_ep_deconfig(dev, CDC_ECM_EP_NOTIF);
         usbd_ep_deconfig(dev, CDC_ECM_EP_IN);
         usbd_ep_deconfig(dev, CDC_ECM_EP_OUT);
-        usbd_reg_endpoint(dev, CDC_ECM_EP_OUT, NULL);
-        usbd_reg_endpoint(dev, CDC_ECM_EP_IN, NULL);
+        usbd_reg_endpoint(dev, CDC_ECM_EP_OUT, 0);
+        usbd_reg_endpoint(dev, CDC_ECM_EP_IN, 0);
         ecm_connected = false;
         ecm_data_active = false;
         return usbd_ack;
@@ -409,10 +368,13 @@ static usbd_respond ecm_ep_config(usbd_device* dev, uint8_t cfg) {
     case 1:
         /* Configure endpoints */
         usbd_ep_config(dev, CDC_ECM_EP_NOTIF, USB_EPTYPE_INTERRUPT, CDC_ECM_EP_NOTIF_SIZE);
-        usbd_ep_config(dev, CDC_ECM_EP_IN, USB_EPTYPE_BULK, CDC_ECM_EP_DATA_SIZE);
-        usbd_ep_config(dev, CDC_ECM_EP_OUT, USB_EPTYPE_BULK, CDC_ECM_EP_DATA_SIZE);
+        usbd_ep_config(dev, CDC_ECM_EP_IN, USB_EPTYPE_BULK | USB_EPTYPE_DBLBUF,
+                       CDC_ECM_EP_DATA_SIZE);
+        usbd_ep_config(dev, CDC_ECM_EP_OUT, USB_EPTYPE_BULK | USB_EPTYPE_DBLBUF,
+                       CDC_ECM_EP_DATA_SIZE);
         usbd_reg_endpoint(dev, CDC_ECM_EP_OUT, ecm_rx_ep_callback);
         usbd_reg_endpoint(dev, CDC_ECM_EP_IN, ecm_tx_ep_callback);
+        usbd_ep_write(dev, CDC_ECM_EP_IN, 0, 0); /* Prime TX */
         return usbd_ack;
 
     default:
@@ -423,7 +385,6 @@ static usbd_respond ecm_ep_config(usbd_device* dev, uint8_t cfg) {
 /* ==================== FuriHalUsbInterface Implementation ==================== */
 
 static void ecm_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
-    UNUSED(intf);
     UNUSED(ctx);
 
     ecm_usbd = dev;
@@ -442,20 +403,24 @@ static void ecm_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     /* Build MAC string descriptor */
     ecm_build_mac_string(ecm_mac);
 
-    usbd_reg_descr(dev, ecm_getdesc);
-    usbd_reg_control(dev, ecm_control);
-    usbd_reg_config(dev, ecm_ep_config);
+    /* Set string descriptors on the interface struct */
+    intf->str_manuf_descr = (void*)&ecm_str_manuf;
+    intf->str_prod_descr = (void*)&ecm_str_prod;
+    intf->str_serial_descr = NULL;
 
-    usbd_enable(dev, true);
+    usbd_reg_config(dev, ecm_ep_config);
+    usbd_reg_control(dev, ecm_control);
+    usbd_reg_descr(dev, ecm_getdesc);
+
     usbd_connect(dev, true);
 
     FURI_LOG_I(TAG, "CDC-ECM initialized");
 }
 
 static void ecm_deinit(usbd_device* dev) {
-    usbd_reg_descr(dev, NULL);
-    usbd_reg_control(dev, NULL);
     usbd_reg_config(dev, NULL);
+    usbd_reg_control(dev, NULL);
+    usbd_reg_descr(dev, NULL);
 
     ecm_connected = false;
     ecm_data_active = false;
@@ -487,6 +452,9 @@ FuriHalUsbInterface usb_eth_ecm_interface = {
     .wakeup = ecm_wakeup,
     .suspend = ecm_suspend,
     .dev_descr = (struct usb_device_descriptor*)&ecm_dev_desc,
+    .str_manuf_descr = (void*)&ecm_str_manuf,
+    .str_prod_descr = (void*)&ecm_str_prod,
+    .str_serial_descr = NULL,
     .cfg_descr = (void*)&ecm_cfg_desc,
 };
 
