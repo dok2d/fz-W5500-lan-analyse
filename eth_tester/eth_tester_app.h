@@ -37,6 +37,7 @@ typedef enum {
     EthTesterViewMacChanger,
     EthTesterViewMacChangerInput,
     EthTesterViewTraceroute,
+    EthTesterViewTracerouteInput,
     EthTesterViewPingSweep,
     EthTesterViewIpKeyboard,
     EthTesterViewDiscovery,
@@ -120,6 +121,7 @@ struct EthTesterApp {
     TextBox* text_box_mac_changer;
     ByteInput* byte_input_mac_changer;
     TextBox* text_box_traceroute;
+    TextInput* text_input_traceroute;
     TextBox* text_box_ping_sweep;
     IpKeyboard* ip_keyboard;
     TextBox* text_box_discovery;
@@ -198,8 +200,10 @@ struct EthTesterApp {
     uint8_t mac_changer_input[6]; /* byte input buffer for custom MAC */
 
     /* Traceroute state */
-    char traceroute_ip_input[16]; /* text input buffer */
+    char traceroute_ip_input[16]; /* text input buffer (kept for compat) */
     uint8_t traceroute_target[4]; /* parsed target IP */
+    char traceroute_host_input[64]; /* text input for IP or hostname */
+    bool traceroute_is_hostname;    /* true if input is hostname, not IP */
 
     /* Ping sweep state */
     char ping_sweep_ip_input[20]; /* "192.168.1.0/24" */

@@ -1131,8 +1131,14 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_box_get_view(app->text_box_traceroute), eth_tester_nav_back_diag);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewTraceroute, text_box_get_view(app->text_box_traceroute));
 
+    /* Traceroute text input (supports hostnames and IPs) */
+    app->text_input_traceroute = text_input_alloc();
+    view_set_previous_callback(text_input_get_view(app->text_input_traceroute), eth_tester_nav_back_diag);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewTracerouteInput, text_input_get_view(app->text_input_traceroute));
+
     /* Default traceroute target */
     strncpy(app->traceroute_ip_input, "8.8.8.8", sizeof(app->traceroute_ip_input));
+    strncpy(app->traceroute_host_input, "8.8.8.8", sizeof(app->traceroute_host_input));
 
     /* Ping Sweep views */
     app->text_box_ping_sweep = text_box_alloc();
@@ -1297,6 +1303,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChanger);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChangerInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTraceroute);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTracerouteInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingSweep);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewIpKeyboard);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDiscovery);
@@ -1342,6 +1349,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     variable_item_list_free(app->pxe_settings_list);
     text_box_free(app->text_box_file_manager);
     text_box_free(app->text_box_traceroute);
+    text_input_free(app->text_input_traceroute);
     text_box_free(app->text_box_ping_sweep);
     ip_keyboard_free(app->ip_keyboard);
     text_box_free(app->text_box_discovery);
@@ -1861,12 +1869,18 @@ static void eth_tester_cont_ping_ip_input_callback(void* context) {
 
 /* ==================== Traceroute IP input callback ==================== */
 
-static void eth_tester_traceroute_ip_input_callback(void* context) {
+static void eth_tester_traceroute_input_callback(void* context) {
     EthTesterApp* app = context;
     furi_assert(app);
 
-    if(!eth_tester_parse_ip(app->traceroute_ip_input, app->traceroute_target)) {
-        furi_string_set(app->traceroute_text, "Invalid IP address!\n");
+    /* Try parsing as IP first */
+    if(eth_tester_parse_ip(app->traceroute_host_input, app->traceroute_target)) {
+        app->traceroute_is_hostname = false;
+    } else if(strlen(app->traceroute_host_input) > 0) {
+        /* Treat as hostname — DNS resolve will happen in worker */
+        app->traceroute_is_hostname = true;
+    } else {
+        furi_string_set(app->traceroute_text, "Empty input!\n");
         text_box_set_text(app->text_box_traceroute, furi_string_get_cstr(app->traceroute_text));
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewTraceroute);
         return;
@@ -2078,21 +2092,20 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemTraceroute:
-        if(app->dhcp_valid && strcmp(app->traceroute_ip_input, "8.8.8.8") == 0) {
-            snprintf(app->traceroute_ip_input, sizeof(app->traceroute_ip_input),
+        if(app->dhcp_valid && strcmp(app->traceroute_host_input, "8.8.8.8") == 0) {
+            snprintf(app->traceroute_host_input, sizeof(app->traceroute_host_input),
                 "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
         }
-        ip_keyboard_setup(
-            app->ip_keyboard,
-            "Traceroute target:",
-            app->traceroute_ip_input,
-            false,
-            eth_tester_traceroute_ip_input_callback,
+        text_input_reset(app->text_input_traceroute);
+        text_input_set_header_text(app->text_input_traceroute, "IP or hostname:");
+        text_input_set_result_callback(
+            app->text_input_traceroute,
+            eth_tester_traceroute_input_callback,
             app,
-            app->traceroute_ip_input,
-            sizeof(app->traceroute_ip_input),
-            eth_tester_nav_back_diag);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+            app->traceroute_host_input,
+            sizeof(app->traceroute_host_input),
+            false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewTracerouteInput);
         break;
 
     case EthTesterMenuItemMacChanger:
@@ -2860,10 +2873,39 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
 
+    /* If input is a hostname, resolve via DNS first */
+    if(app->traceroute_is_hostname) {
+        furi_string_printf(app->traceroute_text, "Resolving %s...\n", app->traceroute_host_input);
+        eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+
+        uint8_t dns_ip[4];
+        eth_tester_get_dns_server(app, dns_ip);
+
+        if(dns_ip[0] == 0 && dns_ip[1] == 0 && dns_ip[2] == 0 && dns_ip[3] == 0) {
+            furi_string_set(app->traceroute_text, "No DNS server available.\n");
+            return;
+        }
+
+        DnsLookupResult dns_result;
+        bool resolved = dns_lookup(W5500_DNS_SOCKET, dns_ip, app->traceroute_host_input, &dns_result);
+
+        if(!resolved) {
+            furi_string_set(app->traceroute_text, "DNS resolve failed.\n");
+            return;
+        }
+
+        memcpy(app->traceroute_target, dns_result.resolved_ip, 4);
+
+        char ip_str[16];
+        pkt_format_ip(dns_result.resolved_ip, ip_str);
+        furi_string_printf(app->traceroute_text, "%s -> %s\n\n", app->traceroute_host_input, ip_str);
+        eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+    }
+
     char target_str[16];
     pkt_format_ip(app->traceroute_target, target_str);
 
-    furi_string_printf(
+    furi_string_cat_printf(
         app->traceroute_text,
         "[Traceroute]\n"
         "Target: %s\n\n",
