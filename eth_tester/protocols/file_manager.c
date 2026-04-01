@@ -1,6 +1,8 @@
 #include "file_manager.h"
 
 #include <furi.h>
+#include <furi_hal_power.h>
+#include <furi_hal_version.h>
 #include <storage/storage.h>
 #include <socket.h>
 #include <wizchip_conf.h>
@@ -201,6 +203,8 @@ static const char css[] =
     "padding:4px 8px;font-family:monospace;font-size:13px}"
     "input[type=file]{color:#e0e0e0;font-size:12px}"
     ".ft{margin-top:16px;color:#555;font-size:11px}"
+    ".inf{color:#888;font-size:12px;margin-bottom:10px}"
+    ".inf span{color:#e0e0e0;margin-right:16px}"
     "</style>";
 
 /* Format file size human-readable */
@@ -263,8 +267,40 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
     http_send_str(sn, css);
     http_send_str(sn, "</head><body>");
 
-    /* Title and path */
-    http_send_str(sn, "<h1>Flipper File Manager</h1><div class='p'>");
+    /* Title */
+    http_send_str(sn, "<h1>Flipper File Manager</h1>");
+
+    /* Device info bar */
+    {
+        const char* dev_name = furi_hal_version_get_name_ptr();
+        uint8_t battery_pct = furi_hal_power_get_pct();
+
+        Storage* st = furi_record_open(RECORD_STORAGE);
+        uint64_t sd_total = 0, sd_free = 0;
+        storage_common_fs_info(st, "/ext", &sd_total, &sd_free);
+        furi_record_close(RECORD_STORAGE);
+
+        char info[192];
+        snprintf(info, sizeof(info),
+            "<div class='inf'>"
+            "<span>%s</span>"
+            "<span>Battery: %u%%</span>"
+            "<span>SD: ",
+            dev_name ? dev_name : "Flipper",
+            battery_pct);
+        http_send_str(sn, info);
+
+        /* Format SD free/total in MB */
+        char sd_str[64];
+        snprintf(sd_str, sizeof(sd_str),
+            "%lu / %lu MB free</span></div>",
+            (unsigned long)(sd_free / (1024 * 1024)),
+            (unsigned long)(sd_total / (1024 * 1024)));
+        http_send_str(sn, sd_str);
+    }
+
+    /* Current path */
+    http_send_str(sn, "<div class='p'>");
     http_send_str(sn, web_path);
     http_send_str(sn, "</div>");
 
@@ -436,7 +472,24 @@ static void handle_download(
     furi_record_close(RECORD_STORAGE);
 }
 
-/* Handle file upload (multipart/form-data) */
+/*
+ * Streaming file upload handler.
+ *
+ * Multipart/form-data structure:
+ *   --boundary\r\n
+ *   Content-Disposition: form-data; name="file"; filename="name.ext"\r\n
+ *   Content-Type: ...\r\n
+ *   \r\n
+ *   <file data...>
+ *   \r\n--boundary--\r\n
+ *
+ * Strategy:
+ * 1. Read the first chunk to parse boundary + headers + filename
+ * 2. Open file on SD card
+ * 3. Write any file data already in the first chunk
+ * 4. Stream remaining data: recv() -> write to SD, chunk by chunk
+ * 5. Stop when connection closes or boundary is detected
+ */
 static void handle_upload(
     uint8_t sn,
     const char* sd_dir_path,
@@ -444,28 +497,24 @@ static void handle_upload(
     uint8_t* buf,
     uint16_t buf_size,
     FileManagerState* state) {
-    int32_t total_read = 0;
-    int32_t body_len = 0;
 
-    uint16_t chunk = buf_size;
-    if(chunk > FILEMGR_CHUNK_SIZE) chunk = FILEMGR_CHUNK_SIZE;
+    /* Step 1: Read initial data to parse multipart headers */
+    int32_t total_read = 0;
+    uint16_t max_hdr = buf_size;
+    if(max_hdr > 512) max_hdr = 512;
 
     uint32_t start = furi_get_tick();
     while(furi_get_tick() - start < 5000 && state->running) {
-        int32_t len = recv(sn, buf + total_read, chunk - total_read);
+        int32_t len = recv(sn, buf + total_read, max_hdr - total_read);
         if(len > 0) {
             total_read += len;
-            if(total_read >= (int32_t)chunk) break;
+            /* Look for end of part headers (\r\n\r\n after boundary+disposition) */
+            buf[total_read] = '\0';
+            if(strstr((char*)buf, "\r\n\r\n") && total_read > 60) break;
+            if(total_read >= (int32_t)max_hdr) break;
             start = furi_get_tick();
         } else {
-            furi_delay_ms(10);
-        }
-        if(total_read > 4) {
-            const char* end = filemgr_memmem(buf, total_read, "\r\n--", 4);
-            if(end && end > (char*)buf + 100) {
-                body_len = total_read;
-                break;
-            }
+            furi_delay_ms(5);
         }
     }
 
@@ -475,20 +524,23 @@ static void handle_upload(
         http_flush(sn);
         return;
     }
+    buf[total_read] = '\0';
 
-    body_len = total_read;
-
-    char* boundary_start = (char*)buf;
-    char* boundary_end = strstr(boundary_start, "\r\n");
+    /* Parse boundary (first line up to \r\n) */
+    char* boundary_end = strstr((char*)buf, "\r\n");
     if(!boundary_end) {
         http_send_str(sn, "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
             "Content-Length: 12\r\n\r\nBad request\n");
         http_flush(sn);
         return;
     }
+    char boundary[80];
+    size_t boundary_len = boundary_end - (char*)buf;
+    if(boundary_len >= sizeof(boundary)) boundary_len = sizeof(boundary) - 1;
+    memcpy(boundary, buf, boundary_len);
+    boundary[boundary_len] = '\0';
 
-    size_t boundary_len = boundary_end - boundary_start;
-
+    /* Parse filename */
     char* fn_ptr = strstr((char*)buf, "filename=\"");
     if(!fn_ptr) {
         http_send_str(sn, "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
@@ -504,13 +556,13 @@ static void handle_upload(
         http_flush(sn);
         return;
     }
-
     char filename[FM_NAME_MAX];
     size_t fn_len = fn_end - fn_ptr;
     if(fn_len >= sizeof(filename)) fn_len = sizeof(filename) - 1;
     memcpy(filename, fn_ptr, fn_len);
     filename[fn_len] = '\0';
 
+    /* Find start of file data (after \r\n\r\n in part headers) */
     char* data_start = strstr(fn_end, "\r\n\r\n");
     if(!data_start) {
         http_send_str(sn, "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
@@ -519,22 +571,10 @@ static void handle_upload(
         return;
     }
     data_start += 4;
+    int32_t hdr_consumed = data_start - (char*)buf;
+    int32_t leftover = total_read - hdr_consumed;
 
-    char* data_end = NULL;
-    for(char* p = data_start; p < (char*)buf + body_len - (int)boundary_len; p++) {
-        if(p[0] == '\r' && p[1] == '\n' &&
-           memcmp(p + 2, boundary_start, boundary_len) == 0) {
-            data_end = p;
-            break;
-        }
-    }
-    if(!data_end) {
-        data_end = (char*)buf + body_len;
-    }
-
-    size_t data_len = data_end - data_start;
-
-    /* Build file path safely */
+    /* Build file path */
     char filepath[FILEMGR_PATH_MAX];
     size_t dir_len = strlen(sd_dir_path);
     size_t name_len = strlen(filename);
@@ -548,32 +588,136 @@ static void handle_upload(
     filepath[dir_len] = '/';
     memcpy(filepath + dir_len + 1, filename, name_len + 1);
 
+    /* Step 2: Open file for writing */
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);
 
-    if(storage_file_open(file, filepath, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
-        size_t written = storage_file_write(file, data_start, data_len);
-        storage_file_close(file);
-        state->bytes_received += written;
-        FURI_LOG_I(TAG, "Uploaded: %s (%u bytes)", filename, (unsigned)written);
-
-        /* Redirect back */
-        FuriString* loc = furi_string_alloc_printf("/browse%s", web_dir_path);
-        http_send_str(sn, "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
-            "Content-Length: 0\r\nLocation: ");
-        http_send_str(sn, furi_string_get_cstr(loc));
-        http_send_str(sn, "\r\n\r\n");
-        http_flush(sn);
-        furi_string_free(loc);
-    } else {
+    if(!storage_file_open(file, filepath, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
         http_send_str(sn, "HTTP/1.1 500 Error\r\nConnection: close\r\n"
             "Content-Length: 12\r\n\r\nWrite error\n");
         http_flush(sn);
         state->errors++;
+        storage_file_free(file);
+        furi_record_close(RECORD_STORAGE);
+        return;
     }
 
+    /* Step 3: Write any file data already read in the header chunk.
+     * We need to check if the boundary is already in this data
+     * (happens for very small files). */
+    size_t total_written = 0;
+    bool found_boundary = false;
+
+    if(leftover > 0) {
+        /* Check for closing boundary in leftover data */
+        char* bnd = filemgr_memmem(data_start, leftover, boundary, boundary_len);
+        if(bnd) {
+            /* Boundary found — file data ends 2 bytes before (strip \r\n) */
+            int32_t file_data_len = bnd - data_start;
+            if(file_data_len >= 2) file_data_len -= 2; /* strip \r\n before boundary */
+            if(file_data_len > 0) {
+                total_written += storage_file_write(file, data_start, file_data_len);
+            }
+            found_boundary = true;
+        } else {
+            /* No boundary yet — write all leftover data, but keep last
+             * boundary_len+4 bytes as overlap (boundary might be split
+             * across recv boundaries) */
+            int32_t safe = leftover - (int32_t)(boundary_len + 4);
+            if(safe > 0) {
+                total_written += storage_file_write(file, data_start, safe);
+                /* Move the overlap to start of buf */
+                int32_t overlap = leftover - safe;
+                memmove(buf, data_start + safe, overlap);
+                total_read = overlap;
+            } else {
+                /* Not enough data to safely write — keep it all */
+                memmove(buf, data_start, leftover);
+                total_read = leftover;
+            }
+        }
+    } else {
+        total_read = 0;
+    }
+
+    /* Step 4: Stream remaining data from socket to file */
+    if(!found_boundary) {
+        uint32_t idle_start = furi_get_tick();
+        while(state->running) {
+            uint8_t sr = getSn_SR(sn);
+            if(sr != SOCK_ESTABLISHED && sr != SOCK_CLOSE_WAIT) break;
+
+            int32_t space = (int32_t)buf_size - total_read - 1;
+            if(space <= 0) space = 0;
+
+            int32_t len = (space > 0) ? recv(sn, buf + total_read, space) : 0;
+            if(len > 0) {
+                total_read += len;
+                idle_start = furi_get_tick();
+
+                /* Scan for boundary in the buffer */
+                char* bnd = filemgr_memmem(buf, total_read, boundary, boundary_len);
+                if(bnd) {
+                    int32_t file_data_len = bnd - (char*)buf;
+                    if(file_data_len >= 2) file_data_len -= 2; /* strip \r\n */
+                    if(file_data_len > 0) {
+                        total_written += storage_file_write(
+                            file, buf, file_data_len);
+                    }
+                    found_boundary = true;
+                    break;
+                }
+
+                /* Write safe portion (keep overlap for boundary detection) */
+                int32_t safe = total_read - (int32_t)(boundary_len + 4);
+                if(safe > 0) {
+                    total_written += storage_file_write(file, buf, safe);
+                    state->bytes_received = total_written;
+                    memmove(buf, buf + safe, total_read - safe);
+                    total_read -= safe;
+                }
+            } else {
+                /* No data — check for connection close (end of upload) */
+                if(sr == SOCK_CLOSE_WAIT) {
+                    /* Client closed connection — write remaining data */
+                    if(total_read > 0) {
+                        /* Try to strip trailing boundary */
+                        char* bnd2 = filemgr_memmem(buf, total_read, boundary, boundary_len);
+                        int32_t wlen = bnd2 ?
+                            (int32_t)(bnd2 - (char*)buf - 2) : total_read;
+                        if(wlen > 0) {
+                            total_written += storage_file_write(file, buf, wlen);
+                        }
+                    }
+                    found_boundary = true;
+                    break;
+                }
+                if(furi_get_tick() - idle_start > 10000) break; /* 10s idle timeout */
+                furi_delay_ms(5);
+            }
+        }
+
+        /* If we exited without finding boundary, write whatever is left */
+        if(!found_boundary && total_read > 0) {
+            total_written += storage_file_write(file, buf, total_read);
+        }
+    }
+
+    storage_file_close(file);
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
+
+    state->bytes_received = total_written;
+    FURI_LOG_I(TAG, "Uploaded: %s (%u bytes)", filename, (unsigned)total_written);
+
+    /* Redirect back to directory */
+    FuriString* loc = furi_string_alloc_printf("/browse%s", web_dir_path);
+    http_send_str(sn, "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
+        "Content-Length: 0\r\nLocation: ");
+    http_send_str(sn, furi_string_get_cstr(loc));
+    http_send_str(sn, "\r\n\r\n");
+    http_flush(sn);
+    furi_string_free(loc);
 }
 
 /* Handle mkdir */

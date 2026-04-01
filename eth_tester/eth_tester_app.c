@@ -3779,19 +3779,13 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
         return;
     }
 
-    /* Step 6: Show status */
+    /* Step 6: Show compact status (fits 128x64 screen without scrolling) */
     furi_string_printf(out,
-        "[File Manager]\n"
-        "HTTP server running!\n\n"
-        "Open in browser:\n"
-        "http://%d.%d.%d.%d/\n\n"
-        "Features:\n"
-        "- Browse SD card files\n"
-        "- Download files\n"
-        "- Upload files\n"
-        "- Create folders\n"
-        "- Delete files/folders\n\n"
-        "Press BACK to stop.\n",
+        "[File Manager] Running\n"
+        "http://%d.%d.%d.%d/\n"
+        "Req:0 Tx:0 Rx:0\n"
+        "\n"
+        "Press BACK to stop.",
         app->dhcp_ip[0], app->dhcp_ip[1],
         app->dhcp_ip[2], app->dhcp_ip[3]);
     eth_tester_update_view(app->text_box_file_manager, out);
@@ -3805,19 +3799,17 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
         if(furi_get_tick() - last_status >= 2000) {
             last_status = furi_get_tick();
             furi_string_printf(out,
-                "[File Manager]\n"
-                "http://%d.%d.%d.%d/\n\n"
-                "Requests: %lu\n"
-                "Sent: %lu B\n"
-                "Received: %lu B\n"
-                "Errors: %lu\n\n"
-                "Press BACK to stop.\n",
+                "[File Manager] Running\n"
+                "http://%d.%d.%d.%d/\n"
+                "Req:%lu Tx:%lu Rx:%lu\n"
+                "%s\n"
+                "Press BACK to stop.",
                 app->dhcp_ip[0], app->dhcp_ip[1],
                 app->dhcp_ip[2], app->dhcp_ip[3],
                 (unsigned long)fm_state.requests_served,
                 (unsigned long)fm_state.bytes_sent,
                 (unsigned long)fm_state.bytes_received,
-                (unsigned long)fm_state.errors);
+                fm_state.errors ? "Errors!" : "");
             eth_tester_update_view(app->text_box_file_manager, out);
         }
     }
@@ -3826,15 +3818,11 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
     file_manager_stop(&fm_state);
 
     furi_string_printf(out,
-        "[File Manager Stopped]\n"
-        "Requests: %lu\n"
-        "Sent: %lu B\n"
-        "Received: %lu B\n"
-        "Errors: %lu\n",
+        "[File Manager] Stopped\n"
+        "Req:%lu Tx:%lu Rx:%lu",
         (unsigned long)fm_state.requests_served,
         (unsigned long)fm_state.bytes_sent,
-        (unsigned long)fm_state.bytes_received,
-        (unsigned long)fm_state.errors);
+        (unsigned long)fm_state.bytes_received);
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 }
 
