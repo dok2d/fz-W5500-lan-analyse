@@ -81,8 +81,8 @@ bool cdp_parse(const uint8_t* payload, uint16_t payload_len, CdpNeighbor* neighb
         switch(tlv_type) {
         case CDP_TLV_DEVICE_ID:
             if(data_len > 0) {
-                uint16_t copy_len =
-                    (data_len < CDP_MAX_STRING - 1) ? data_len : CDP_MAX_STRING - 1;
+                uint16_t copy_len = (data_len < CDP_MAX_STRING - 1) ? data_len :
+                                                                      CDP_MAX_STRING - 1;
                 memcpy(neighbor->device_id, tlv_data, copy_len);
             }
             break;
@@ -116,8 +116,8 @@ bool cdp_parse(const uint8_t* payload, uint16_t payload_len, CdpNeighbor* neighb
 
         case CDP_TLV_PORT_ID:
             if(data_len > 0) {
-                uint16_t copy_len =
-                    (data_len < CDP_MAX_STRING - 1) ? data_len : CDP_MAX_STRING - 1;
+                uint16_t copy_len = (data_len < CDP_MAX_STRING - 1) ? data_len :
+                                                                      CDP_MAX_STRING - 1;
                 memcpy(neighbor->port_id, tlv_data, copy_len);
             }
             break;
@@ -130,24 +130,24 @@ bool cdp_parse(const uint8_t* payload, uint16_t payload_len, CdpNeighbor* neighb
 
         case CDP_TLV_SW_VERSION:
             if(data_len > 0) {
-                uint16_t copy_len =
-                    (data_len < CDP_MAX_STRING - 1) ? data_len : CDP_MAX_STRING - 1;
+                uint16_t copy_len = (data_len < CDP_MAX_STRING - 1) ? data_len :
+                                                                      CDP_MAX_STRING - 1;
                 memcpy(neighbor->sw_version, tlv_data, copy_len);
             }
             break;
 
         case CDP_TLV_PLATFORM:
             if(data_len > 0) {
-                uint16_t copy_len =
-                    (data_len < CDP_MAX_STRING - 1) ? data_len : CDP_MAX_STRING - 1;
+                uint16_t copy_len = (data_len < CDP_MAX_STRING - 1) ? data_len :
+                                                                      CDP_MAX_STRING - 1;
                 memcpy(neighbor->platform, tlv_data, copy_len);
             }
             break;
 
         case CDP_TLV_VTP_DOMAIN:
             if(data_len > 0) {
-                uint16_t copy_len =
-                    (data_len < CDP_MAX_STRING - 1) ? data_len : CDP_MAX_STRING - 1;
+                uint16_t copy_len = (data_len < CDP_MAX_STRING - 1) ? data_len :
+                                                                      CDP_MAX_STRING - 1;
                 memcpy(neighbor->vtp_domain, tlv_data, copy_len);
             }
             break;

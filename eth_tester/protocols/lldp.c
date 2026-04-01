@@ -42,15 +42,15 @@ bool lldp_parse(const uint8_t* payload, uint16_t payload_len, LldpNeighbor* neig
             } else if(tlv_len > 1) {
                 /* Store as string for non-MAC subtypes */
                 uint16_t copy_len = (tlv_len - 1 < LLDP_MAX_STRING - 1) ? tlv_len - 1 :
-                                                                           LLDP_MAX_STRING - 1;
+                                                                          LLDP_MAX_STRING - 1;
                 memcpy(neighbor->system_name, tlv_data + 1, copy_len);
             }
             break;
 
         case LLDP_TLV_PORT_ID:
             if(tlv_len > 1) {
-                uint16_t copy_len =
-                    (tlv_len - 1 < LLDP_MAX_STRING - 1) ? tlv_len - 1 : LLDP_MAX_STRING - 1;
+                uint16_t copy_len = (tlv_len - 1 < LLDP_MAX_STRING - 1) ? tlv_len - 1 :
+                                                                          LLDP_MAX_STRING - 1;
                 memcpy(neighbor->port_id, tlv_data + 1, copy_len);
             }
             break;
@@ -63,24 +63,24 @@ bool lldp_parse(const uint8_t* payload, uint16_t payload_len, LldpNeighbor* neig
 
         case LLDP_TLV_PORT_DESC:
             if(tlv_len > 0) {
-                uint16_t copy_len =
-                    (tlv_len < LLDP_MAX_STRING - 1) ? tlv_len : LLDP_MAX_STRING - 1;
+                uint16_t copy_len = (tlv_len < LLDP_MAX_STRING - 1) ? tlv_len :
+                                                                      LLDP_MAX_STRING - 1;
                 memcpy(neighbor->port_desc, tlv_data, copy_len);
             }
             break;
 
         case LLDP_TLV_SYSTEM_NAME:
             if(tlv_len > 0) {
-                uint16_t copy_len =
-                    (tlv_len < LLDP_MAX_STRING - 1) ? tlv_len : LLDP_MAX_STRING - 1;
+                uint16_t copy_len = (tlv_len < LLDP_MAX_STRING - 1) ? tlv_len :
+                                                                      LLDP_MAX_STRING - 1;
                 memcpy(neighbor->system_name, tlv_data, copy_len);
             }
             break;
 
         case LLDP_TLV_SYSTEM_DESC:
             if(tlv_len > 0) {
-                uint16_t copy_len =
-                    (tlv_len < LLDP_MAX_STRING - 1) ? tlv_len : LLDP_MAX_STRING - 1;
+                uint16_t copy_len = (tlv_len < LLDP_MAX_STRING - 1) ? tlv_len :
+                                                                      LLDP_MAX_STRING - 1;
                 memcpy(neighbor->system_desc, tlv_data, copy_len);
             }
             break;

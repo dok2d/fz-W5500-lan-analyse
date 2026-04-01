@@ -17,20 +17,20 @@
 #define DHCP_MAGIC_COOKIE 0x63825363
 
 /* Common DHCP option codes */
-#define DHCP_OPT_SUBNET_MASK     1
-#define DHCP_OPT_ROUTER          3
-#define DHCP_OPT_DNS             6
-#define DHCP_OPT_DOMAIN_NAME     15
-#define DHCP_OPT_BROADCAST       28
-#define DHCP_OPT_NTP             42
-#define DHCP_OPT_LEASE_TIME      51
-#define DHCP_OPT_MSG_TYPE        53
-#define DHCP_OPT_SERVER_ID       54
-#define DHCP_OPT_PARAM_LIST      55
-#define DHCP_OPT_RENEWAL_TIME    58
-#define DHCP_OPT_REBINDING_TIME  59
-#define DHCP_OPT_CLIENT_ID       61
-#define DHCP_OPT_END             255
+#define DHCP_OPT_SUBNET_MASK    1
+#define DHCP_OPT_ROUTER         3
+#define DHCP_OPT_DNS            6
+#define DHCP_OPT_DOMAIN_NAME    15
+#define DHCP_OPT_BROADCAST      28
+#define DHCP_OPT_NTP            42
+#define DHCP_OPT_LEASE_TIME     51
+#define DHCP_OPT_MSG_TYPE       53
+#define DHCP_OPT_SERVER_ID      54
+#define DHCP_OPT_PARAM_LIST     55
+#define DHCP_OPT_RENEWAL_TIME   58
+#define DHCP_OPT_REBINDING_TIME 59
+#define DHCP_OPT_CLIENT_ID      61
+#define DHCP_OPT_END            255
 
 /* Max fingerprint option entries */
 #define DHCP_MAX_FINGERPRINT 32

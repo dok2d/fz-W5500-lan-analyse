@@ -3,8 +3,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* Maximum RTT samples to keep in ring buffer */
-#define PING_GRAPH_MAX_SAMPLES 100
+/* Maximum RTT samples to keep in ring buffer (>= screen width of 128) */
+#define PING_GRAPH_MAX_SAMPLES 128
 
 /* Ping interval in ms */
 #define PING_GRAPH_INTERVAL_MS 1000
@@ -18,8 +18,8 @@
 /* Ping graph state */
 typedef struct {
     uint32_t samples[PING_GRAPH_MAX_SAMPLES]; /* RTT in ms, PING_RTT_TIMEOUT = loss */
-    uint16_t sample_count;                     /* Total samples recorded */
-    uint16_t write_idx;                        /* Next write position in ring buffer */
+    uint16_t sample_count; /* Total samples recorded */
+    uint16_t write_idx; /* Next write position in ring buffer */
     uint32_t total_sent;
     uint32_t total_received;
     uint32_t rtt_min;

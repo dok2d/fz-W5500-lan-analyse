@@ -27,15 +27,7 @@ bool pkt_is_multicast(const uint8_t mac[6]) {
 
 void pkt_format_mac(const uint8_t mac[6], char* buf) {
     snprintf(
-        buf,
-        18,
-        "%02X:%02X:%02X:%02X:%02X:%02X",
-        mac[0],
-        mac[1],
-        mac[2],
-        mac[3],
-        mac[4],
-        mac[5]);
+        buf, 18, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 void pkt_format_ip(const uint8_t ip[4], char* buf) {
@@ -47,8 +39,7 @@ uint16_t pkt_read_u16_be(const uint8_t* buf) {
 }
 
 uint32_t pkt_read_u32_be(const uint8_t* buf) {
-    return ((uint32_t)buf[0] << 24) | ((uint32_t)buf[1] << 16) | ((uint32_t)buf[2] << 8) |
-           buf[3];
+    return ((uint32_t)buf[0] << 24) | ((uint32_t)buf[1] << 16) | ((uint32_t)buf[2] << 8) | buf[3];
 }
 
 void pkt_write_u16_be(uint8_t* buf, uint16_t val) {

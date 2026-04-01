@@ -16,8 +16,8 @@
 
 /* ==================== Helpers ==================== */
 
-static uint16_t pxe_build_tftp_data(uint8_t* buf, uint16_t block_num,
-                                     const uint8_t* data, uint16_t data_len) {
+static uint16_t
+    pxe_build_tftp_data(uint8_t* buf, uint16_t block_num, const uint8_t* data, uint16_t data_len) {
     buf[0] = 0;
     buf[1] = TFTP_OP_DATA;
     buf[2] = (block_num >> 8) & 0xFF;
@@ -48,7 +48,6 @@ static uint16_t pxe_build_dhcp_reply(
     uint32_t xid,
     const uint8_t client_mac[6],
     const char* boot_file) {
-
     memset(buf, 0, 576); /* Minimum DHCP packet size */
 
     /* Fixed header */
@@ -136,9 +135,14 @@ static uint16_t pxe_build_dhcp_reply(
 
     /* Option 66: TFTP Server Name (IP as string) */
     char ip_str[16];
-    snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d",
-        config->server_ip[0], config->server_ip[1],
-        config->server_ip[2], config->server_ip[3]);
+    snprintf(
+        ip_str,
+        sizeof(ip_str),
+        "%d.%d.%d.%d",
+        config->server_ip[0],
+        config->server_ip[1],
+        config->server_ip[2],
+        config->server_ip[3]);
     uint8_t ip_str_len = strlen(ip_str);
     buf[off++] = 66;
     buf[off++] = ip_str_len;
@@ -178,12 +182,11 @@ static void pxe_dhcp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
     if(buf[0] != 1) return;
 
     /* Verify magic cookie at offset 236 */
-    if(buf[236] != 0x63 || buf[237] != 0x82 ||
-       buf[238] != 0x53 || buf[239] != 0x63) return;
+    if(buf[236] != 0x63 || buf[237] != 0x82 || buf[238] != 0x53 || buf[239] != 0x63) return;
 
     /* Extract xid (offset 4, big endian) */
-    uint32_t xid = ((uint32_t)buf[4] << 24) | ((uint32_t)buf[5] << 16) |
-                   ((uint32_t)buf[6] << 8) | buf[7];
+    uint32_t xid = ((uint32_t)buf[4] << 24) | ((uint32_t)buf[5] << 16) | ((uint32_t)buf[6] << 8) |
+                   buf[7];
 
     /* Extract client MAC (offset 28, 6 bytes) */
     uint8_t cmac[6];
@@ -205,8 +208,16 @@ static void pxe_dhcp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
 
     if(msg_type == 0) return;
 
-    FURI_LOG_I(TAG, "DHCP msg type=%d from %02X:%02X:%02X:%02X:%02X:%02X",
-        msg_type, cmac[0], cmac[1], cmac[2], cmac[3], cmac[4], cmac[5]);
+    FURI_LOG_I(
+        TAG,
+        "DHCP msg type=%d from %02X:%02X:%02X:%02X:%02X:%02X",
+        msg_type,
+        cmac[0],
+        cmac[1],
+        cmac[2],
+        cmac[3],
+        cmac[4],
+        cmac[5]);
 
     /* Save client MAC for display */
     memcpy(state->client_mac, cmac, 6);
@@ -216,12 +227,19 @@ static void pxe_dhcp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
 
     if(msg_type == DHCP_DISCOVER) {
         state->dhcp_discovers++;
-        uint16_t pkt_len = pxe_build_dhcp_reply(
-            buf, &state->config, DHCP_OFFER, xid, cmac, state->boot_filename);
+        uint16_t pkt_len =
+            pxe_build_dhcp_reply(buf, &state->config, DHCP_OFFER, xid, cmac, state->boot_filename);
         sendto(PXE_DHCP_SOCKET, buf, pkt_len, bcast, DHCP_CLIENT_PORT);
         state->state = PxeStateDhcpOfferSent;
-        FURI_LOG_I(TAG, "Sent DHCP Offer to %02X:%02X:%02X:%02X:%02X:%02X",
-            cmac[0], cmac[1], cmac[2], cmac[3], cmac[4], cmac[5]);
+        FURI_LOG_I(
+            TAG,
+            "Sent DHCP Offer to %02X:%02X:%02X:%02X:%02X:%02X",
+            cmac[0],
+            cmac[1],
+            cmac[2],
+            cmac[3],
+            cmac[4],
+            cmac[5]);
 
     } else if(msg_type == DHCP_REQUEST) {
         state->dhcp_requests++;
@@ -242,8 +260,8 @@ static void pxe_dhcp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
             memset(&state->tftp, 0, sizeof(state->tftp));
         }
 
-        uint16_t pkt_len = pxe_build_dhcp_reply(
-            buf, &state->config, DHCP_ACK, xid, cmac, state->boot_filename);
+        uint16_t pkt_len =
+            pxe_build_dhcp_reply(buf, &state->config, DHCP_ACK, xid, cmac, state->boot_filename);
         sendto(PXE_DHCP_SOCKET, buf, pkt_len, bcast, DHCP_CLIENT_PORT);
         state->state = PxeStateDhcpAckSent;
         FURI_LOG_I(TAG, "Sent DHCP ACK");
@@ -308,8 +326,14 @@ static void pxe_tftp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
                 /* Reject path traversal attempts */
                 bool safe = true;
                 for(const char* p = filename; *p; p++) {
-                    if(p[0] == '.' && p[1] == '.') { safe = false; break; }
-                    if(p[0] == '/') { safe = false; break; }
+                    if(p[0] == '.' && p[1] == '.') {
+                        safe = false;
+                        break;
+                    }
+                    if(p[0] == '/') {
+                        safe = false;
+                        break;
+                    }
                 }
                 if(!safe) {
                     uint16_t err_len = pxe_build_tftp_error(buf, TFTP_ERR_ACCESS, "Access denied");
@@ -317,54 +341,68 @@ static void pxe_tftp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
                     state->tftp_errors++;
                     FURI_LOG_W(TAG, "TFTP path traversal rejected: %s", filename);
                 } else {
-                FURI_LOG_I(TAG, "TFTP RRQ: %s from %d.%d.%d.%d:%d",
-                    filename, req_ip[0], req_ip[1], req_ip[2], req_ip[3], req_port);
+                    FURI_LOG_I(
+                        TAG,
+                        "TFTP RRQ: %s from %d.%d.%d.%d:%d",
+                        filename,
+                        req_ip[0],
+                        req_ip[1],
+                        req_ip[2],
+                        req_ip[3],
+                        req_port);
 
-                /* Build file path */
-                char filepath[128];
-                snprintf(filepath, sizeof(filepath), "%s/%s", PXE_BOOT_DIR, filename);
+                    /* Build file path */
+                    char filepath[128];
+                    snprintf(filepath, sizeof(filepath), "%s/%s", PXE_BOOT_DIR, filename);
 
-                /* Open file from SD */
-                Storage* storage = furi_record_open(RECORD_STORAGE);
-                File* file = storage_file_alloc(storage);
-                if(!storage_file_open(file, filepath, FSAM_READ, FSOM_OPEN_EXISTING)) {
-                    FURI_LOG_E(TAG, "TFTP file not found: %s", filepath);
-                    storage_file_free(file);
-                    furi_record_close(RECORD_STORAGE);
+                    /* Open file from SD */
+                    Storage* storage = furi_record_open(RECORD_STORAGE);
+                    File* file = storage_file_alloc(storage);
+                    if(!storage_file_open(file, filepath, FSAM_READ, FSOM_OPEN_EXISTING)) {
+                        FURI_LOG_E(TAG, "TFTP file not found: %s", filepath);
+                        storage_file_free(file);
+                        furi_record_close(RECORD_STORAGE);
 
-                    uint16_t err_len = pxe_build_tftp_error(buf, TFTP_ERR_NOT_FOUND, "File not found");
-                    sendto(PXE_TFTP_SOCKET, buf, err_len, req_ip, req_port);
-                    state->tftp_errors++;
-                } else {
-                    /* Set up transfer session */
-                    memcpy(state->tftp.client_ip, req_ip, 4);
-                    state->tftp.client_port = req_port;
-                    state->tftp.block_num = 1;
-                    state->tftp.file_size = (uint32_t)storage_file_size(file);
-                    state->tftp.bytes_sent = 0;
-                    state->tftp.last_block_size = 0;
-                    state->tftp.retries = 0;
-                    state->tftp.active = true;
-                    state->tftp.file = file;
-                    state->tftp.storage = storage;
+                        uint16_t err_len =
+                            pxe_build_tftp_error(buf, TFTP_ERR_NOT_FOUND, "File not found");
+                        sendto(PXE_TFTP_SOCKET, buf, err_len, req_ip, req_port);
+                        state->tftp_errors++;
+                    } else {
+                        /* Set up transfer session */
+                        memcpy(state->tftp.client_ip, req_ip, 4);
+                        state->tftp.client_port = req_port;
+                        state->tftp.block_num = 1;
+                        state->tftp.file_size = (uint32_t)storage_file_size(file);
+                        state->tftp.bytes_sent = 0;
+                        state->tftp.last_block_size = 0;
+                        state->tftp.retries = 0;
+                        state->tftp.active = true;
+                        state->tftp.file = file;
+                        state->tftp.storage = storage;
 
-                    /* Save client info for display (if not already from DHCP) */
-                    if(!state->client_seen) {
-                        memcpy(state->client_mac, req_ip, 4); /* store IP in mac for non-DHCP display */
-                        state->client_seen = true;
+                        /* Save client info for display (if not already from DHCP) */
+                        if(!state->client_seen) {
+                            memcpy(
+                                state->client_mac,
+                                req_ip,
+                                4); /* store IP in mac for non-DHCP display */
+                            state->client_seen = true;
+                        }
+
+                        /* Open data socket on dynamic port */
+                        close(PXE_TFTP_DATA_SOCKET);
+                        socket(PXE_TFTP_DATA_SOCKET, Sn_MR_UDP, TFTP_DATA_PORT_BASE, 0);
+
+                        /* Send first block */
+                        state->state = PxeStateTftpTransfer;
+                        pxe_tftp_send_block(state, buf);
+
+                        FURI_LOG_I(
+                            TAG,
+                            "TFTP transfer started: %s (%lu bytes)",
+                            filename,
+                            state->tftp.file_size);
                     }
-
-                    /* Open data socket on dynamic port */
-                    close(PXE_TFTP_DATA_SOCKET);
-                    socket(PXE_TFTP_DATA_SOCKET, Sn_MR_UDP, TFTP_DATA_PORT_BASE, 0);
-
-                    /* Send first block */
-                    state->state = PxeStateTftpTransfer;
-                    pxe_tftp_send_block(state, buf);
-
-                    FURI_LOG_I(TAG, "TFTP transfer started: %s (%lu bytes)",
-                        filename, state->tftp.file_size);
-                }
                 } /* end else (safe path) */
             }
         }
@@ -389,8 +427,11 @@ static void pxe_tftp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
 
                     if(state->tftp.last_block_size < TFTP_BLOCK_SIZE) {
                         /* Transfer complete (last block was < 512 bytes) */
-                        FURI_LOG_I(TAG, "TFTP transfer complete: %lu bytes in %lu blocks",
-                            state->tftp.bytes_sent, state->tftp_blocks_sent);
+                        FURI_LOG_I(
+                            TAG,
+                            "TFTP transfer complete: %lu bytes in %lu blocks",
+                            state->tftp.bytes_sent,
+                            state->tftp_blocks_sent);
 
                         state->state = PxeStateDone;
                         state->tftp.active = false;
@@ -415,12 +456,14 @@ static void pxe_tftp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
 
         /* 3. Timeout handling — retransmit if no ACK within 3 seconds */
         uint32_t now = furi_get_tick();
-        if(state->tftp.active &&
-           (now - state->tftp.last_send_tick) > TFTP_TIMEOUT_MS) {
+        if(state->tftp.active && (now - state->tftp.last_send_tick) > TFTP_TIMEOUT_MS) {
             if(state->tftp.retries < TFTP_MAX_RETRIES) {
                 state->tftp.retries++;
-                FURI_LOG_I(TAG, "TFTP retransmit blk=%d retry=%d",
-                    state->tftp.block_num, state->tftp.retries);
+                FURI_LOG_I(
+                    TAG,
+                    "TFTP retransmit blk=%d retry=%d",
+                    state->tftp.block_num,
+                    state->tftp.retries);
                 pxe_tftp_send_block(state, buf);
             } else {
                 /* Max retries exceeded — abort */
@@ -466,10 +509,9 @@ static bool pxe_is_boot_extension(const char* name) {
         }
     }
     if(!ext) return false;
-    return (strcmp(ext, ".kpxe") == 0 ||
-            strcmp(ext, ".efi") == 0 ||
-            strcmp(ext, ".pxe") == 0 ||
-            strcmp(ext, ".0") == 0);
+    return (
+        strcmp(ext, ".kpxe") == 0 || strcmp(ext, ".efi") == 0 || strcmp(ext, ".pxe") == 0 ||
+        strcmp(ext, ".0") == 0);
 }
 
 static void pxe_add_boot_file(PxeServerState* state, const char* name, uint32_t size) {
@@ -521,12 +563,16 @@ bool pxe_detect_boot_file(PxeServerState* state) {
 
     if(state->boot_file_count > 0) {
         /* Select first file as default */
-        strncpy(state->boot_filename, state->boot_files[0].filename,
-            sizeof(state->boot_filename) - 1);
+        strncpy(
+            state->boot_filename, state->boot_files[0].filename, sizeof(state->boot_filename) - 1);
         state->boot_file_size = state->boot_files[0].file_size;
         state->boot_file_found = true;
-        FURI_LOG_I(TAG, "Found %d boot file(s), selected: %s (%lu bytes)",
-            state->boot_file_count, state->boot_filename, state->boot_file_size);
+        FURI_LOG_I(
+            TAG,
+            "Found %d boot file(s), selected: %s (%lu bytes)",
+            state->boot_file_count,
+            state->boot_filename,
+            state->boot_file_size);
         return true;
     }
 
@@ -536,11 +582,7 @@ bool pxe_detect_boot_file(PxeServerState* state) {
 
 /* ==================== External DHCP detection ==================== */
 
-bool pxe_detect_external_dhcp(
-    uint8_t socket_num,
-    const uint8_t mac[6],
-    PxeExternalDhcp* result) {
-
+bool pxe_detect_external_dhcp(uint8_t socket_num, const uint8_t mac[6], PxeExternalDhcp* result) {
     memset(result, 0, sizeof(PxeExternalDhcp));
 
     /* Build a minimal DHCP Discover packet */
@@ -552,9 +594,9 @@ bool pxe_detect_external_dhcp(
     furi_hal_random_fill_buf((uint8_t*)&xid, sizeof(xid));
 
     /* BOOTP header */
-    pkt[0] = 1;   /* op: BOOTREQUEST */
-    pkt[1] = 1;   /* htype: Ethernet */
-    pkt[2] = 6;   /* hlen */
+    pkt[0] = 1; /* op: BOOTREQUEST */
+    pkt[1] = 1; /* htype: Ethernet */
+    pkt[2] = 6; /* hlen */
     pkt[4] = (xid >> 24) & 0xFF;
     pkt[5] = (xid >> 16) & 0xFF;
     pkt[6] = (xid >> 8) & 0xFF;
@@ -563,11 +605,15 @@ bool pxe_detect_external_dhcp(
     memcpy(pkt + 28, mac, 6); /* chaddr */
 
     /* Magic cookie */
-    pkt[236] = 0x63; pkt[237] = 0x82;
-    pkt[238] = 0x53; pkt[239] = 0x63;
+    pkt[236] = 0x63;
+    pkt[237] = 0x82;
+    pkt[238] = 0x53;
+    pkt[239] = 0x63;
 
     /* Option 53: DHCP Discover */
-    pkt[240] = 53; pkt[241] = 1; pkt[242] = 1;
+    pkt[240] = 53;
+    pkt[241] = 1;
+    pkt[242] = 1;
     /* Option 255: End */
     pkt[243] = 255;
 
@@ -602,12 +648,9 @@ bool pxe_detect_external_dhcp(
             int32_t received = recvfrom(socket_num, pkt, 548, from_ip, &from_port);
             if(received >= 240) {
                 /* Check op=BOOTREPLY, magic cookie, and xid */
-                if(pkt[0] == 2 &&
-                   pkt[236] == 0x63 && pkt[237] == 0x82 &&
-                   pkt[238] == 0x53 && pkt[239] == 0x63) {
-
-                    uint32_t recv_xid = ((uint32_t)pkt[4] << 24) |
-                                        ((uint32_t)pkt[5] << 16) |
+                if(pkt[0] == 2 && pkt[236] == 0x63 && pkt[237] == 0x82 && pkt[238] == 0x53 &&
+                   pkt[239] == 0x63) {
+                    uint32_t recv_xid = ((uint32_t)pkt[4] << 24) | ((uint32_t)pkt[5] << 16) |
                                         ((uint32_t)pkt[6] << 8) | pkt[7];
                     if(recv_xid == xid) {
                         /* Parse offered IP, server IP, subnet, gateway */
@@ -631,10 +674,17 @@ bool pxe_detect_external_dhcp(
 
                         result->found = true;
                         found = true;
-                        FURI_LOG_I(TAG, "External DHCP detected: server %d.%d.%d.%d, offered %d.%d.%d.%d",
-                            from_ip[0], from_ip[1], from_ip[2], from_ip[3],
-                            result->offered_ip[0], result->offered_ip[1],
-                            result->offered_ip[2], result->offered_ip[3]);
+                        FURI_LOG_I(
+                            TAG,
+                            "External DHCP detected: server %d.%d.%d.%d, offered %d.%d.%d.%d",
+                            from_ip[0],
+                            from_ip[1],
+                            from_ip[2],
+                            from_ip[3],
+                            result->offered_ip[0],
+                            result->offered_ip[1],
+                            result->offered_ip[2],
+                            result->offered_ip[3]);
                         break;
                     }
                 }

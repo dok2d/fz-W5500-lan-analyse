@@ -4,8 +4,7 @@
 #include <stdbool.h>
 
 /* STP/BPDU destination MAC */
-#define STP_DST_MAC \
-    { 0x01, 0x80, 0xC2, 0x00, 0x00, 0x00 }
+#define STP_DST_MAC {0x01, 0x80, 0xC2, 0x00, 0x00, 0x00}
 
 /* 802.1Q TPID */
 #define ETHERTYPE_8021Q 0x8100
@@ -19,13 +18,13 @@
 
 /* BPDU parsed info */
 typedef struct {
-    uint8_t protocol_id;   /* Should be 0x0000 for STP */
-    uint8_t version;       /* 0=STP, 2=RSTP, 3=MSTP */
-    uint8_t type;          /* 0x00=Config, 0x02=TCN, 0x80=RST */
+    uint8_t protocol_id; /* Should be 0x0000 for STP */
+    uint8_t version; /* 0=STP, 2=RSTP, 3=MSTP */
+    uint8_t type; /* 0x00=Config, 0x02=TCN, 0x80=RST */
     uint8_t flags;
-    uint8_t root_bridge_id[8];    /* Priority(2) + MAC(6) */
+    uint8_t root_bridge_id[8]; /* Priority(2) + MAC(6) */
     uint32_t root_path_cost;
-    uint8_t sender_bridge_id[8];  /* Priority(2) + MAC(6) */
+    uint8_t sender_bridge_id[8]; /* Priority(2) + MAC(6) */
     uint16_t port_id;
     uint16_t message_age;
     uint16_t max_age;

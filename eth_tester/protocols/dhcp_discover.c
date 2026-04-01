@@ -7,25 +7,25 @@
 #define TAG "DHCP_ANALYZE"
 
 /* DHCP packet offsets */
-#define DHCP_OP_OFFSET       0
-#define DHCP_HTYPE_OFFSET    1
-#define DHCP_HLEN_OFFSET     2
-#define DHCP_HOPS_OFFSET     3
-#define DHCP_XID_OFFSET      4
-#define DHCP_SECS_OFFSET     8
-#define DHCP_FLAGS_OFFSET    10
-#define DHCP_CIADDR_OFFSET   12
-#define DHCP_YIADDR_OFFSET   16
-#define DHCP_SIADDR_OFFSET   20
-#define DHCP_GIADDR_OFFSET   24
-#define DHCP_CHADDR_OFFSET   28
-#define DHCP_SNAME_OFFSET    44
-#define DHCP_FILE_OFFSET     108
-#define DHCP_MAGIC_OFFSET    236
-#define DHCP_OPTIONS_OFFSET  240
+#define DHCP_OP_OFFSET      0
+#define DHCP_HTYPE_OFFSET   1
+#define DHCP_HLEN_OFFSET    2
+#define DHCP_HOPS_OFFSET    3
+#define DHCP_XID_OFFSET     4
+#define DHCP_SECS_OFFSET    8
+#define DHCP_FLAGS_OFFSET   10
+#define DHCP_CIADDR_OFFSET  12
+#define DHCP_YIADDR_OFFSET  16
+#define DHCP_SIADDR_OFFSET  20
+#define DHCP_GIADDR_OFFSET  24
+#define DHCP_CHADDR_OFFSET  28
+#define DHCP_SNAME_OFFSET   44
+#define DHCP_FILE_OFFSET    108
+#define DHCP_MAGIC_OFFSET   236
+#define DHCP_OPTIONS_OFFSET 240
 
 /* Minimum DHCP packet size */
-#define DHCP_MIN_SIZE        240
+#define DHCP_MIN_SIZE 240
 
 uint16_t dhcp_build_discover(uint8_t* buf, const uint8_t mac[6], uint32_t xid) {
     furi_assert(buf);
@@ -33,9 +33,9 @@ uint16_t dhcp_build_discover(uint8_t* buf, const uint8_t mac[6], uint32_t xid) {
     memset(buf, 0, 548);
 
     /* BOOTP header */
-    buf[DHCP_OP_OFFSET] = 1;     /* BOOTREQUEST */
-    buf[DHCP_HTYPE_OFFSET] = 1;  /* Ethernet */
-    buf[DHCP_HLEN_OFFSET] = 6;   /* MAC length */
+    buf[DHCP_OP_OFFSET] = 1; /* BOOTREQUEST */
+    buf[DHCP_HTYPE_OFFSET] = 1; /* Ethernet */
+    buf[DHCP_HLEN_OFFSET] = 6; /* MAC length */
     buf[DHCP_HOPS_OFFSET] = 0;
 
     /* Transaction ID */
@@ -61,16 +61,16 @@ uint16_t dhcp_build_discover(uint8_t* buf, const uint8_t mac[6], uint32_t xid) {
     /* Option 55: Parameter Request List */
     buf[opt_offset++] = DHCP_OPT_PARAM_LIST;
     buf[opt_offset++] = 10;
-    buf[opt_offset++] = DHCP_OPT_SUBNET_MASK;     /* 1 */
-    buf[opt_offset++] = DHCP_OPT_ROUTER;           /* 3 */
-    buf[opt_offset++] = DHCP_OPT_DNS;              /* 6 */
-    buf[opt_offset++] = DHCP_OPT_DOMAIN_NAME;      /* 15 */
-    buf[opt_offset++] = DHCP_OPT_BROADCAST;         /* 28 */
-    buf[opt_offset++] = DHCP_OPT_NTP;              /* 42 */
-    buf[opt_offset++] = DHCP_OPT_LEASE_TIME;       /* 51 */
-    buf[opt_offset++] = DHCP_OPT_SERVER_ID;        /* 54 */
-    buf[opt_offset++] = DHCP_OPT_RENEWAL_TIME;     /* 58 */
-    buf[opt_offset++] = DHCP_OPT_REBINDING_TIME;   /* 59 */
+    buf[opt_offset++] = DHCP_OPT_SUBNET_MASK; /* 1 */
+    buf[opt_offset++] = DHCP_OPT_ROUTER; /* 3 */
+    buf[opt_offset++] = DHCP_OPT_DNS; /* 6 */
+    buf[opt_offset++] = DHCP_OPT_DOMAIN_NAME; /* 15 */
+    buf[opt_offset++] = DHCP_OPT_BROADCAST; /* 28 */
+    buf[opt_offset++] = DHCP_OPT_NTP; /* 42 */
+    buf[opt_offset++] = DHCP_OPT_LEASE_TIME; /* 51 */
+    buf[opt_offset++] = DHCP_OPT_SERVER_ID; /* 54 */
+    buf[opt_offset++] = DHCP_OPT_RENEWAL_TIME; /* 58 */
+    buf[opt_offset++] = DHCP_OPT_REBINDING_TIME; /* 59 */
 
     /* Option 61: Client Identifier = 01 + MAC */
     buf[opt_offset++] = DHCP_OPT_CLIENT_ID;
@@ -107,7 +107,11 @@ bool dhcp_parse_offer(const uint8_t* buf, uint16_t len, uint32_t xid, DhcpAnalyz
     /* Check transaction ID */
     uint32_t recv_xid = pkt_read_u32_be(buf + DHCP_XID_OFFSET);
     if(recv_xid != xid) {
-        FURI_LOG_D(TAG, "XID mismatch: expected 0x%08lX got 0x%08lX", (unsigned long)xid, (unsigned long)recv_xid);
+        FURI_LOG_D(
+            TAG,
+            "XID mismatch: expected 0x%08lX got 0x%08lX",
+            (unsigned long)xid,
+            (unsigned long)recv_xid);
         return false;
     }
 
@@ -159,8 +163,8 @@ bool dhcp_parse_offer(const uint8_t* buf, uint16_t len, uint32_t xid, DhcpAnalyz
 
         case DHCP_OPT_DOMAIN_NAME:
             if(opt_len > 0) {
-                uint16_t copy_len =
-                    (opt_len < DHCP_MAX_DOMAIN - 1) ? opt_len : DHCP_MAX_DOMAIN - 1;
+                uint16_t copy_len = (opt_len < DHCP_MAX_DOMAIN - 1) ? opt_len :
+                                                                      DHCP_MAX_DOMAIN - 1;
                 memcpy(result->domain_name, opt_data, copy_len);
             }
             break;
@@ -240,7 +244,8 @@ void dhcp_format_result(const DhcpAnalyzeResult* result, char* buf, uint16_t buf
         if(i > 0) {
             fp_str[fp_offset++] = ',';
         }
-        int written = snprintf(fp_str + fp_offset, sizeof(fp_str) - fp_offset, "%d", result->fingerprint[i]);
+        int written =
+            snprintf(fp_str + fp_offset, sizeof(fp_str) - fp_offset, "%d", result->fingerprint[i]);
         if(written > 0) fp_offset += written;
     }
 

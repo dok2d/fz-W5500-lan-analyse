@@ -6,12 +6,12 @@
 /* W5500 socket assignments for HTTP file manager.
  * Uses socket 3 (2KB TX/RX buffer) — same as DNS/WOL/discovery,
  * but those tools never run simultaneously with file manager. */
-#define FILEMGR_HTTP_SOCKET   3
-#define FILEMGR_HTTP_PORT     80
+#define FILEMGR_HTTP_SOCKET 3
+#define FILEMGR_HTTP_PORT   80
 
 /* Buffer sizes */
-#define FILEMGR_PATH_MAX      256
-#define FILEMGR_CHUNK_SIZE    512  /* must fit in socket TX buffer (2KB) */
+#define FILEMGR_PATH_MAX   256
+#define FILEMGR_CHUNK_SIZE 512 /* must fit in socket TX buffer (2KB) */
 
 /* Auth token length (4 hex chars = 16 bits) */
 #define FILEMGR_TOKEN_LEN 4

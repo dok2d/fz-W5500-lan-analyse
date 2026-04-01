@@ -46,11 +46,9 @@ bool stp_parse_bpdu(const uint8_t* frame, uint16_t frame_len, BpduInfo* info) {
 
         info->flags = frame[bpdu_offset + 4];
         memcpy(info->root_bridge_id, &frame[bpdu_offset + 5], 8);
-        info->root_path_cost =
-            ((uint32_t)frame[bpdu_offset + 13] << 24) |
-            ((uint32_t)frame[bpdu_offset + 14] << 16) |
-            ((uint32_t)frame[bpdu_offset + 15] << 8) |
-            frame[bpdu_offset + 16];
+        info->root_path_cost = ((uint32_t)frame[bpdu_offset + 13] << 24) |
+                               ((uint32_t)frame[bpdu_offset + 14] << 16) |
+                               ((uint32_t)frame[bpdu_offset + 15] << 8) | frame[bpdu_offset + 16];
         memcpy(info->sender_bridge_id, &frame[bpdu_offset + 17], 8);
         info->port_id = ((uint16_t)frame[bpdu_offset + 25] << 8) | frame[bpdu_offset + 26];
         info->message_age = ((uint16_t)frame[bpdu_offset + 27] << 8) | frame[bpdu_offset + 28];
@@ -75,14 +73,23 @@ void stp_format_bpdu(const BpduInfo* info, char* buf, uint16_t buf_size) {
 
     const char* ver_str;
     switch(info->version) {
-    case 0: ver_str = "STP"; break;
-    case 2: ver_str = "RSTP"; break;
-    case 3: ver_str = "MSTP"; break;
-    default: ver_str = "?"; break;
+    case 0:
+        ver_str = "STP";
+        break;
+    case 2:
+        ver_str = "RSTP";
+        break;
+    case 3:
+        ver_str = "MSTP";
+        break;
+    default:
+        ver_str = "?";
+        break;
     }
 
     snprintf(
-        buf, buf_size,
+        buf,
+        buf_size,
         "=== BPDU (%s) ===\n"
         "Root: %02X:%02X:%02X:%02X:%02X:%02X\n"
         " Pri: %d  Cost: %lu\n"
@@ -92,12 +99,20 @@ void stp_format_bpdu(const BpduInfo* info, char* buf, uint16_t buf_size) {
         "FwdDelay: %ds\n"
         "TC: %s\n",
         ver_str,
-        root_mac[0], root_mac[1], root_mac[2],
-        root_mac[3], root_mac[4], root_mac[5],
+        root_mac[0],
+        root_mac[1],
+        root_mac[2],
+        root_mac[3],
+        root_mac[4],
+        root_mac[5],
         root_pri,
         (unsigned long)info->root_path_cost,
-        sender_mac[0], sender_mac[1], sender_mac[2],
-        sender_mac[3], sender_mac[4], sender_mac[5],
+        sender_mac[0],
+        sender_mac[1],
+        sender_mac[2],
+        sender_mac[3],
+        sender_mac[4],
+        sender_mac[5],
         sender_pri,
         info->port_id,
         info->hello_time / 256,

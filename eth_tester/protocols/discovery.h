@@ -4,14 +4,12 @@
 #include <stdbool.h>
 
 /* mDNS multicast address and port */
-#define MDNS_MCAST_IP \
-    { 224, 0, 0, 251 }
-#define MDNS_PORT 5353
+#define MDNS_MCAST_IP {224, 0, 0, 251}
+#define MDNS_PORT     5353
 
 /* SSDP multicast address and port */
-#define SSDP_MCAST_IP \
-    { 239, 255, 255, 250 }
-#define SSDP_PORT 1900
+#define SSDP_MCAST_IP {239, 255, 255, 250}
+#define SSDP_PORT     1900
 
 /* Socket assignments */
 #define W5500_MDNS_SOCKET 3

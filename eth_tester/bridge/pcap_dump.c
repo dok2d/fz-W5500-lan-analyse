@@ -24,7 +24,7 @@ typedef struct __attribute__((packed)) {
     uint32_t magic_number;
     uint16_t version_major;
     uint16_t version_minor;
-    int32_t  thiszone;
+    int32_t thiszone;
     uint32_t sigfigs;
     uint32_t snaplen;
     uint32_t network;
@@ -88,10 +88,15 @@ bool pcap_dump_start(PcapDumpState* state) {
     furi_hal_rtc_get_datetime(&dt);
     char filepath[128];
     snprintf(
-        filepath, sizeof(filepath),
+        filepath,
+        sizeof(filepath),
         PCAP_DIR "/%04d%02d%02d_%02d%02d%02d.pcap",
-        (int)dt.year, (int)dt.month, (int)dt.day,
-        (int)dt.hour, (int)dt.minute, (int)dt.second);
+        (int)dt.year,
+        (int)dt.month,
+        (int)dt.day,
+        (int)dt.hour,
+        (int)dt.minute,
+        (int)dt.second);
 
     pcap_file = storage_file_alloc(pcap_storage);
     if(!storage_file_open(pcap_file, filepath, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
@@ -177,7 +182,9 @@ void pcap_dump_stop(PcapDumpState* state) {
     }
 
     if(state->active) {
-        FURI_LOG_I(TAG, "PCAP stopped: %lu frames, %lu bytes, %lu dropped",
+        FURI_LOG_I(
+            TAG,
+            "PCAP stopped: %lu frames, %lu bytes, %lu dropped",
             (unsigned long)state->frames_written,
             (unsigned long)state->bytes_written,
             (unsigned long)state->frames_dropped);

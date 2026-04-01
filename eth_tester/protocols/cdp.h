@@ -14,13 +14,13 @@
  *   DSAP=0xAA, SSAP=0xAA, Control=0x03
  *   OUI=00-00-0C, Type=0x2000
  */
-#define CDP_SNAP_DSAP    0xAA
-#define CDP_SNAP_SSAP    0xAA
-#define CDP_SNAP_CTRL    0x03
-#define CDP_SNAP_OUI_0   0x00
-#define CDP_SNAP_OUI_1   0x00
-#define CDP_SNAP_OUI_2   0x0C
-#define CDP_SNAP_TYPE    0x2000
+#define CDP_SNAP_DSAP  0xAA
+#define CDP_SNAP_SSAP  0xAA
+#define CDP_SNAP_CTRL  0x03
+#define CDP_SNAP_OUI_0 0x00
+#define CDP_SNAP_OUI_1 0x00
+#define CDP_SNAP_OUI_2 0x0C
+#define CDP_SNAP_TYPE  0x2000
 
 /* CDP TLV Types */
 #define CDP_TLV_DEVICE_ID    0x0001

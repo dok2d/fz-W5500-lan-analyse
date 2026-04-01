@@ -66,12 +66,31 @@ static struct usb_string_descriptor* ecm_str_mac = NULL;
 static const struct usb_string_descriptor ecm_str_manuf = {
     .bLength = 2 + 15 * 2, /* "Flipper Devices" = 15 chars */
     .bDescriptorType = USB_DTYPE_STRING,
-    .wString = {'F','l','i','p','p','e','r',' ','D','e','v','i','c','e','s'},
+    .wString = {'F', 'l', 'i', 'p', 'p', 'e', 'r', ' ', 'D', 'e', 'v', 'i', 'c', 'e', 's'},
 };
 static const struct usb_string_descriptor ecm_str_prod = {
     .bLength = 2 + 19 * 2, /* "Flipper ECM Network" = 19 chars */
     .bDescriptorType = USB_DTYPE_STRING,
-    .wString = {'F','l','i','p','p','e','r',' ','E','C','M',' ','N','e','t','w','o','r','k'},
+    .wString =
+        {'F',
+         'l',
+         'i',
+         'p',
+         'p',
+         'e',
+         'r',
+         ' ',
+         'E',
+         'C',
+         'M',
+         ' ',
+         'N',
+         'e',
+         't',
+         'w',
+         'o',
+         'r',
+         'k'},
 };
 
 /* ==================== Global State ==================== */
@@ -109,8 +128,8 @@ static const struct usb_device_descriptor ecm_dev_desc = {
     .bDeviceSubClass = 0,
     .bDeviceProtocol = 0,
     .bMaxPacketSize0 = 8, /* EP0 size must be 8 for USB FS initial enumeration */
-    .idVendor = 0x0483,   /* STMicroelectronics */
-    .idProduct = 0x5741,   /* Custom PID for ECM */
+    .idVendor = 0x0483, /* STMicroelectronics */
+    .idProduct = 0x5741, /* Custom PID for ECM */
     .bcdDevice = VERSION_BCD(1, 0, 0),
     .iManufacturer = 1,
     .iProduct = 2,
@@ -119,89 +138,98 @@ static const struct usb_device_descriptor ecm_dev_desc = {
 };
 
 static const struct ecm_config_desc ecm_cfg_desc = {
-    .config = {
-        .bLength = sizeof(struct usb_config_descriptor),
-        .bDescriptorType = USB_DTYPE_CONFIGURATION,
-        .wTotalLength = sizeof(struct ecm_config_desc),
-        .bNumInterfaces = 2,
-        .bConfigurationValue = 1,
-        .iConfiguration = 0,
-        .bmAttributes = USB_CFG_ATTR_RESERVED,
-        .bMaxPower = USB_CFG_POWER_MA(200),
-    },
+    .config =
+        {
+            .bLength = sizeof(struct usb_config_descriptor),
+            .bDescriptorType = USB_DTYPE_CONFIGURATION,
+            .wTotalLength = sizeof(struct ecm_config_desc),
+            .bNumInterfaces = 2,
+            .bConfigurationValue = 1,
+            .iConfiguration = 0,
+            .bmAttributes = USB_CFG_ATTR_RESERVED,
+            .bMaxPower = USB_CFG_POWER_MA(200),
+        },
 
     /* Interface 0: CDC Communication */
-    .comm_iface = {
-        .bLength = sizeof(struct usb_interface_descriptor),
-        .bDescriptorType = USB_DTYPE_INTERFACE,
-        .bInterfaceNumber = 0,
-        .bAlternateSetting = 0,
-        .bNumEndpoints = 1,
-        .bInterfaceClass = USB_CLASS_CDC,
-        .bInterfaceSubClass = USB_CDC_SUBCLASS_ECM,
-        .bInterfaceProtocol = USB_CDC_PROTO_NONE,
-        .iInterface = 0,
-    },
-    .cdc_header = {
-        .bFunctionLength = sizeof(struct usb_cdc_header_desc),
-        .bDescriptorType = USB_DTYPE_CS_INTERFACE,
-        .bDescriptorSubType = USB_DTYPE_CDC_HEADER,
-        .bcdCDC = VERSION_BCD(1, 2, 0),
-    },
-    .cdc_union = {
-        .bFunctionLength = sizeof(struct usb_cdc_union_desc),
-        .bDescriptorType = USB_DTYPE_CS_INTERFACE,
-        .bDescriptorSubType = USB_DTYPE_CDC_UNION,
-        .bMasterInterface0 = 0,
-        .bSlaveInterface0 = 1,
-    },
-    .cdc_ecm = {
-        .bFunctionLength = sizeof(struct usb_cdc_ecm_descriptor),
-        .bDescriptorType = USB_DTYPE_CS_INTERFACE,
-        .bDescriptorSubType = 0x0F, /* Ethernet Networking Functional Descriptor */
-        .iMACAddress = STR_IDX_MAC,
-        .bmEthernetStatistics = 0,
-        .wMaxSegmentSize = CDC_ECM_MAX_SEGMENT_SIZE,
-        .wNumberMCFilters = 0,
-        .bNumberPowerFilters = 0,
-    },
-    .notif_ep = {
-        .bLength = sizeof(struct usb_endpoint_descriptor),
-        .bDescriptorType = USB_DTYPE_ENDPOINT,
-        .bEndpointAddress = CDC_ECM_EP_NOTIF,
-        .bmAttributes = USB_EPTYPE_INTERRUPT,
-        .wMaxPacketSize = CDC_ECM_EP_NOTIF_SIZE,
-        .bInterval = 32,
-    },
+    .comm_iface =
+        {
+            .bLength = sizeof(struct usb_interface_descriptor),
+            .bDescriptorType = USB_DTYPE_INTERFACE,
+            .bInterfaceNumber = 0,
+            .bAlternateSetting = 0,
+            .bNumEndpoints = 1,
+            .bInterfaceClass = USB_CLASS_CDC,
+            .bInterfaceSubClass = USB_CDC_SUBCLASS_ECM,
+            .bInterfaceProtocol = USB_CDC_PROTO_NONE,
+            .iInterface = 0,
+        },
+    .cdc_header =
+        {
+            .bFunctionLength = sizeof(struct usb_cdc_header_desc),
+            .bDescriptorType = USB_DTYPE_CS_INTERFACE,
+            .bDescriptorSubType = USB_DTYPE_CDC_HEADER,
+            .bcdCDC = VERSION_BCD(1, 2, 0),
+        },
+    .cdc_union =
+        {
+            .bFunctionLength = sizeof(struct usb_cdc_union_desc),
+            .bDescriptorType = USB_DTYPE_CS_INTERFACE,
+            .bDescriptorSubType = USB_DTYPE_CDC_UNION,
+            .bMasterInterface0 = 0,
+            .bSlaveInterface0 = 1,
+        },
+    .cdc_ecm =
+        {
+            .bFunctionLength = sizeof(struct usb_cdc_ecm_descriptor),
+            .bDescriptorType = USB_DTYPE_CS_INTERFACE,
+            .bDescriptorSubType = 0x0F, /* Ethernet Networking Functional Descriptor */
+            .iMACAddress = STR_IDX_MAC,
+            .bmEthernetStatistics = 0,
+            .wMaxSegmentSize = CDC_ECM_MAX_SEGMENT_SIZE,
+            .wNumberMCFilters = 0,
+            .bNumberPowerFilters = 0,
+        },
+    .notif_ep =
+        {
+            .bLength = sizeof(struct usb_endpoint_descriptor),
+            .bDescriptorType = USB_DTYPE_ENDPOINT,
+            .bEndpointAddress = CDC_ECM_EP_NOTIF,
+            .bmAttributes = USB_EPTYPE_INTERRUPT,
+            .wMaxPacketSize = CDC_ECM_EP_NOTIF_SIZE,
+            .bInterval = 32,
+        },
 
     /* Interface 1: Data (always active) */
-    .data_iface = {
-        .bLength = sizeof(struct usb_interface_descriptor),
-        .bDescriptorType = USB_DTYPE_INTERFACE,
-        .bInterfaceNumber = 1,
-        .bAlternateSetting = 0,
-        .bNumEndpoints = 2,
-        .bInterfaceClass = USB_CLASS_CDC_DATA,
-        .bInterfaceSubClass = 0,
-        .bInterfaceProtocol = 0,
-        .iInterface = 0,
-    },
-    .data_ep_out = {
-        .bLength = sizeof(struct usb_endpoint_descriptor),
-        .bDescriptorType = USB_DTYPE_ENDPOINT,
-        .bEndpointAddress = CDC_ECM_EP_OUT,
-        .bmAttributes = USB_EPTYPE_BULK,
-        .wMaxPacketSize = CDC_ECM_EP_DATA_SIZE,
-        .bInterval = 0,
-    },
-    .data_ep_in = {
-        .bLength = sizeof(struct usb_endpoint_descriptor),
-        .bDescriptorType = USB_DTYPE_ENDPOINT,
-        .bEndpointAddress = CDC_ECM_EP_IN,
-        .bmAttributes = USB_EPTYPE_BULK,
-        .wMaxPacketSize = CDC_ECM_EP_DATA_SIZE,
-        .bInterval = 0,
-    },
+    .data_iface =
+        {
+            .bLength = sizeof(struct usb_interface_descriptor),
+            .bDescriptorType = USB_DTYPE_INTERFACE,
+            .bInterfaceNumber = 1,
+            .bAlternateSetting = 0,
+            .bNumEndpoints = 2,
+            .bInterfaceClass = USB_CLASS_CDC_DATA,
+            .bInterfaceSubClass = 0,
+            .bInterfaceProtocol = 0,
+            .iInterface = 0,
+        },
+    .data_ep_out =
+        {
+            .bLength = sizeof(struct usb_endpoint_descriptor),
+            .bDescriptorType = USB_DTYPE_ENDPOINT,
+            .bEndpointAddress = CDC_ECM_EP_OUT,
+            .bmAttributes = USB_EPTYPE_BULK,
+            .wMaxPacketSize = CDC_ECM_EP_DATA_SIZE,
+            .bInterval = 0,
+        },
+    .data_ep_in =
+        {
+            .bLength = sizeof(struct usb_endpoint_descriptor),
+            .bDescriptorType = USB_DTYPE_ENDPOINT,
+            .bEndpointAddress = CDC_ECM_EP_IN,
+            .bmAttributes = USB_EPTYPE_BULK,
+            .wMaxPacketSize = CDC_ECM_EP_DATA_SIZE,
+            .bInterval = 0,
+        },
 };
 
 /* ==================== String Descriptor Helpers ==================== */
@@ -226,20 +254,20 @@ static void ecm_build_mac_string(const uint8_t mac[6]) {
 
 /* CDC ECM Network Connection notification */
 static const uint8_t ecm_notify_connected[] = {
-    0xA1,  /* bmRequestType: class, interface, device-to-host */
-    0x00,  /* bNotification: NETWORK_CONNECTION */
-    0x01, 0x00,  /* wValue: Connected */
-    0x00, 0x00,  /* wIndex: interface 0 */
-    0x00, 0x00,  /* wLength: 0 */
+    0xA1, /* bmRequestType: class, interface, device-to-host */
+    0x00, /* bNotification: NETWORK_CONNECTION */
+    0x01,
+    0x00, /* wValue: Connected */
+    0x00,
+    0x00, /* wIndex: interface 0 */
+    0x00,
+    0x00, /* wLength: 0 */
 };
 
 static void ecm_rx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep);
 static void ecm_tx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep);
 
-static usbd_respond ecm_control(
-    usbd_device* dev,
-    usbd_ctlreq* req,
-    usbd_rqc_callback* callback) {
+static usbd_respond ecm_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_callback* callback) {
     UNUSED(dev);
     UNUSED(callback);
 
@@ -269,9 +297,8 @@ static void ecm_rx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
 
     if(event != usbd_evt_eptx) {
         /* Data received from host */
-        int32_t len = usbd_ep_read(dev, CDC_ECM_EP_OUT,
-            usb_rx_frame + usb_rx_frame_pos,
-            CDC_ECM_EP_DATA_SIZE);
+        int32_t len = usbd_ep_read(
+            dev, CDC_ECM_EP_OUT, usb_rx_frame + usb_rx_frame_pos, CDC_ECM_EP_DATA_SIZE);
 
         if(len > 0) {
             usb_rx_frame_pos += len;
@@ -288,8 +315,7 @@ static void ecm_rx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
         }
 
         /* Re-prime for next packet */
-        usbd_ep_read(dev, CDC_ECM_EP_OUT,
-            usb_rx_frame + usb_rx_frame_pos, CDC_ECM_EP_DATA_SIZE);
+        usbd_ep_read(dev, CDC_ECM_EP_OUT, usb_rx_frame + usb_rx_frame_pos, CDC_ECM_EP_DATA_SIZE);
     }
 }
 
@@ -304,8 +330,7 @@ static void ecm_tx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
             if(chunk > CDC_ECM_EP_DATA_SIZE) chunk = CDC_ECM_EP_DATA_SIZE;
             usbd_ep_write(dev, CDC_ECM_EP_IN, usb_tx_data + usb_tx_pos, chunk);
             usb_tx_pos += chunk;
-        } else if(usb_tx_data && usb_tx_pos == usb_tx_len &&
-                  (usb_tx_len % CDC_ECM_EP_DATA_SIZE) == 0) {
+        } else if(usb_tx_data && usb_tx_pos == usb_tx_len && (usb_tx_len % CDC_ECM_EP_DATA_SIZE) == 0) {
             /* Last chunk was exactly EP size — send ZLP to terminate */
             usb_tx_data = NULL;
             usbd_ep_write(dev, CDC_ECM_EP_IN, NULL, 0);
@@ -333,10 +358,10 @@ static usbd_respond ecm_ep_config(usbd_device* dev, uint8_t cfg) {
     case 1:
         /* Configure endpoints */
         usbd_ep_config(dev, CDC_ECM_EP_NOTIF, USB_EPTYPE_INTERRUPT, CDC_ECM_EP_NOTIF_SIZE);
-        usbd_ep_config(dev, CDC_ECM_EP_IN, USB_EPTYPE_BULK | USB_EPTYPE_DBLBUF,
-                       CDC_ECM_EP_DATA_SIZE);
-        usbd_ep_config(dev, CDC_ECM_EP_OUT, USB_EPTYPE_BULK | USB_EPTYPE_DBLBUF,
-                       CDC_ECM_EP_DATA_SIZE);
+        usbd_ep_config(
+            dev, CDC_ECM_EP_IN, USB_EPTYPE_BULK | USB_EPTYPE_DBLBUF, CDC_ECM_EP_DATA_SIZE);
+        usbd_ep_config(
+            dev, CDC_ECM_EP_OUT, USB_EPTYPE_BULK | USB_EPTYPE_DBLBUF, CDC_ECM_EP_DATA_SIZE);
         usbd_reg_endpoint(dev, CDC_ECM_EP_OUT, ecm_rx_ep_callback);
         usbd_reg_endpoint(dev, CDC_ECM_EP_IN, ecm_tx_ep_callback);
         usbd_ep_write(dev, CDC_ECM_EP_IN, 0, 0); /* Prime TX */
@@ -346,8 +371,7 @@ static usbd_respond ecm_ep_config(usbd_device* dev, uint8_t cfg) {
         ecm_connected = true;
 
         /* Send network connection notification */
-        usbd_ep_write(dev, CDC_ECM_EP_NOTIF,
-            ecm_notify_connected, sizeof(ecm_notify_connected));
+        usbd_ep_write(dev, CDC_ECM_EP_NOTIF, ecm_notify_connected, sizeof(ecm_notify_connected));
 
         /* Prime the OUT endpoint for receiving data */
         usbd_ep_read(dev, CDC_ECM_EP_OUT, usb_rx_frame, CDC_ECM_EP_DATA_SIZE);
