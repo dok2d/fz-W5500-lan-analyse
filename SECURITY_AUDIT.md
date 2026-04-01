@@ -11,7 +11,9 @@
 
 The application is a comprehensive Ethernet LAN analyzer for Flipper Zero using the W5500 SPI Ethernet module. It implements LLDP/CDP discovery, ARP scanning, DHCP analysis, DNS lookup, ping/traceroute, port scanning, Wake-on-LAN, mDNS/SSDP discovery, STP/VLAN detection, USB-Ethernet bridge with PCAP capture, PXE server (DHCP+TFTP), and an HTTP-based SD card file manager.
 
-Overall the code quality is good for an embedded hobbyist project. The protocol parsers are well-bounded, memory management follows Flipper Zero patterns correctly, and the worker thread architecture is sound. However, several issues were identified ranging from **critical** (path traversal in HTTP file manager) to **low** (minor resource leaks, hardcoded values).
+Overall the code quality is good for an embedded hobbyist project. The protocol parsers are well-bounded, memory management follows Flipper Zero patterns correctly, and the worker thread architecture is sound. However, 24 issues were identified ranging from **critical** (path traversal in HTTP file manager) to **informational** (dead code, minor resource leaks).
+
+**Note on Flipper Zero platform:** FAPs run in the same address space as firmware with no sandboxing. `malloc` halts on failure (never returns NULL). Thread priority is 16 (lower than system timer at 2), so long-running operations without `furi_delay_ms()` can starve system services.
 
 ---
 
@@ -280,22 +282,52 @@ max_rtt = max_rtt + max_rtt / 10 + 1;
 
 If `max_rtt` approaches `UINT32_MAX`, this expression overflows. In practice, RTT values are limited to timeout durations (typically < 10,000ms), making this theoretical.
 
-#### 18. Missing NULL Checks After malloc (CWE-252)
-**File:** `eth_tester_app.c:562, 567, 784`
+#### 18. mDNS Recursive Pointer Following Without Depth Limit (CWE-674)
+**File:** `protocols/discovery.c:82-86`
+**Severity:** MEDIUM
+
+The `dns_read_name()` function follows DNS compression pointers recursively without a depth limit:
+```c
+if((label_len & 0xC0) == 0xC0) {
+    uint16_t ptr = ((uint16_t)(label_len & 0x3F) << 8) | buf[pos + 1];
+    dns_read_name(buf, len, ptr, out + out_pos, out_size - out_pos);  // recursive!
+    return offset + 2;
+}
+```
+
+A malicious mDNS response with circular pointer references (pointer A -> pointer B -> pointer A) will cause unbounded recursion, overflowing the worker thread's 8KB stack and crashing the Flipper.
+
+**Impact:** Denial of service from any device on the LAN sending a crafted mDNS response.
+
+**Recommendation:** Add a recursion depth counter (max 4-5 levels per RFC 1035) or use an iterative approach.
+
+#### 19. SPI Acquire Without Error Check (CWE-252)
+**File:** `hal/w5500_hal.c:58`
 **Severity:** LOW
 
 ```c
-EthTesterApp* app = malloc(sizeof(EthTesterApp));  // No NULL check
-app->frame_buf = malloc(FRAME_BUF_SIZE);
-furi_assert(app->frame_buf);  // Asserts but doesn't handle gracefully
-app->bridge_state = malloc(sizeof(EthBridgeState));  // No NULL check
+furi_hal_spi_acquire(&furi_hal_spi_bus_handle_external);
+spi_acquired = true;  // Assumed success
 ```
 
-While `furi_assert` is used in some places, it causes a hard crash instead of graceful error handling. On the Flipper's constrained heap, allocation failures are possible.
+`furi_hal_spi_acquire()` return value is not checked. If another app holds the SPI bus, subsequent operations will be undefined.
 
-**Recommendation:** Check all `malloc` return values and fail gracefully.
+**Recommendation:** Check return value and fail gracefully if SPI cannot be acquired.
 
-#### 19. Global Mutable State (CWE-362)
+#### 20. Dead Code: malloc NULL Check on Flipper Zero (CWE-561)
+**File:** `eth_tester_app.c:418`
+**Severity:** INFORMATIONAL
+
+```c
+HistoryState* hs = malloc(sizeof(HistoryState));
+if(hs) {  // Dead code: Flipper's malloc halts on failure, never returns NULL
+```
+
+On Flipper Zero, `malloc` calls `furi_check` internally and halts the firmware on allocation failure rather than returning NULL. All `if(ptr)` checks after `malloc` are dead code. This is not a bug but is misleading to readers.
+
+**Note:** The `furi_assert(app->frame_buf)` calls elsewhere are also redundant for the same reason.
+
+#### 21. Global Mutable State (CWE-362)
 **File:** `eth_tester_app.c:51`
 **Severity:** LOW
 
@@ -305,13 +337,13 @@ static EthTesterApp* g_app = NULL;
 
 A global pointer is used for navigation callbacks. While Flipper Zero apps are single-instance, this pattern is fragile and prevents future multi-instance use.
 
-#### 20. SPI Bus Not Released on Error Path (CWE-404)
+#### 22. SPI Bus Not Released on Error Path (CWE-404)
 **File:** `hal/w5500_hal.c:50-76`
 **Severity:** LOW
 
 If `w5500_hal_init()` succeeds (acquiring SPI) but subsequent operations fail in `eth_tester_ensure_w5500()`, the error handler calls `w5500_hal_deinit()` which releases SPI. However, if the application crashes between `w5500_hal_init()` and the error check, the SPI bus remains locked, blocking other Flipper applications from using the external SPI.
 
-#### 21. PCAP Dump Uses Global State (CWE-362)
+#### 23. PCAP Dump Uses Global State (CWE-362)
 **File:** `bridge/pcap_dump.c:42-47`
 **Severity:** LOW
 
@@ -322,7 +354,7 @@ static File* pcap_file = NULL;
 
 Global state means only one PCAP capture can be active at a time (which is fine for the current design), but there's no guard against calling `pcap_dump_start()` twice without stopping.
 
-#### 22. Unused Port Scan Entries
+#### 24. Unused Port Scan Entries
 **File:** `protocols/port_scan.c:10-13`
 **Severity:** INFORMATIONAL
 
@@ -361,5 +393,6 @@ Global state means only one PCAP capture can be active at a time (which is fine 
 | P2 | #13 USB frame buffer concurrency | Medium |
 | P2 | #14 USB TX pointer lifetime | Medium |
 | P2 | #9 Worker thread race condition | Low |
+| P2 | #18 mDNS recursive pointer stack overflow | Low |
 | P3 | #10 Hardcoded MAC address | Low |
 | P3 | #12 DNS response validation | Low |
