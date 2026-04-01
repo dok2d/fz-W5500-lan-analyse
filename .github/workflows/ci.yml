@@ -21,10 +21,10 @@ jobs:
           set -euo pipefail
 
           # Extract version from each source
-          FAM_VER=$(grep -Po 'fap_version="\K[0-9]+\.[0-9]+\.[0-9]+' lan_tester/application.fam)
+          FAM_VER=$(grep -Po 'fap_version="\K[0-9]+\.[0-9]+\.[0-9]+' application.fam)
           BADGE_VER=$(grep -Po 'version-\K[0-9]+\.[0-9]+\.[0-9]+' README.md | head -1)
           CHANGELOG_VER=$(grep -Po '## \[\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
-          ABOUT_VER=$(grep -Po 'v\K[0-9]+\.[0-9]+\.[0-9]+' lan_tester/lan_tester_app.c | head -1)
+          ABOUT_VER=$(grep -Po 'v\K[0-9]+\.[0-9]+\.[0-9]+' lan_tester_app.c | head -1)
 
           echo "application.fam:    $FAM_VER"
           echo "README.md badge:    $BADGE_VER"
@@ -51,10 +51,10 @@ jobs:
           if [ "$ERRORS" -ne 0 ]; then
             echo ""
             echo "All four version strings must match:"
-            echo "  - lan_tester/application.fam  (fap_version)"
+            echo "  - application.fam  (fap_version)"
             echo "  - README.md                   (version badge)"
             echo "  - CHANGELOG.md                (latest ## [x.y.z])"
-            echo "  - lan_tester/lan_tester_app.c (About screen)"
+            echo "  - lan_tester_app.c (About screen)"
             exit 1
           fi
 
@@ -71,11 +71,11 @@ jobs:
         id: build
         with:
           task: build
-          app-dir: lan_tester
+          app-dir: .
 
       - name: Lint
         uses: flipperdevices/flipperzero-ufbt-action@v0.1
         with:
           task: lint
-          app-dir: lan_tester
+          app-dir: .
           skip-setup: true

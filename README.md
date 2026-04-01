@@ -97,7 +97,6 @@ The compiled `.fap` file will appear in `dist/`. You can also copy it manually t
 ## Architecture
 
 ```
-lan_tester/
 ├── application.fam              # FAP manifest
 ├── lan_tester_app.c             # Entry point, ViewDispatcher, feature logic
 ├── lan_tester_app.h             # Shared types and app state
@@ -300,7 +299,6 @@ ufbt install            # установка .fap на SD-карту Flipper
 ## Архитектура
 
 ```
-lan_tester/
 ├── application.fam              # Манифест FAP
 ├── lan_tester_app.c             # Точка входа, ViewDispatcher, логика функций
 ├── lan_tester_app.h             # Общие типы и состояние приложения

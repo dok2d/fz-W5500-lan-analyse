@@ -5,7 +5,6 @@
 ## Project Structure
 
 ```
-lan_tester/
 ├── application.fam              # FAP manifest (appid, entry point, libs)
 ├── lan_tester_app.c             # Entry point, ViewDispatcher, all feature logic
 ├── lan_tester_app.h             # Shared types, enums, app state struct

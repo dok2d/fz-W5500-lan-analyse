@@ -114,7 +114,7 @@ Unknown OUI prefixes are displayed as "Unknown" in ARP scan results.
 
 ### WIZnet ioLibrary_Driver
 
-Vendored copy (not a git submodule) of the [official W5500 driver](https://github.com/Wiznet/ioLibrary_Driver). Located at `lan_tester/lib/ioLibrary_Driver/`.
+Vendored copy (not a git submodule) of the [official W5500 driver](https://github.com/Wiznet/ioLibrary_Driver). Located at `lib/ioLibrary_Driver/`.
 
 **Compiled components:**
 - `Ethernet/W5500/*.c` -- W5500 chip-level driver
