@@ -1662,7 +1662,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     text_box_set_font(app->text_box_about, TextBoxFontText);
     text_box_set_text(
         app->text_box_about,
-        "[LAN Analyzer]\n\n"
+        "[LAN Tester]\n\n"
         "Ethernet network analysis\n"
         "tool for Flipper Zero\n"
         "using W5500 SPI module.\n\n"
@@ -1670,7 +1670,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "discover devices,\n"
         "analyze DHCP/LLDP/CDP,\n"
         "detect VLANs and STP.\n\n"
-        "v1.0 | by dok2d\n"
+        "v1.2.0 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
