@@ -208,7 +208,6 @@ static void eth_tester_worker_stop(EthTesterApp* app);
 static void eth_tester_worker_start(EthTesterApp* app, uint32_t op, EthTesterView result_view);
 static void eth_tester_update_view(TextBox* tb, FuriString* text);
 static void eth_tester_show_view(EthTesterApp* app, TextBox* tb, EthTesterView view, FuriString* text, const char* initial);
-static bool eth_tester_parse_ip(const char* str, uint8_t ip[4]);
 static bool eth_tester_ensure_w5500(EthTesterApp* app);
 
 static void eth_tester_do_link_info(EthTesterApp* app);
