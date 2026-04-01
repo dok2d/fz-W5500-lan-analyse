@@ -34,7 +34,9 @@ struct usb_cdc_ecm_descriptor {
     uint8_t bNumberPowerFilters;
 } __attribute__((packed));
 
-/* Full configuration descriptor tree */
+/* Full configuration descriptor tree
+ * Simplified: single data interface (no alt settings) for maximum
+ * host compatibility. Data endpoints are always active once configured. */
 struct ecm_config_desc {
     struct usb_config_descriptor config;
 
@@ -45,11 +47,8 @@ struct ecm_config_desc {
     struct usb_cdc_ecm_descriptor cdc_ecm;
     struct usb_endpoint_descriptor notif_ep;
 
-    /* Interface 1: CDC Data (alt 0 = no endpoints = inactive) */
-    struct usb_interface_descriptor data_iface_alt0;
-
-    /* Interface 1: CDC Data (alt 1 = active with bulk endpoints) */
-    struct usb_interface_descriptor data_iface_alt1;
+    /* Interface 1: CDC Data (always active) */
+    struct usb_interface_descriptor data_iface;
     struct usb_endpoint_descriptor data_ep_out;
     struct usb_endpoint_descriptor data_ep_in;
 } __attribute__((packed));
@@ -109,7 +108,7 @@ static const struct usb_device_descriptor ecm_dev_desc = {
     .bDeviceClass = USB_CLASS_CDC,
     .bDeviceSubClass = 0,
     .bDeviceProtocol = 0,
-    .bMaxPacketSize0 = CDC_ECM_EP_DATA_SIZE,
+    .bMaxPacketSize0 = 8, /* EP0 size must be 8 for USB FS initial enumeration */
     .idVendor = 0x0483,   /* STMicroelectronics */
     .idProduct = 0x5741,   /* Custom PID for ECM */
     .bcdDevice = VERSION_BCD(1, 0, 0),
@@ -175,25 +174,12 @@ static const struct ecm_config_desc ecm_cfg_desc = {
         .bInterval = 32,
     },
 
-    /* Interface 1 Alt 0: Data (inactive - no endpoints) */
-    .data_iface_alt0 = {
+    /* Interface 1: Data (always active) */
+    .data_iface = {
         .bLength = sizeof(struct usb_interface_descriptor),
         .bDescriptorType = USB_DTYPE_INTERFACE,
         .bInterfaceNumber = 1,
         .bAlternateSetting = 0,
-        .bNumEndpoints = 0,
-        .bInterfaceClass = USB_CLASS_CDC_DATA,
-        .bInterfaceSubClass = 0,
-        .bInterfaceProtocol = 0,
-        .iInterface = 0,
-    },
-
-    /* Interface 1 Alt 1: Data (active - bulk endpoints) */
-    .data_iface_alt1 = {
-        .bLength = sizeof(struct usb_interface_descriptor),
-        .bDescriptorType = USB_DTYPE_INTERFACE,
-        .bInterfaceNumber = 1,
-        .bAlternateSetting = 1,
         .bNumEndpoints = 2,
         .bInterfaceClass = USB_CLASS_CDC_DATA,
         .bInterfaceSubClass = 0,
@@ -267,33 +253,14 @@ static usbd_respond ecm_control(
     usbd_device* dev,
     usbd_ctlreq* req,
     usbd_rqc_callback* callback) {
+    UNUSED(dev);
     UNUSED(callback);
 
-    /* Handle SET_INTERFACE for alt setting selection */
+    /* Handle SET_INTERFACE (some hosts send this even without alt settings) */
     if((req->bmRequestType & (USB_REQ_TYPE | USB_REQ_RECIPIENT)) ==
        (USB_REQ_STANDARD | USB_REQ_INTERFACE)) {
         if(req->bRequest == USB_STD_SET_INTERFACE) {
-            if(req->wIndex == 1) {  /* Data interface */
-                if(req->wValue == 1) {
-                    /* Alt 1: activate data interface */
-                    ecm_data_active = true;
-                    FURI_LOG_I(TAG, "Data interface activated");
-
-                    /* Send network connection notification */
-                    usbd_ep_write(ecm_usbd, CDC_ECM_EP_NOTIF,
-                        ecm_notify_connected, sizeof(ecm_notify_connected));
-
-                    /* Prime the OUT endpoint for receiving */
-                    usbd_ep_read(dev, CDC_ECM_EP_OUT, usb_rx_frame, CDC_ECM_EP_DATA_SIZE);
-
-                    return usbd_ack;
-                } else {
-                    /* Alt 0: deactivate */
-                    ecm_data_active = false;
-                    FURI_LOG_I(TAG, "Data interface deactivated");
-                    return usbd_ack;
-                }
-            }
+            return usbd_ack; /* Accept any alt setting request */
         }
     }
 
@@ -384,6 +351,17 @@ static usbd_respond ecm_ep_config(usbd_device* dev, uint8_t cfg) {
         usbd_reg_endpoint(dev, CDC_ECM_EP_OUT, ecm_rx_ep_callback);
         usbd_reg_endpoint(dev, CDC_ECM_EP_IN, ecm_tx_ep_callback);
         usbd_ep_write(dev, CDC_ECM_EP_IN, 0, 0); /* Prime TX */
+
+        /* Data interface is immediately active (no alt setting dance) */
+        ecm_data_active = true;
+        ecm_connected = true;
+
+        /* Send network connection notification */
+        usbd_ep_write(dev, CDC_ECM_EP_NOTIF,
+            ecm_notify_connected, sizeof(ecm_notify_connected));
+
+        /* Prime the OUT endpoint for receiving data */
+        usbd_ep_read(dev, CDC_ECM_EP_OUT, usb_rx_frame, CDC_ECM_EP_DATA_SIZE);
         return usbd_ack;
 
     default:
@@ -417,11 +395,10 @@ static void ecm_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     intf->str_prod_descr = (void*)&ecm_str_prod;
     intf->str_serial_descr = NULL;
 
+    /* Register callbacks — framework handles usbd_connect/usbd_enable */
     usbd_reg_config(dev, ecm_ep_config);
     usbd_reg_control(dev, ecm_control);
     usbd_reg_descr(dev, ecm_getdesc);
-
-    usbd_connect(dev, true);
 
     FURI_LOG_I(TAG, "CDC-ECM initialized");
 }
