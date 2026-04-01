@@ -62,12 +62,12 @@ bool icmp_ping(
     memset(icmp_buf, 0, sizeof(icmp_buf));
 
     icmp_buf[0] = ICMP_TYPE_ECHO_REQUEST; /* Type */
-    icmp_buf[1] = 0;                      /* Code */
+    icmp_buf[1] = 0; /* Code */
     /* Checksum at [2-3], fill later */
-    icmp_buf[4] = 0x00;                   /* Identifier high */
-    icmp_buf[5] = 0x01;                   /* Identifier low */
-    icmp_buf[6] = (uint8_t)(seq >> 8);    /* Sequence high */
-    icmp_buf[7] = (uint8_t)(seq & 0xFF);  /* Sequence low */
+    icmp_buf[4] = 0x00; /* Identifier high */
+    icmp_buf[5] = 0x01; /* Identifier low */
+    icmp_buf[6] = (uint8_t)(seq >> 8); /* Sequence high */
+    icmp_buf[7] = (uint8_t)(seq & 0xFF); /* Sequence low */
 
     /* Fill data with pattern */
     for(uint8_t i = 0; i < ICMP_DATA_SIZE; i++) {
@@ -114,7 +114,13 @@ bool icmp_ping(
         furi_delay_ms(1);
     }
 
-    FURI_LOG_W(TAG, "Ping timeout for %d.%d.%d.%d", target_ip[0], target_ip[1], target_ip[2], target_ip[3]);
+    FURI_LOG_W(
+        TAG,
+        "Ping timeout for %d.%d.%d.%d",
+        target_ip[0],
+        target_ip[1],
+        target_ip[2],
+        target_ip[3]);
     close(socket_num);
     return false;
 }

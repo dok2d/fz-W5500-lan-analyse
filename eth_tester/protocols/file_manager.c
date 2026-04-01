@@ -15,7 +15,7 @@
 #define TAG "FILEMGR"
 
 /* Max single file/folder name */
-#define FM_NAME_MAX  64
+#define FM_NAME_MAX    64
 #define FM_MAX_ENTRIES 128 /* max directory entries to sort */
 
 /* Directory entry for sorting */
@@ -45,11 +45,7 @@ static int fm_entry_cmp(const void* a, const void* b) {
 }
 
 /* Simple memmem implementation */
-static void* filemgr_memmem(
-    const void* haystack,
-    size_t hlen,
-    const void* needle,
-    size_t nlen) {
+static void* filemgr_memmem(const void* haystack, size_t hlen, const void* needle, size_t nlen) {
     if(nlen == 0) return (void*)haystack;
     if(hlen < nlen) return NULL;
     const uint8_t* h = haystack;
@@ -154,7 +150,6 @@ static bool http_send_str(uint8_t sn, const char* str) {
     return http_send_buf(sn, (const uint8_t*)str, len);
 }
 
-
 /*
  * Wait for ALL pending data to be transmitted before closing connection.
  * 1. Wait for SEND_OK (last send command completed)
@@ -234,11 +229,25 @@ static const char* html_escape(const char* src, char* buf, size_t buf_size) {
     size_t di = 0;
     for(size_t i = 0; src[i] && di < buf_size - 6; i++) {
         switch(src[i]) {
-        case '<': memcpy(buf + di, "&lt;", 4); di += 4; break;
-        case '>': memcpy(buf + di, "&gt;", 4); di += 4; break;
-        case '&': memcpy(buf + di, "&amp;", 5); di += 5; break;
-        case '"': memcpy(buf + di, "&#34;", 5); di += 5; break;
-        default: buf[di++] = src[i]; break;
+        case '<':
+            memcpy(buf + di, "&lt;", 4);
+            di += 4;
+            break;
+        case '>':
+            memcpy(buf + di, "&gt;", 4);
+            di += 4;
+            break;
+        case '&':
+            memcpy(buf + di, "&amp;", 5);
+            di += 5;
+            break;
+        case '"':
+            memcpy(buf + di, "&#34;", 5);
+            di += 5;
+            break;
+        default:
+            buf[di++] = src[i];
+            break;
         }
     }
     buf[di] = '\0';
@@ -271,17 +280,22 @@ static void get_parent_path(const char* path, char* parent, size_t parent_size) 
  * Uses Connection: close without Content-Length so the browser reads
  * until the server closes the connection.
  */
-static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_path, const char* token) {
+static void
+    handle_list_dir(uint8_t sn, const char* sd_path, const char* web_path, const char* token) {
     /* Token suffix for all URLs */
     char tsuf[16];
     snprintf(tsuf, sizeof(tsuf), "?t=%s", token);
     /* HTTP headers (no Content-Length — we stream until close) */
-    http_send_str(sn, "HTTP/1.1 200 OK\r\n"
+    http_send_str(
+        sn,
+        "HTTP/1.1 200 OK\r\n"
         "Content-Type: text/html;charset=utf-8\r\n"
         "Connection: close\r\n\r\n");
 
     /* HTML head + CSS */
-    http_send_str(sn, "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+    http_send_str(
+        sn,
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<title>Flipper File Manager</title>");
     http_send_str(sn, css);
@@ -306,21 +320,29 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
     }
 
     /* Upload form */
-    http_send_str(sn, "<div class='uf'>"
+    http_send_str(
+        sn,
+        "<div class='uf'>"
         "<form method='POST' action='/upload");
     http_send_str(sn, web_path);
     http_send_str(sn, tsuf);
-    http_send_str(sn, "' enctype='multipart/form-data'>"
+    http_send_str(
+        sn,
+        "' enctype='multipart/form-data'>"
         "<input type='file' name='file'> "
         "<button type='submit' class='b bs'>Upload</button>"
         "</form></div>");
 
     /* Mkdir form */
-    http_send_str(sn, "<div class='mf'>"
+    http_send_str(
+        sn,
+        "<div class='mf'>"
         "<form method='POST' action='/mkdir");
     http_send_str(sn, web_path);
     http_send_str(sn, tsuf);
-    http_send_str(sn, "'>"
+    http_send_str(
+        sn,
+        "'>"
         "<input type='text' name='name' placeholder='New folder' size='16'> "
         "<button type='submit' class='b bs'>Create</button>"
         "</form></div>");
@@ -337,8 +359,7 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
     if(entries && storage_dir_open(dir, sd_path)) {
         FileInfo info;
         char name[FM_NAME_MAX];
-        while(storage_dir_read(dir, &info, name, sizeof(name)) &&
-              entry_count < FM_MAX_ENTRIES) {
+        while(storage_dir_read(dir, &info, name, sizeof(name)) && entry_count < FM_MAX_ENTRIES) {
             strncpy(entries[entry_count].name, name, FM_NAME_MAX - 1);
             entries[entry_count].name[FM_NAME_MAX - 1] = '\0';
             entries[entry_count].size = info.size;
@@ -372,13 +393,17 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
                 http_send_str(sn, tsuf);
                 http_send_str(sn, "' class='d'>");
                 http_send_str(sn, esc_name);
-                http_send_str(sn, "/</a></td><td class='s'>-</td><td class='a'>"
+                http_send_str(
+                    sn,
+                    "/</a></td><td class='s'>-</td><td class='a'>"
                     "<a href='/delete");
                 if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
                 http_send_str(sn, "/");
                 http_send_str(sn, esc_name);
                 http_send_str(sn, tsuf);
-                http_send_str(sn, "' onclick=\"return confirm('Delete?')\">"
+                http_send_str(
+                    sn,
+                    "' onclick=\"return confirm('Delete?')\">"
                     "Del</a></td></tr>");
             } else {
                 char size_str[32];
@@ -387,19 +412,25 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
                 http_send_str(sn, esc_name);
                 http_send_str(sn, "</td><td class='s'>");
                 http_send_str(sn, size_str);
-                http_send_str(sn, "</td><td class='a'>"
+                http_send_str(
+                    sn,
+                    "</td><td class='a'>"
                     "<a href='/download");
                 if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
                 http_send_str(sn, "/");
                 http_send_str(sn, esc_name);
                 http_send_str(sn, tsuf);
-                http_send_str(sn, "' class='b bs'>DL</a>"
+                http_send_str(
+                    sn,
+                    "' class='b bs'>DL</a>"
                     "<a href='/delete");
                 if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
                 http_send_str(sn, "/");
                 http_send_str(sn, esc_name);
                 http_send_str(sn, tsuf);
-                http_send_str(sn, "' onclick=\"return confirm('Delete?')\">"
+                http_send_str(
+                    sn,
+                    "' onclick=\"return confirm('Delete?')\">"
                     "Del</a></td></tr>");
             }
         }
@@ -420,7 +451,10 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
         storage_common_fs_info(fst, "/ext", &st_total, &st_free);
         furi_record_close(RECORD_STORAGE);
         char ft[128];
-        snprintf(ft, sizeof(ft), "%s | Bat: %u%% | SD: %lu/%lu MB free",
+        snprintf(
+            ft,
+            sizeof(ft),
+            "%s | Bat: %u%% | SD: %lu/%lu MB free",
             dev_name ? dev_name : "Flipper",
             batt,
             (unsigned long)(st_free / (1024 * 1024)),
@@ -443,7 +477,9 @@ static void handle_download(
     File* file = storage_file_alloc(storage);
 
     if(!storage_file_open(file, sd_path, FSAM_READ, FSOM_OPEN_EXISTING)) {
-        http_send_str(sn, "HTTP/1.1 404 Not Found\r\nConnection: close\r\n"
+        http_send_str(
+            sn,
+            "HTTP/1.1 404 Not Found\r\nConnection: close\r\n"
             "Content-Length: 14\r\n\r\n404 Not Found\n");
         http_flush(sn);
         storage_file_free(file);
@@ -523,7 +559,6 @@ static void handle_upload(
     uint16_t buf_size,
     int32_t body_pre_read,
     FileManagerState* state) {
-
     /* Step 1: We already have body_pre_read bytes in buf (from handle_connection).
      * Continue reading until we have multipart headers (boundary + filename). */
     int32_t total_read = body_pre_read;
@@ -552,7 +587,9 @@ static void handle_upload(
     }
 
     if(total_read <= 0) {
-        http_send_str(sn, "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
+        http_send_str(
+            sn,
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
             "Content-Length: 8\r\n\r\nNo data\n");
         http_flush(sn);
         return;
@@ -562,7 +599,9 @@ static void handle_upload(
     /* Parse boundary (first line up to \r\n) */
     char* boundary_end = strstr((char*)buf, "\r\n");
     if(!boundary_end) {
-        http_send_str(sn, "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
+        http_send_str(
+            sn,
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
             "Content-Length: 12\r\n\r\nBad request\n");
         http_flush(sn);
         return;
@@ -576,7 +615,9 @@ static void handle_upload(
     /* Parse filename */
     char* fn_ptr = strstr((char*)buf, "filename=\"");
     if(!fn_ptr) {
-        http_send_str(sn, "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
+        http_send_str(
+            sn,
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
             "Content-Length: 12\r\n\r\nNo filename\n");
         http_flush(sn);
         return;
@@ -584,7 +625,9 @@ static void handle_upload(
     fn_ptr += 10;
     char* fn_end = strchr(fn_ptr, '"');
     if(!fn_end || fn_end == fn_ptr) {
-        http_send_str(sn, "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
+        http_send_str(
+            sn,
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
             "Content-Length: 12\r\n\r\nNo filename\n");
         http_flush(sn);
         return;
@@ -605,7 +648,9 @@ static void handle_upload(
     }
     fn_len = strlen(filename);
     if(fn_len == 0) {
-        http_send_str(sn, "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
+        http_send_str(
+            sn,
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
             "Content-Length: 12\r\n\r\nNo filename\n");
         http_flush(sn);
         return;
@@ -614,7 +659,9 @@ static void handle_upload(
     /* Find start of file data (after \r\n\r\n in part headers) */
     char* data_start = strstr(fn_end, "\r\n\r\n");
     if(!data_start) {
-        http_send_str(sn, "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
+        http_send_str(
+            sn,
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
             "Content-Length: 12\r\n\r\nBad request\n");
         http_flush(sn);
         return;
@@ -628,7 +675,9 @@ static void handle_upload(
     size_t dir_len = strlen(sd_dir_path);
     size_t name_len = strlen(filename);
     if(dir_len + 1 + name_len >= sizeof(filepath)) {
-        http_send_str(sn, "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
+        http_send_str(
+            sn,
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
             "Content-Length: 14\r\n\r\nPath too long\n");
         http_flush(sn);
         return;
@@ -642,7 +691,9 @@ static void handle_upload(
     File* file = storage_file_alloc(storage);
 
     if(!storage_file_open(file, filepath, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
-        http_send_str(sn, "HTTP/1.1 500 Error\r\nConnection: close\r\n"
+        http_send_str(
+            sn,
+            "HTTP/1.1 500 Error\r\nConnection: close\r\n"
             "Content-Length: 12\r\n\r\nWrite error\n");
         http_flush(sn);
         state->errors++;
@@ -710,8 +761,7 @@ static void handle_upload(
                     int32_t file_data_len = bnd - (char*)buf;
                     if(file_data_len >= 2) file_data_len -= 2; /* strip \r\n */
                     if(file_data_len > 0) {
-                        total_written += storage_file_write(
-                            file, buf, file_data_len);
+                        total_written += storage_file_write(file, buf, file_data_len);
                     }
                     found_boundary = true;
                     break;
@@ -732,8 +782,7 @@ static void handle_upload(
                     if(total_read > 0) {
                         /* Try to strip trailing boundary */
                         char* bnd2 = filemgr_memmem(buf, total_read, boundary, boundary_len);
-                        int32_t wlen = bnd2 ?
-                            (int32_t)(bnd2 - (char*)buf - 2) : total_read;
+                        int32_t wlen = bnd2 ? (int32_t)(bnd2 - (char*)buf - 2) : total_read;
                         if(wlen > 0) {
                             total_written += storage_file_write(file, buf, wlen);
                         }
@@ -761,7 +810,9 @@ static void handle_upload(
 
     /* Redirect back to directory (with auth token) */
     FuriString* loc = furi_string_alloc_printf("/browse%s?t=%s", web_dir_path, state->auth_token);
-    http_send_str(sn, "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
+    http_send_str(
+        sn,
+        "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
         "Content-Length: 0\r\nLocation: ");
     http_send_str(sn, furi_string_get_cstr(loc));
     http_send_str(sn, "\r\n\r\n");
@@ -829,7 +880,9 @@ static void handle_mkdir(
 
     /* Redirect */
     FuriString* loc = furi_string_alloc_printf("/browse%s?t=%s", web_dir_path, token);
-    http_send_str(sn, "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
+    http_send_str(
+        sn,
+        "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
         "Content-Length: 0\r\nLocation: ");
     http_send_str(sn, furi_string_get_cstr(loc));
     http_send_str(sn, "\r\n\r\n");
@@ -838,14 +891,17 @@ static void handle_mkdir(
 }
 
 /* Handle delete */
-static void handle_delete(uint8_t sn, const char* sd_path, const char* web_parent_path, const char* token) {
+static void
+    handle_delete(uint8_t sn, const char* sd_path, const char* web_parent_path, const char* token) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
     storage_simply_remove(storage, sd_path);
     furi_record_close(RECORD_STORAGE);
     FURI_LOG_I(TAG, "Deleted: %s", sd_path);
 
     FuriString* loc = furi_string_alloc_printf("/browse%s?t=%s", web_parent_path, token);
-    http_send_str(sn, "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
+    http_send_str(
+        sn,
+        "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
         "Content-Length: 0\r\nLocation: ");
     http_send_str(sn, furi_string_get_cstr(loc));
     http_send_str(sn, "\r\n\r\n");
@@ -893,7 +949,9 @@ static void handle_request(
 
     /* Reject path traversal attempts */
     if(!path_is_safe(uri)) {
-        http_send_str(sn, "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n"
+        http_send_str(
+            sn,
+            "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n"
             "Content-Length: 10\r\n\r\nForbidden\n");
         http_flush(sn);
         return;
@@ -907,7 +965,9 @@ static void handle_request(
     if(strcmp(uri, "/") == 0 || strcmp(uri, "") == 0) {
         char redir[32];
         snprintf(redir, sizeof(redir), "/browse/?t=%s", state->auth_token);
-        http_send_str(sn, "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
+        http_send_str(
+            sn,
+            "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
             "Content-Length: 0\r\nLocation: ");
         http_send_str(sn, redir);
         http_send_str(sn, "\r\n\r\n");
@@ -933,7 +993,9 @@ static void handle_request(
         if(is_dir) {
             handle_list_dir(sn, sd_path, web_path, state->auth_token);
         } else {
-            http_send_str(sn, "HTTP/1.1 404 Not Found\r\nConnection: close\r\n"
+            http_send_str(
+                sn,
+                "HTTP/1.1 404 Not Found\r\nConnection: close\r\n"
                 "Content-Length: 10\r\n\r\nNot found\n");
             http_flush(sn);
         }
@@ -982,18 +1044,17 @@ static void handle_request(
     }
 
     /* 404 */
-    http_send_str(sn, "HTTP/1.1 404 Not Found\r\nConnection: close\r\n"
+    http_send_str(
+        sn,
+        "HTTP/1.1 404 Not Found\r\nConnection: close\r\n"
         "Content-Length: 10\r\n\r\nNot found\n");
     http_flush(sn);
 }
 
 /* ==================== TCP connection handling ==================== */
 
-static void handle_connection(
-    uint8_t sn,
-    uint8_t* buf,
-    uint16_t buf_size,
-    FileManagerState* state) {
+static void
+    handle_connection(uint8_t sn, uint8_t* buf, uint16_t buf_size, FileManagerState* state) {
     int32_t total_read = 0;
     uint32_t start = furi_get_tick();
     bool headers_complete = false;
@@ -1055,7 +1116,9 @@ static void handle_connection(
 
     /* Validate auth token (required on all requests) */
     if(!token_ok) {
-        http_send_str(sn, "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n"
+        http_send_str(
+            sn,
+            "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n"
             "Content-Type: text/plain\r\nContent-Length: 42\r\n\r\n"
             "Access denied. Use URL with ?t=<token>.\n");
         http_flush(sn);

@@ -19,15 +19,15 @@
 
 typedef struct {
     volatile bool running;
-    uint32_t frames_usb_to_eth;   /* Frames forwarded: USB host -> W5500 LAN */
-    uint32_t frames_eth_to_usb;   /* Frames forwarded: W5500 LAN -> USB host */
-    uint32_t bytes_usb_to_eth;    /* Bytes forwarded: USB host -> W5500 LAN */
-    uint32_t bytes_eth_to_usb;    /* Bytes forwarded: W5500 LAN -> USB host */
-    uint32_t errors;              /* Total forwarding errors */
-    bool usb_connected;           /* Last known USB connection state */
-    bool lan_link_up;             /* Last known LAN link state */
-    bool dump_enabled;            /* PCAP dump toggle */
-    PcapDumpState pcap;           /* PCAP dump state */
+    uint32_t frames_usb_to_eth; /* Frames forwarded: USB host -> W5500 LAN */
+    uint32_t frames_eth_to_usb; /* Frames forwarded: W5500 LAN -> USB host */
+    uint32_t bytes_usb_to_eth; /* Bytes forwarded: USB host -> W5500 LAN */
+    uint32_t bytes_eth_to_usb; /* Bytes forwarded: W5500 LAN -> USB host */
+    uint32_t errors; /* Total forwarding errors */
+    bool usb_connected; /* Last known USB connection state */
+    bool lan_link_up; /* Last known LAN link state */
+    bool dump_enabled; /* PCAP dump toggle */
+    PcapDumpState pcap; /* PCAP dump state */
 } EthBridgeState;
 
 /**

@@ -152,16 +152,16 @@ struct EthTesterApp {
     NotificationApp* notifications;
 
     /* User settings (persisted to SD) */
-    bool setting_autosave;  /* auto-save results to history */
-    bool setting_sound;     /* LED/vibro/sound notifications */
-    bool dns_custom_enabled;       /* use custom DNS instead of DHCP */
-    uint8_t dns_custom_server[4];  /* custom DNS IP (default 8.8.8.8) */
-    char dns_custom_ip_input[16];  /* text input buffer for DNS IP */
+    bool setting_autosave; /* auto-save results to history */
+    bool setting_sound; /* LED/vibro/sound notifications */
+    bool dns_custom_enabled; /* use custom DNS instead of DHCP */
+    uint8_t dns_custom_server[4]; /* custom DNS IP (default 8.8.8.8) */
+    char dns_custom_ip_input[16]; /* text input buffer for DNS IP */
 
     /* Ping settings */
-    uint8_t ping_count;            /* packets for normal ping (1-100, default 4) */
-    uint16_t ping_timeout_ms;      /* reply timeout (500-10000, step 500, default 3000) */
-    uint16_t ping_interval_ms;     /* continuous ping interval (200-5000, step 200, default 1000) */
+    uint8_t ping_count; /* packets for normal ping (1-100, default 4) */
+    uint16_t ping_timeout_ms; /* reply timeout (500-10000, step 500, default 3000) */
+    uint16_t ping_interval_ms; /* continuous ping interval (200-5000, step 200, default 1000) */
 
     /* Worker thread for non-blocking operations */
     FuriThread* worker_thread;
@@ -172,8 +172,8 @@ struct EthTesterApp {
     bool w5500_initialized;
     bool spi_acquired;
     bool link_up;
-    uint8_t link_speed;   /* 0 = 10M, 1 = 100M */
-    uint8_t link_duplex;  /* 0 = half, 1 = full */
+    uint8_t link_speed; /* 0 = 10M, 1 = 100M */
+    uint8_t link_duplex; /* 0 = half, 1 = full */
     uint8_t mac_addr[6];
 
     /* Frame receive buffer (heap-allocated, shared by worker thread) */
@@ -198,7 +198,7 @@ struct EthTesterApp {
 
     /* DNS lookup state */
     char dns_hostname_input[64]; /* text input buffer for hostname */
-    uint8_t dns_server_ip[4];   /* DNS server from DHCP */
+    uint8_t dns_server_ip[4]; /* DNS server from DHCP */
 
     /* Wake-on-LAN state */
     uint8_t wol_mac_input[6]; /* byte input buffer for MAC */
@@ -206,16 +206,16 @@ struct EthTesterApp {
     /* Continuous ping state */
     char cont_ping_ip_input[16]; /* text input buffer */
     uint8_t cont_ping_target[4]; /* parsed target IP */
-    PingGraphState* ping_graph;  /* heap-allocated ping graph state */
+    PingGraphState* ping_graph; /* heap-allocated ping graph state */
 
     /* Port scanner state */
     char port_scan_ip_input[16]; /* text input buffer */
     uint8_t port_scan_target[4]; /* parsed target IP */
-    bool port_scan_top100;       /* false=Top20, true=Top100 */
-    bool port_scan_custom;       /* true = custom range mode */
+    bool port_scan_top100; /* false=Top20, true=Top100 */
+    bool port_scan_custom; /* true = custom range mode */
     uint16_t port_scan_custom_start; /* default 1 */
-    uint16_t port_scan_custom_end;   /* default 1024 */
-    char port_scan_start_input[6];   /* text buffer "xxxxx" */
+    uint16_t port_scan_custom_end; /* default 1024 */
+    char port_scan_start_input[6]; /* text buffer "xxxxx" */
     char port_scan_end_input[6];
 
     /* MAC changer state */
@@ -225,7 +225,7 @@ struct EthTesterApp {
     char traceroute_ip_input[16]; /* text input buffer (kept for compat) */
     uint8_t traceroute_target[4]; /* parsed target IP */
     char traceroute_host_input[64]; /* text input for IP or hostname */
-    bool traceroute_is_hostname;    /* true if input is hostname, not IP */
+    bool traceroute_is_hostname; /* true if input is hostname, not IP */
 
     /* Ping sweep state */
     char ping_sweep_ip_input[20]; /* "192.168.1.0/24" */
@@ -246,18 +246,18 @@ struct EthTesterApp {
     VariableItem* pxe_item_boot;
 
     /* PXE settings (user-configurable) */
-    char pxe_server_ip_input[16];      /* "192.168.77.1" */
-    char pxe_client_ip_input[16];      /* "192.168.77.10" */
-    char pxe_subnet_input[16];         /* "255.255.255.0" */
-    bool pxe_dhcp_enabled;             /* true = run DHCP server */
-    uint8_t pxe_server_ip[4];          /* parsed */
-    uint8_t pxe_client_ip[4];          /* parsed */
-    uint8_t pxe_subnet[4];             /* parsed */
+    char pxe_server_ip_input[16]; /* "192.168.77.1" */
+    char pxe_client_ip_input[16]; /* "192.168.77.10" */
+    char pxe_subnet_input[16]; /* "255.255.255.0" */
+    bool pxe_dhcp_enabled; /* true = run DHCP server */
+    uint8_t pxe_server_ip[4]; /* parsed */
+    uint8_t pxe_client_ip[4]; /* parsed */
+    uint8_t pxe_subnet[4]; /* parsed */
 
     /* PXE boot file selection */
-    PxeServerState pxe_scan;           /* cached boot file scan results */
-    uint8_t pxe_boot_file_idx;         /* currently selected boot file */
-    bool pxe_dhcp_probed;              /* external DHCP already probed? */
+    PxeServerState pxe_scan; /* cached boot file scan results */
+    uint8_t pxe_boot_file_idx; /* currently selected boot file */
+    bool pxe_dhcp_probed; /* external DHCP already probed? */
 
     /* Discovered hosts from scans */
     Submenu* submenu_host_list;

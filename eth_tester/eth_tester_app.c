@@ -45,9 +45,9 @@
 
 /* Custom events sent from worker to main thread */
 #define CUSTOM_EVENT_PING_SWEEP_READY 1
-#define CUSTOM_EVENT_HISTORY_DELETE 2
-#define CUSTOM_EVENT_CONT_PING_BACK 3
-#define CUSTOM_EVENT_SHOW_HOST_LIST 4
+#define CUSTOM_EVENT_HISTORY_DELETE   2
+#define CUSTOM_EVENT_CONT_PING_BACK   3
+#define CUSTOM_EVENT_SHOW_HOST_LIST   4
 
 /* Global app pointer for navigation callbacks (single-instance app) */
 static EthTesterApp* g_app = NULL;
@@ -170,7 +170,9 @@ static void eth_tester_settings_save(EthTesterApp* app) {
     File* file = storage_file_alloc(storage);
     if(storage_file_open(file, SETTINGS_PATH, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
         char buf[192];
-        snprintf(buf, sizeof(buf),
+        snprintf(
+            buf,
+            sizeof(buf),
             "autosave=%d\nsound=%d\ndns_custom=%d\ndns_ip=%s\n"
             "ping_count=%d\nping_timeout=%d\nping_interval=%d\n",
             app->setting_autosave ? 1 : 0,
@@ -207,7 +209,12 @@ static bool eth_tester_custom_event_cb(void* context, uint32_t event);
 static void eth_tester_worker_stop(EthTesterApp* app);
 static void eth_tester_worker_start(EthTesterApp* app, uint32_t op, EthTesterView result_view);
 static void eth_tester_update_view(TextBox* tb, FuriString* text);
-static void eth_tester_show_view(EthTesterApp* app, TextBox* tb, EthTesterView view, FuriString* text, const char* initial);
+static void eth_tester_show_view(
+    EthTesterApp* app,
+    TextBox* tb,
+    EthTesterView view,
+    FuriString* text,
+    const char* initial);
 static bool eth_tester_ensure_w5500(EthTesterApp* app);
 
 static void eth_tester_do_link_info(EthTesterApp* app);
@@ -243,16 +250,16 @@ static void eth_tester_save_and_notify(EthTesterApp* app, const char* type, Furi
 
 typedef struct {
     EthTesterApp* app;
-    bool active;          /* bridge is running */
+    bool active; /* bridge is running */
     bool usb_connected;
     bool lan_link_up;
-    uint8_t lan_speed;    /* 0=10M, 1=100M */
-    uint8_t lan_duplex;   /* 0=half, 1=full */
+    uint8_t lan_speed; /* 0=10M, 1=100M */
+    uint8_t lan_duplex; /* 0=half, 1=full */
     uint32_t frames_to_eth;
     uint32_t frames_to_usb;
     uint32_t errors;
     const char* status_line; /* "Starting...", "Running", "Stopped" */
-    bool dump_active;     /* PCAP dump is recording */
+    bool dump_active; /* PCAP dump is recording */
     uint32_t dump_frames; /* frames written to pcap */
     uint32_t dump_dropped; /* frames dropped (write errors) */
 } BridgeViewModel;
@@ -279,7 +286,10 @@ static void bridge_draw_callback(Canvas* canvas, void* model) {
     canvas_draw_str(canvas, 2, 16, buf);
 
     /* LAN status */
-    snprintf(buf, sizeof(buf), "LAN: %s %s/%s",
+    snprintf(
+        buf,
+        sizeof(buf),
+        "LAN: %s %s/%s",
         vm->lan_link_up ? "Up" : "Down",
         vm->lan_speed ? "100M" : "10M",
         vm->lan_duplex ? "FD" : "HD");
@@ -304,8 +314,7 @@ static void bridge_draw_callback(Canvas* canvas, void* model) {
     }
 
     /* Footer */
-    snprintf(buf, sizeof(buf), "[OK] %s  [<] Stop",
-        vm->dump_active ? "Stop rec" : "Record");
+    snprintf(buf, sizeof(buf), "[OK] %s  [<] Stop", vm->dump_active ? "Stop rec" : "Record");
     canvas_draw_str_aligned(canvas, 64, 62, AlignCenter, AlignBottom, buf);
 }
 
@@ -353,12 +362,12 @@ static bool bridge_input_callback(InputEvent* event, void* context) {
 /* ==================== Host List / Host Actions callbacks ==================== */
 
 /* Host action menu item indices */
-#define HOST_ACTION_PING         0
-#define HOST_ACTION_CONT_PING    1
-#define HOST_ACTION_TRACEROUTE   2
-#define HOST_ACTION_PORT_SCAN_20 3
+#define HOST_ACTION_PING          0
+#define HOST_ACTION_CONT_PING     1
+#define HOST_ACTION_TRACEROUTE    2
+#define HOST_ACTION_PORT_SCAN_20  3
 #define HOST_ACTION_PORT_SCAN_100 4
-#define HOST_ACTION_WOL          5
+#define HOST_ACTION_WOL           5
 
 static uint32_t eth_tester_nav_back_host_list(void* context) {
     UNUSED(context);
@@ -376,14 +385,15 @@ static void eth_tester_host_action_callback(void* context, uint32_t index) {
 
     DiscoveredHost* host = &app->discovered_hosts[app->selected_host_idx];
     char ip_str[16];
-    snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d",
-        host->ip[0], host->ip[1], host->ip[2], host->ip[3]);
+    snprintf(
+        ip_str, sizeof(ip_str), "%d.%d.%d.%d", host->ip[0], host->ip[1], host->ip[2], host->ip[3]);
 
     switch(index) {
     case HOST_ACTION_PING:
         memcpy(app->ping_ip_custom, host->ip, 4);
         strncpy(app->ping_ip_input, ip_str, sizeof(app->ping_ip_input));
-        eth_tester_show_view(app, app->text_box_ping, EthTesterViewPing, app->ping_text, "Initializing...\n");
+        eth_tester_show_view(
+            app, app->text_box_ping, EthTesterViewPing, app->ping_text, "Initializing...\n");
         eth_tester_worker_start(app, EthTesterMenuItemPing, EthTesterViewPing);
         break;
     case HOST_ACTION_CONT_PING:
@@ -440,18 +450,44 @@ static void eth_tester_host_list_callback(void* context, uint32_t index) {
     submenu_reset(app->submenu_host_actions);
 
     char ip_str[16];
-    snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d",
-        host->ip[0], host->ip[1], host->ip[2], host->ip[3]);
+    snprintf(
+        ip_str, sizeof(ip_str), "%d.%d.%d.%d", host->ip[0], host->ip[1], host->ip[2], host->ip[3]);
     submenu_set_header(app->submenu_host_actions, ip_str);
 
-    submenu_add_item(app->submenu_host_actions, "Ping", HOST_ACTION_PING, eth_tester_host_action_callback, app);
-    submenu_add_item(app->submenu_host_actions, "Continuous Ping", HOST_ACTION_CONT_PING, eth_tester_host_action_callback, app);
-    submenu_add_item(app->submenu_host_actions, "Traceroute", HOST_ACTION_TRACEROUTE, eth_tester_host_action_callback, app);
-    submenu_add_item(app->submenu_host_actions, "Port Scan (Top 20)", HOST_ACTION_PORT_SCAN_20, eth_tester_host_action_callback, app);
-    submenu_add_item(app->submenu_host_actions, "Port Scan (Top 100)", HOST_ACTION_PORT_SCAN_100, eth_tester_host_action_callback, app);
+    submenu_add_item(
+        app->submenu_host_actions, "Ping", HOST_ACTION_PING, eth_tester_host_action_callback, app);
+    submenu_add_item(
+        app->submenu_host_actions,
+        "Continuous Ping",
+        HOST_ACTION_CONT_PING,
+        eth_tester_host_action_callback,
+        app);
+    submenu_add_item(
+        app->submenu_host_actions,
+        "Traceroute",
+        HOST_ACTION_TRACEROUTE,
+        eth_tester_host_action_callback,
+        app);
+    submenu_add_item(
+        app->submenu_host_actions,
+        "Port Scan (Top 20)",
+        HOST_ACTION_PORT_SCAN_20,
+        eth_tester_host_action_callback,
+        app);
+    submenu_add_item(
+        app->submenu_host_actions,
+        "Port Scan (Top 100)",
+        HOST_ACTION_PORT_SCAN_100,
+        eth_tester_host_action_callback,
+        app);
 
     if(host->has_mac) {
-        submenu_add_item(app->submenu_host_actions, "Wake-on-LAN", HOST_ACTION_WOL, eth_tester_host_action_callback, app);
+        submenu_add_item(
+            app->submenu_host_actions,
+            "Wake-on-LAN",
+            HOST_ACTION_WOL,
+            eth_tester_host_action_callback,
+            app);
     }
 
     view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewHostActions);
@@ -468,12 +504,17 @@ static void eth_tester_populate_host_list(EthTesterApp* app) {
         char label[40];
         if(h->has_mac) {
             const char* vendor = oui_lookup(h->mac);
-            snprintf(label, sizeof(label), "%d.%d.%d.%d (%s)",
-                h->ip[0], h->ip[1], h->ip[2], h->ip[3],
+            snprintf(
+                label,
+                sizeof(label),
+                "%d.%d.%d.%d (%s)",
+                h->ip[0],
+                h->ip[1],
+                h->ip[2],
+                h->ip[3],
                 vendor);
         } else {
-            snprintf(label, sizeof(label), "%d.%d.%d.%d",
-                h->ip[0], h->ip[1], h->ip[2], h->ip[3]);
+            snprintf(label, sizeof(label), "%d.%d.%d.%d", h->ip[0], h->ip[1], h->ip[2], h->ip[3]);
         }
         submenu_add_item(app->submenu_host_list, label, i, eth_tester_host_list_callback, app);
     }
@@ -501,12 +542,11 @@ static void packet_capture_draw_callback(Canvas* canvas, void* model) {
 
         canvas_draw_str(canvas, 2, 26, "Status: RECORDING");
 
-        snprintf(buf, sizeof(buf), "Frames: %lu",
-            (unsigned long)app->pcap_state.frames_written);
+        snprintf(buf, sizeof(buf), "Frames: %lu", (unsigned long)app->pcap_state.frames_written);
         canvas_draw_str(canvas, 2, 38, buf);
 
-        snprintf(buf, sizeof(buf), "Size: %lu bytes",
-            (unsigned long)app->pcap_state.bytes_written);
+        snprintf(
+            buf, sizeof(buf), "Size: %lu bytes", (unsigned long)app->pcap_state.bytes_written);
         canvas_draw_str(canvas, 2, 48, buf);
 
         snprintf(buf, sizeof(buf), "Time: %lu sec", (unsigned long)elapsed);
@@ -518,7 +558,10 @@ static void packet_capture_draw_callback(Canvas* canvas, void* model) {
 
         if(app->pcap_state.frames_written > 0) {
             char buf[48];
-            snprintf(buf, sizeof(buf), "Last: %lu frames, %lu B",
+            snprintf(
+                buf,
+                sizeof(buf),
+                "Last: %lu frames, %lu B",
                 (unsigned long)app->pcap_state.frames_written,
                 (unsigned long)app->pcap_state.bytes_written);
             canvas_draw_str(canvas, 2, 38, buf);
@@ -536,7 +579,8 @@ static bool packet_capture_input_callback(InputEvent* event, void* context) {
             /* Start capture */
             memset(&app->pcap_state, 0, sizeof(app->pcap_state));
             app->pcap_start_tick = furi_get_tick();
-            eth_tester_worker_start(app, EthTesterMenuItemPacketCapture, EthTesterViewPacketCapture);
+            eth_tester_worker_start(
+                app, EthTesterMenuItemPacketCapture, EthTesterViewPacketCapture);
         } else {
             /* Stop capture */
             app->worker_running = false;
@@ -579,9 +623,14 @@ static void cont_ping_draw_callback(Canvas* canvas, void* model) {
     char buf[64];
 
     /* Show target IP */
-    snprintf(buf, sizeof(buf), "Ping %d.%d.%d.%d",
-        app->cont_ping_target[0], app->cont_ping_target[1],
-        app->cont_ping_target[2], app->cont_ping_target[3]);
+    snprintf(
+        buf,
+        sizeof(buf),
+        "Ping %d.%d.%d.%d",
+        app->cont_ping_target[0],
+        app->cont_ping_target[1],
+        app->cont_ping_target[2],
+        app->cont_ping_target[3]);
     canvas_draw_str(canvas, 0, 7, buf);
 
     uint32_t cur = 0;
@@ -592,8 +641,8 @@ static void cont_ping_draw_callback(Canvas* canvas, void* model) {
     uint32_t avg = ping_graph_avg_rtt(pg);
     uint8_t loss = ping_graph_loss_percent(pg);
 
-    snprintf(buf, sizeof(buf), "%lums avg:%lu loss:%d%%",
-        (unsigned long)cur, (unsigned long)avg, loss);
+    snprintf(
+        buf, sizeof(buf), "%lums avg:%lu loss:%d%%", (unsigned long)cur, (unsigned long)avg, loss);
     canvas_draw_str(canvas, 0, 16, buf);
 
     uint8_t graph_top = 22;
@@ -842,7 +891,10 @@ static void pxe_boot_file_changed(VariableItem* item) {
     if(idx < scan->boot_file_count) {
         app->pxe_boot_file_idx = idx;
         char info[96];
-        snprintf(info, sizeof(info), "%s (%luB)",
+        snprintf(
+            info,
+            sizeof(info),
+            "%s (%luB)",
             scan->boot_files[idx].filename,
             (unsigned long)scan->boot_files[idx].file_size);
         variable_item_set_current_value_text(item, info);
@@ -858,7 +910,8 @@ static void pxe_settings_enter_callback(void* context, uint32_t index) {
         /* Apply selected boot file to pxe_scan before starting */
         uint8_t bi = app->pxe_boot_file_idx;
         if(bi < app->pxe_scan.boot_file_count) {
-            strncpy(app->pxe_scan.boot_filename,
+            strncpy(
+                app->pxe_scan.boot_filename,
                 app->pxe_scan.boot_files[bi].filename,
                 sizeof(app->pxe_scan.boot_filename) - 1);
             app->pxe_scan.boot_file_size = app->pxe_scan.boot_files[bi].file_size;
@@ -929,7 +982,10 @@ static void pxe_settings_refresh(EthTesterApp* app) {
         variable_item_set_values_count(app->pxe_item_boot, app->pxe_scan.boot_file_count);
         variable_item_set_current_value_index(app->pxe_item_boot, 0);
         char info[96];
-        snprintf(info, sizeof(info), "%s (%luB)",
+        snprintf(
+            info,
+            sizeof(info),
+            "%s (%luB)",
             app->pxe_scan.boot_files[0].filename,
             (unsigned long)app->pxe_scan.boot_files[0].file_size);
         variable_item_set_current_value_text(app->pxe_item_boot, info);
@@ -956,23 +1012,39 @@ static void pxe_settings_refresh(EthTesterApp* app) {
             sip[3] = (uint8_t)(ext.offered_ip[3] + 100);
             if(sip[3] < ext.offered_ip[3]) sip[3] = 250;
 
-            snprintf(app->pxe_server_ip_input, sizeof(app->pxe_server_ip_input),
-                "%d.%d.%d.%d", sip[0], sip[1], sip[2], sip[3]);
+            snprintf(
+                app->pxe_server_ip_input,
+                sizeof(app->pxe_server_ip_input),
+                "%d.%d.%d.%d",
+                sip[0],
+                sip[1],
+                sip[2],
+                sip[3]);
             eth_tester_parse_ip(app->pxe_server_ip_input, app->pxe_server_ip);
             variable_item_set_current_value_text(app->pxe_item_sip, app->pxe_server_ip_input);
 
             /* Client IP: use offered IP */
-            snprintf(app->pxe_client_ip_input, sizeof(app->pxe_client_ip_input),
-                "%d.%d.%d.%d", ext.offered_ip[0], ext.offered_ip[1],
-                ext.offered_ip[2], ext.offered_ip[3]);
+            snprintf(
+                app->pxe_client_ip_input,
+                sizeof(app->pxe_client_ip_input),
+                "%d.%d.%d.%d",
+                ext.offered_ip[0],
+                ext.offered_ip[1],
+                ext.offered_ip[2],
+                ext.offered_ip[3]);
             eth_tester_parse_ip(app->pxe_client_ip_input, app->pxe_client_ip);
             variable_item_set_current_value_text(app->pxe_item_cip, app->pxe_client_ip_input);
 
             /* Subnet from DHCP */
             if(ext.subnet[0] | ext.subnet[1] | ext.subnet[2] | ext.subnet[3]) {
-                snprintf(app->pxe_subnet_input, sizeof(app->pxe_subnet_input),
-                    "%d.%d.%d.%d", ext.subnet[0], ext.subnet[1],
-                    ext.subnet[2], ext.subnet[3]);
+                snprintf(
+                    app->pxe_subnet_input,
+                    sizeof(app->pxe_subnet_input),
+                    "%d.%d.%d.%d",
+                    ext.subnet[0],
+                    ext.subnet[1],
+                    ext.subnet[2],
+                    ext.subnet[3]);
                 eth_tester_parse_ip(app->pxe_subnet_input, app->pxe_subnet);
                 variable_item_set_current_value_text(app->pxe_item_sub, app->pxe_subnet_input);
             }
@@ -1023,7 +1095,8 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     furi_string_set(app->arp_text, "ARP Scan ready.\nPress Back to return.\n");
     furi_string_set(app->dhcp_text, "DHCP Analyze ready.\nPress Back to return.\n");
     furi_string_set(app->ping_text, "Ping ready.\nPress Back to return.\n");
-    furi_string_set(app->stats_text, "No statistics yet.\nRun LLDP/CDP or ARP\nto collect data.\n");
+    furi_string_set(
+        app->stats_text, "No statistics yet.\nRun LLDP/CDP or ARP\nto collect data.\n");
     furi_string_set(app->dns_text, "DNS Lookup ready.\n");
     furi_string_set(app->wol_text, "Wake-on-LAN ready.\n");
     furi_string_set(app->port_scan_text, "Port Scanner ready.\n");
@@ -1049,86 +1122,205 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "Discovery", 101, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Diagnostics", 102, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Tools", 103, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
+    submenu_add_item(
+        app->submenu, "History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Settings", 104, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "About", EthTesterMenuItemAbout, eth_tester_submenu_callback, app);
-    view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
+    submenu_add_item(
+        app->submenu, "About", EthTesterMenuItemAbout, eth_tester_submenu_callback, app);
+    view_set_previous_callback(
+        submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
 
     /* Category: Network Info */
     app->submenu_cat_netinfo = submenu_alloc();
-    submenu_add_item(app->submenu_cat_netinfo, "Link Info", EthTesterMenuItemLinkInfo, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_netinfo, "DHCP Analyze", EthTesterMenuItemDhcpAnalyze, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_netinfo, "Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
-    view_set_previous_callback(submenu_get_view(app->submenu_cat_netinfo), eth_tester_navigation_submenu_callback);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatNetInfo, submenu_get_view(app->submenu_cat_netinfo));
+    submenu_add_item(
+        app->submenu_cat_netinfo,
+        "Link Info",
+        EthTesterMenuItemLinkInfo,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_netinfo,
+        "DHCP Analyze",
+        EthTesterMenuItemDhcpAnalyze,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_netinfo,
+        "Statistics",
+        EthTesterMenuItemStats,
+        eth_tester_submenu_callback,
+        app);
+    view_set_previous_callback(
+        submenu_get_view(app->submenu_cat_netinfo), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewCatNetInfo, submenu_get_view(app->submenu_cat_netinfo));
 
     /* Category: Discovery */
     app->submenu_cat_discovery = submenu_alloc();
-    submenu_add_item(app->submenu_cat_discovery, "ARP Scan", EthTesterMenuItemArpScan, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_discovery, "Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_discovery, "LLDP/CDP", EthTesterMenuItemLldpCdp, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_discovery, "mDNS/SSDP", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_discovery, "STP/VLAN", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
-    view_set_previous_callback(submenu_get_view(app->submenu_cat_discovery), eth_tester_navigation_submenu_callback);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatDiscovery, submenu_get_view(app->submenu_cat_discovery));
+    submenu_add_item(
+        app->submenu_cat_discovery,
+        "ARP Scan",
+        EthTesterMenuItemArpScan,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_discovery,
+        "Ping Sweep",
+        EthTesterMenuItemPingSweep,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_discovery,
+        "LLDP/CDP",
+        EthTesterMenuItemLldpCdp,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_discovery,
+        "mDNS/SSDP",
+        EthTesterMenuItemDiscovery,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_discovery,
+        "STP/VLAN",
+        EthTesterMenuItemStpVlan,
+        eth_tester_submenu_callback,
+        app);
+    view_set_previous_callback(
+        submenu_get_view(app->submenu_cat_discovery), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        EthTesterViewCatDiscovery,
+        submenu_get_view(app->submenu_cat_discovery));
 
     /* Category: Diagnostics */
     app->submenu_cat_diag = submenu_alloc();
-    submenu_add_item(app->submenu_cat_diag, "Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_diag, "Continuous Ping", EthTesterMenuItemContPing, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_diag, "DNS Lookup", EthTesterMenuItemDnsLookup, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_diag, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_diag, "Port Scan (Top 20)", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_diag, "Port Scan (Top 100)", EthTesterMenuItemPortScanFull, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_diag, "Port Scan (Custom)", EthTesterMenuItemPortScanCustom, eth_tester_submenu_callback, app);
-    view_set_previous_callback(submenu_get_view(app->submenu_cat_diag), eth_tester_navigation_submenu_callback);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatDiag, submenu_get_view(app->submenu_cat_diag));
+    submenu_add_item(
+        app->submenu_cat_diag, "Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
+    submenu_add_item(
+        app->submenu_cat_diag,
+        "Continuous Ping",
+        EthTesterMenuItemContPing,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_diag,
+        "DNS Lookup",
+        EthTesterMenuItemDnsLookup,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_diag,
+        "Traceroute",
+        EthTesterMenuItemTraceroute,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_diag,
+        "Port Scan (Top 20)",
+        EthTesterMenuItemPortScan,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_diag,
+        "Port Scan (Top 100)",
+        EthTesterMenuItemPortScanFull,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_diag,
+        "Port Scan (Custom)",
+        EthTesterMenuItemPortScanCustom,
+        eth_tester_submenu_callback,
+        app);
+    view_set_previous_callback(
+        submenu_get_view(app->submenu_cat_diag), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewCatDiag, submenu_get_view(app->submenu_cat_diag));
 
     /* Category: Tools */
     app->submenu_cat_tools = submenu_alloc();
-    submenu_add_item(app->submenu_cat_tools, "Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_tools, "ETH Bridge", EthTesterMenuItemEthBridge, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_tools, "PXE Server", EthTesterMenuItemPxeServer, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_tools, "File Manager", EthTesterMenuItemFileManager, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu_cat_tools, "Packet Capture", EthTesterMenuItemPacketCapture, eth_tester_submenu_callback, app);
-    view_set_previous_callback(submenu_get_view(app->submenu_cat_tools), eth_tester_navigation_submenu_callback);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatTools, submenu_get_view(app->submenu_cat_tools));
+    submenu_add_item(
+        app->submenu_cat_tools,
+        "Wake-on-LAN",
+        EthTesterMenuItemWol,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_tools,
+        "ETH Bridge",
+        EthTesterMenuItemEthBridge,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_tools,
+        "PXE Server",
+        EthTesterMenuItemPxeServer,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_tools,
+        "File Manager",
+        EthTesterMenuItemFileManager,
+        eth_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_tools,
+        "Packet Capture",
+        EthTesterMenuItemPacketCapture,
+        eth_tester_submenu_callback,
+        app);
+    view_set_previous_callback(
+        submenu_get_view(app->submenu_cat_tools), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewCatTools, submenu_get_view(app->submenu_cat_tools));
 
     /* TextBox views for each feature */
     app->text_box_link = text_box_alloc();
     text_box_set_font(app->text_box_link, TextBoxFontText);
     view_set_previous_callback(text_box_get_view(app->text_box_link), eth_tester_nav_back_netinfo);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewLinkInfo, text_box_get_view(app->text_box_link));
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewLinkInfo, text_box_get_view(app->text_box_link));
 
     app->text_box_lldp = text_box_alloc();
     text_box_set_font(app->text_box_lldp, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_lldp), eth_tester_nav_back_discovery);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewLldp, text_box_get_view(app->text_box_lldp));
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_lldp), eth_tester_nav_back_discovery);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewLldp, text_box_get_view(app->text_box_lldp));
 
     app->text_box_arp = text_box_alloc();
     text_box_set_font(app->text_box_arp, TextBoxFontText);
     view_set_previous_callback(text_box_get_view(app->text_box_arp), eth_tester_nav_back_arp_scan);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewArpScan, text_box_get_view(app->text_box_arp));
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewArpScan, text_box_get_view(app->text_box_arp));
 
     app->text_box_dhcp = text_box_alloc();
     text_box_set_font(app->text_box_dhcp, TextBoxFontText);
     view_set_previous_callback(text_box_get_view(app->text_box_dhcp), eth_tester_nav_back_netinfo);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDhcpAnalyze, text_box_get_view(app->text_box_dhcp));
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewDhcpAnalyze, text_box_get_view(app->text_box_dhcp));
 
     app->text_box_ping = text_box_alloc();
     text_box_set_font(app->text_box_ping, TextBoxFontText);
     view_set_previous_callback(text_box_get_view(app->text_box_ping), eth_tester_nav_back_diag);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPing, text_box_get_view(app->text_box_ping));
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewPing, text_box_get_view(app->text_box_ping));
 
     app->text_box_stats = text_box_alloc();
     text_box_set_font(app->text_box_stats, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_stats), eth_tester_nav_back_netinfo);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewStats, text_box_get_view(app->text_box_stats));
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_stats), eth_tester_nav_back_netinfo);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewStats, text_box_get_view(app->text_box_stats));
 
     /* IP Keyboard (shared custom view for all IP address inputs) */
     app->ip_keyboard = ip_keyboard_alloc();
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewIpKeyboard, ip_keyboard_get_view(app->ip_keyboard));
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewIpKeyboard, ip_keyboard_get_view(app->ip_keyboard));
 
     /* Default ping target */
     strncpy(app->ping_ip_input, "8.8.8.8", sizeof(app->ping_ip_input));
@@ -1137,11 +1329,13 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->text_box_dns = text_box_alloc();
     text_box_set_font(app->text_box_dns, TextBoxFontText);
     view_set_previous_callback(text_box_get_view(app->text_box_dns), eth_tester_nav_back_diag);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDnsLookup, text_box_get_view(app->text_box_dns));
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewDnsLookup, text_box_get_view(app->text_box_dns));
 
     app->text_input_dns = text_input_alloc();
     view_set_previous_callback(text_input_get_view(app->text_input_dns), eth_tester_nav_back_diag);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDnsInput, text_input_get_view(app->text_input_dns));
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewDnsInput, text_input_get_view(app->text_input_dns));
 
     /* Default DNS hostname */
     strncpy(app->dns_hostname_input, "google.com", sizeof(app->dns_hostname_input));
@@ -1150,11 +1344,14 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->text_box_wol = text_box_alloc();
     text_box_set_font(app->text_box_wol, TextBoxFontText);
     view_set_previous_callback(text_box_get_view(app->text_box_wol), eth_tester_nav_back_tools);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewWol, text_box_get_view(app->text_box_wol));
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewWol, text_box_get_view(app->text_box_wol));
 
     app->byte_input_wol = byte_input_alloc();
-    view_set_previous_callback(byte_input_get_view(app->byte_input_wol), eth_tester_nav_back_tools);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewWolInput, byte_input_get_view(app->byte_input_wol));
+    view_set_previous_callback(
+        byte_input_get_view(app->byte_input_wol), eth_tester_nav_back_tools);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewWolInput, byte_input_get_view(app->byte_input_wol));
 
     /* Continuous Ping views */
     app->view_cont_ping = view_alloc();
@@ -1162,11 +1359,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_draw_callback(app->view_cont_ping, cont_ping_draw_callback);
     view_set_input_callback(app->view_cont_ping, cont_ping_input_callback);
     view_set_context(app->view_cont_ping, app);
-    with_view_model(
-        app->view_cont_ping,
-        ContPingViewModel* vm,
-        { vm->app = app; },
-        false);
+    with_view_model(app->view_cont_ping, ContPingViewModel * vm, { vm->app = app; }, false);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewContPing, app->view_cont_ping);
 
     /* Default continuous ping target */
@@ -1175,8 +1368,10 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Port Scanner views */
     app->text_box_port_scan = text_box_alloc();
     text_box_set_font(app->text_box_port_scan, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_port_scan), eth_tester_nav_back_diag);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPortScan, text_box_get_view(app->text_box_port_scan));
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_port_scan), eth_tester_nav_back_diag);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewPortScan, text_box_get_view(app->text_box_port_scan));
 
     /* Port scan target defaults to empty — filled from DHCP gateway when available */
     app->port_scan_ip_input[0] = '\0';
@@ -1187,18 +1382,30 @@ static EthTesterApp* eth_tester_app_alloc(void) {
 
     /* Port scan custom range text input */
     app->text_input_port_custom = text_input_alloc();
-    view_set_previous_callback(text_input_get_view(app->text_input_port_custom), eth_tester_nav_back_diag);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPortScanCustomInput, text_input_get_view(app->text_input_port_custom));
+    view_set_previous_callback(
+        text_input_get_view(app->text_input_port_custom), eth_tester_nav_back_diag);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        EthTesterViewPortScanCustomInput,
+        text_input_get_view(app->text_input_port_custom));
 
     /* MAC Changer views */
     app->text_box_mac_changer = text_box_alloc();
     text_box_set_font(app->text_box_mac_changer, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_mac_changer), eth_tester_nav_back_settings);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMacChanger, text_box_get_view(app->text_box_mac_changer));
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_mac_changer), eth_tester_nav_back_settings);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        EthTesterViewMacChanger,
+        text_box_get_view(app->text_box_mac_changer));
 
     app->byte_input_mac_changer = byte_input_alloc();
-    view_set_previous_callback(byte_input_get_view(app->byte_input_mac_changer), eth_tester_nav_back_settings);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMacChangerInput, byte_input_get_view(app->byte_input_mac_changer));
+    view_set_previous_callback(
+        byte_input_get_view(app->byte_input_mac_changer), eth_tester_nav_back_settings);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        EthTesterViewMacChangerInput,
+        byte_input_get_view(app->byte_input_mac_changer));
 
     /* ETH Bridge view (custom View with draw_callback, no TextBox) */
     app->view_bridge = view_alloc();
@@ -1209,7 +1416,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(app->view_bridge, eth_tester_nav_back_tools);
     with_view_model(
         app->view_bridge,
-        BridgeViewModel* vm,
+        BridgeViewModel * vm,
         {
             vm->app = app;
             vm->status_line = "Starting...";
@@ -1226,23 +1433,31 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     strncpy(app->pxe_client_ip_input, "192.168.77.10", sizeof(app->pxe_client_ip_input));
     strncpy(app->pxe_subnet_input, "255.255.255.0", sizeof(app->pxe_subnet_input));
     app->pxe_dhcp_enabled = true;
-    app->pxe_server_ip[0] = 192; app->pxe_server_ip[1] = 168;
-    app->pxe_server_ip[2] = 77;  app->pxe_server_ip[3] = 1;
-    app->pxe_client_ip[0] = 192; app->pxe_client_ip[1] = 168;
-    app->pxe_client_ip[2] = 77;  app->pxe_client_ip[3] = 10;
-    app->pxe_subnet[0] = 255; app->pxe_subnet[1] = 255;
-    app->pxe_subnet[2] = 255; app->pxe_subnet[3] = 0;
+    app->pxe_server_ip[0] = 192;
+    app->pxe_server_ip[1] = 168;
+    app->pxe_server_ip[2] = 77;
+    app->pxe_server_ip[3] = 1;
+    app->pxe_client_ip[0] = 192;
+    app->pxe_client_ip[1] = 168;
+    app->pxe_client_ip[2] = 77;
+    app->pxe_client_ip[3] = 10;
+    app->pxe_subnet[0] = 255;
+    app->pxe_subnet[1] = 255;
+    app->pxe_subnet[2] = 255;
+    app->pxe_subnet[3] = 0;
 
     /* PXE TextBox (live status during server run) */
     app->text_box_pxe = text_box_alloc();
     text_box_set_font(app->text_box_pxe, TextBoxFontText);
     view_set_previous_callback(text_box_get_view(app->text_box_pxe), eth_tester_nav_back_tools);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPxeServer, text_box_get_view(app->text_box_pxe));
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewPxeServer, text_box_get_view(app->text_box_pxe));
 
     /* PXE Help TextBox */
     app->text_box_pxe_help = text_box_alloc();
     text_box_set_font(app->text_box_pxe_help, TextBoxFontText);
-    text_box_set_text(app->text_box_pxe_help,
+    text_box_set_text(
+        app->text_box_pxe_help,
         "[PXE Server Help]\n\n"
         "== Prerequisites ==\n\n"
         "1. Place boot file on SD:\n"
@@ -1287,24 +1502,21 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         "Set boot order to\n"
         "Network first.\n");
     view_set_previous_callback(
-        text_box_get_view(app->text_box_pxe_help),
-        eth_tester_nav_back_pxe_settings);
-    view_dispatcher_add_view(app->view_dispatcher,
-        EthTesterViewPxeHelp,
-        text_box_get_view(app->text_box_pxe_help));
+        text_box_get_view(app->text_box_pxe_help), eth_tester_nav_back_pxe_settings);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewPxeHelp, text_box_get_view(app->text_box_pxe_help));
 
     /* PXE Settings (VariableItemList) — reordered: Start first */
     app->pxe_settings_list = variable_item_list_alloc();
     view_set_previous_callback(
-        variable_item_list_get_view(app->pxe_settings_list),
-        eth_tester_nav_back_tools);
+        variable_item_list_get_view(app->pxe_settings_list), eth_tester_nav_back_tools);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewPxeSettings,
+        app->view_dispatcher,
+        EthTesterViewPxeSettings,
         variable_item_list_get_view(app->pxe_settings_list));
 
     /* Index 0: Start PXE */
-    variable_item_list_add(
-        app->pxe_settings_list, ">>> Start PXE <<<", 0, NULL, app);
+    variable_item_list_add(app->pxe_settings_list, ">>> Start PXE <<<", 0, NULL, app);
 
     /* Index 1: DHCP Server toggle */
     app->pxe_item_dhcp = variable_item_list_add(
@@ -1313,28 +1525,25 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     variable_item_set_current_value_text(app->pxe_item_dhcp, "ON");
 
     /* Index 2: Boot File (cycling if multiple files detected) */
-    app->pxe_item_boot = variable_item_list_add(
-        app->pxe_settings_list, "Boot File", 0, pxe_boot_file_changed, app);
+    app->pxe_item_boot =
+        variable_item_list_add(app->pxe_settings_list, "Boot File", 0, pxe_boot_file_changed, app);
     variable_item_set_current_value_text(app->pxe_item_boot, "Detecting...");
 
     /* Index 3: Server IP */
-    app->pxe_item_sip = variable_item_list_add(
-        app->pxe_settings_list, "Server IP", 0, NULL, app);
+    app->pxe_item_sip = variable_item_list_add(app->pxe_settings_list, "Server IP", 0, NULL, app);
     variable_item_set_current_value_text(app->pxe_item_sip, app->pxe_server_ip_input);
 
     /* Index 4: Client IP */
-    app->pxe_item_cip = variable_item_list_add(
-        app->pxe_settings_list, "Client IP", 0, NULL, app);
+    app->pxe_item_cip = variable_item_list_add(app->pxe_settings_list, "Client IP", 0, NULL, app);
     variable_item_set_current_value_text(app->pxe_item_cip, app->pxe_client_ip_input);
 
     /* Index 5: Subnet Mask */
-    app->pxe_item_sub = variable_item_list_add(
-        app->pxe_settings_list, "Subnet Mask", 0, NULL, app);
+    app->pxe_item_sub =
+        variable_item_list_add(app->pxe_settings_list, "Subnet Mask", 0, NULL, app);
     variable_item_set_current_value_text(app->pxe_item_sub, app->pxe_subnet_input);
 
     /* Index 6: Help */
-    variable_item_list_add(
-        app->pxe_settings_list, "? Help", 0, NULL, app);
+    variable_item_list_add(app->pxe_settings_list, "? Help", 0, NULL, app);
 
     variable_item_list_set_enter_callback(
         app->pxe_settings_list, pxe_settings_enter_callback, app);
@@ -1343,45 +1552,62 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->file_manager_text = furi_string_alloc();
     app->text_box_file_manager = text_box_alloc();
     text_box_set_font(app->text_box_file_manager, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_file_manager), eth_tester_nav_back_tools);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewFileManager, text_box_get_view(app->text_box_file_manager));
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_file_manager), eth_tester_nav_back_tools);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        EthTesterViewFileManager,
+        text_box_get_view(app->text_box_file_manager));
 
     /* Packet Capture view */
     app->view_packet_capture = view_alloc();
-    view_allocate_model(app->view_packet_capture, ViewModelTypeLocking, sizeof(PacketCaptureViewModel));
+    view_allocate_model(
+        app->view_packet_capture, ViewModelTypeLocking, sizeof(PacketCaptureViewModel));
     view_set_draw_callback(app->view_packet_capture, packet_capture_draw_callback);
     view_set_input_callback(app->view_packet_capture, packet_capture_input_callback);
     view_set_context(app->view_packet_capture, app);
     view_set_previous_callback(app->view_packet_capture, eth_tester_nav_back_tools);
     with_view_model(
-        app->view_packet_capture,
-        PacketCaptureViewModel* vm,
-        { vm->app = app; },
-        false);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPacketCapture, app->view_packet_capture);
+        app->view_packet_capture, PacketCaptureViewModel * vm, { vm->app = app; }, false);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewPacketCapture, app->view_packet_capture);
     memset(&app->pcap_state, 0, sizeof(app->pcap_state));
 
     /* Host List / Host Actions submenus */
     app->submenu_host_list = submenu_alloc();
-    view_set_previous_callback(submenu_get_view(app->submenu_host_list), eth_tester_nav_back_host_list);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHostList, submenu_get_view(app->submenu_host_list));
+    view_set_previous_callback(
+        submenu_get_view(app->submenu_host_list), eth_tester_nav_back_host_list);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewHostList, submenu_get_view(app->submenu_host_list));
 
     app->submenu_host_actions = submenu_alloc();
-    view_set_previous_callback(submenu_get_view(app->submenu_host_actions), eth_tester_nav_back_host_actions);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHostActions, submenu_get_view(app->submenu_host_actions));
+    view_set_previous_callback(
+        submenu_get_view(app->submenu_host_actions), eth_tester_nav_back_host_actions);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        EthTesterViewHostActions,
+        submenu_get_view(app->submenu_host_actions));
 
     app->discovered_host_count = 0;
 
     /* Traceroute views */
     app->text_box_traceroute = text_box_alloc();
     text_box_set_font(app->text_box_traceroute, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_traceroute), eth_tester_nav_back_diag);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewTraceroute, text_box_get_view(app->text_box_traceroute));
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_traceroute), eth_tester_nav_back_diag);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        EthTesterViewTraceroute,
+        text_box_get_view(app->text_box_traceroute));
 
     /* Traceroute text input (supports hostnames and IPs) */
     app->text_input_traceroute = text_input_alloc();
-    view_set_previous_callback(text_input_get_view(app->text_input_traceroute), eth_tester_nav_back_diag);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewTracerouteInput, text_input_get_view(app->text_input_traceroute));
+    view_set_previous_callback(
+        text_input_get_view(app->text_input_traceroute), eth_tester_nav_back_diag);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        EthTesterViewTracerouteInput,
+        text_input_get_view(app->text_input_traceroute));
 
     /* Default traceroute target */
     strncpy(app->traceroute_ip_input, "8.8.8.8", sizeof(app->traceroute_ip_input));
@@ -1390,8 +1616,10 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Ping Sweep views */
     app->text_box_ping_sweep = text_box_alloc();
     text_box_set_font(app->text_box_ping_sweep, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_ping_sweep), eth_tester_nav_back_ping_sweep);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPingSweep, text_box_get_view(app->text_box_ping_sweep));
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_ping_sweep), eth_tester_nav_back_ping_sweep);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewPingSweep, text_box_get_view(app->text_box_ping_sweep));
 
     /* Ping sweep defaults to empty — auto-detected from DHCP at scan time */
     app->ping_sweep_ip_input[0] = '\0';
@@ -1399,30 +1627,41 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* mDNS/SSDP Discovery view */
     app->text_box_discovery = text_box_alloc();
     text_box_set_font(app->text_box_discovery, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_discovery), eth_tester_nav_back_discovery);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewDiscovery, text_box_get_view(app->text_box_discovery));
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_discovery), eth_tester_nav_back_discovery);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewDiscovery, text_box_get_view(app->text_box_discovery));
 
     /* History views */
     app->submenu_history = submenu_alloc();
-    view_set_previous_callback(submenu_get_view(app->submenu_history), eth_tester_navigation_submenu_callback);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistory, submenu_get_view(app->submenu_history));
+    view_set_previous_callback(
+        submenu_get_view(app->submenu_history), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewHistory, submenu_get_view(app->submenu_history));
     app->history_state = NULL;
 
     app->text_box_history_file = text_box_alloc();
     text_box_set_font(app->text_box_history_file, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_history_file), eth_tester_navigation_history_callback);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistoryFile, text_box_get_view(app->text_box_history_file));
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_history_file), eth_tester_navigation_history_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        EthTesterViewHistoryFile,
+        text_box_get_view(app->text_box_history_file));
 
     /* STP/VLAN Detection view */
     app->text_box_stp_vlan = text_box_alloc();
     text_box_set_font(app->text_box_stp_vlan, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_stp_vlan), eth_tester_nav_back_discovery);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewStpVlan, text_box_get_view(app->text_box_stp_vlan));
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_stp_vlan), eth_tester_nav_back_discovery);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewStpVlan, text_box_get_view(app->text_box_stp_vlan));
 
     /* About view */
     app->text_box_about = text_box_alloc();
     text_box_set_font(app->text_box_about, TextBoxFontText);
-    text_box_set_text(app->text_box_about,
+    text_box_set_text(
+        app->text_box_about,
         "[LAN Analyzer]\n\n"
         "Ethernet network analysis\n"
         "tool for Flipper Zero\n"
@@ -1434,16 +1673,18 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         "v1.0 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
-    view_set_previous_callback(text_box_get_view(app->text_box_about), eth_tester_navigation_submenu_callback);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewAbout, text_box_get_view(app->text_box_about));
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_about), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewAbout, text_box_get_view(app->text_box_about));
 
     /* Settings view (VariableItemList) */
     app->settings_list = variable_item_list_alloc();
     view_set_previous_callback(
-        variable_item_list_get_view(app->settings_list),
-        eth_tester_navigation_submenu_callback);
+        variable_item_list_get_view(app->settings_list), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewSettings,
+        app->view_dispatcher,
+        EthTesterViewSettings,
         variable_item_list_get_view(app->settings_list));
 
     VariableItem* item_autosave = variable_item_list_add(
@@ -1456,8 +1697,8 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         app->settings_list, "Custom DNS", 2, settings_dns_custom_changed, app);
 
     /* Custom DNS server IP (index 3) — opens ip_keyboard on OK press */
-    VariableItem* item_dns_ip = variable_item_list_add(
-        app->settings_list, "DNS Server", 0, NULL, app);
+    VariableItem* item_dns_ip =
+        variable_item_list_add(app->settings_list, "DNS Server", 0, NULL, app);
     variable_item_set_current_value_text(item_dns_ip, app->dns_custom_ip_input);
 
     /* Ping count (index 4) — 1..100 */
@@ -1473,25 +1714,25 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         app->settings_list, "Cont.Ping Int ms", 25, settings_ping_interval_changed, app);
 
     /* "Clear History" — no value cycling, action on OK press (index 7) */
-    VariableItem* item_clear = variable_item_list_add(
-        app->settings_list, "Clear History", 0, NULL, app);
+    VariableItem* item_clear =
+        variable_item_list_add(app->settings_list, "Clear History", 0, NULL, app);
     variable_item_set_current_value_text(item_clear, "Press OK");
 
     /* MAC Changer — opens byte input for MAC address (index 8) */
-    variable_item_list_add(
-        app->settings_list, "MAC Changer", 0, NULL, app);
+    variable_item_list_add(app->settings_list, "MAC Changer", 0, NULL, app);
 
-    variable_item_list_set_enter_callback(
-        app->settings_list, settings_enter_callback, app);
+    variable_item_list_set_enter_callback(app->settings_list, settings_enter_callback, app);
 
     /* Load settings from SD */
     eth_tester_settings_load(app);
     variable_item_set_current_value_index(item_autosave, app->setting_autosave ? 1 : 0);
-    variable_item_set_current_value_text(item_autosave, setting_onoff[app->setting_autosave ? 1 : 0]);
+    variable_item_set_current_value_text(
+        item_autosave, setting_onoff[app->setting_autosave ? 1 : 0]);
     variable_item_set_current_value_index(item_sound, app->setting_sound ? 1 : 0);
     variable_item_set_current_value_text(item_sound, setting_onoff[app->setting_sound ? 1 : 0]);
     variable_item_set_current_value_index(item_dns_custom, app->dns_custom_enabled ? 1 : 0);
-    variable_item_set_current_value_text(item_dns_custom, setting_onoff[app->dns_custom_enabled ? 1 : 0]);
+    variable_item_set_current_value_text(
+        item_dns_custom, setting_onoff[app->dns_custom_enabled ? 1 : 0]);
     variable_item_set_current_value_text(item_dns_ip, app->dns_custom_ip_input);
 
     /* Ping count: index = count - 1 */
@@ -1663,9 +1904,10 @@ static void eth_tester_update_menu_header(EthTesterApp* app) {
             uint8_t speed = 0, duplex = 0;
             bool up = false;
             w5500_hal_get_phy_info(&up, &speed, &duplex);
-            submenu_set_header(app->submenu,
-                speed ? (duplex ? "LAN [UP 100M FD]" : "LAN [UP 100M HD]")
-                      : (duplex ? "LAN [UP 10M FD]" : "LAN [UP 10M HD]"));
+            submenu_set_header(
+                app->submenu,
+                speed ? (duplex ? "LAN [UP 100M FD]" : "LAN [UP 100M HD]") :
+                        (duplex ? "LAN [UP 10M FD]" : "LAN [UP 10M HD]"));
         } else {
             submenu_set_header(app->submenu, "LAN [NO LINK]");
         }
@@ -1939,8 +2181,7 @@ static void eth_tester_worker_start(EthTesterApp* app, uint32_t op, EthTesterVie
     /* Switch to result view BEFORE starting thread */
     view_dispatcher_switch_to_view(app->view_dispatcher, result_view);
 
-    app->worker_thread = furi_thread_alloc_ex("EthWorker", 8 * 1024,
-        eth_tester_worker_fn, app);
+    app->worker_thread = furi_thread_alloc_ex("EthWorker", 8 * 1024, eth_tester_worker_fn, app);
     furi_thread_start(app->worker_thread);
 }
 
@@ -2078,7 +2319,12 @@ static void eth_tester_progress_bar(char* buf, size_t buf_size, uint16_t current
 
 /* ==================== View update helpers ==================== */
 
-static void eth_tester_show_view(EthTesterApp* app, TextBox* tb, EthTesterView view, FuriString* text, const char* initial) {
+static void eth_tester_show_view(
+    EthTesterApp* app,
+    TextBox* tb,
+    EthTesterView view,
+    FuriString* text,
+    const char* initial) {
     furi_string_set(text, initial);
     text_box_set_text(tb, furi_string_get_cstr(text));
     view_dispatcher_switch_to_view(app->view_dispatcher, view);
@@ -2131,7 +2377,6 @@ static void eth_tester_cont_ping_ip_input_callback(void* context) {
 
     eth_tester_worker_start(app, EthTesterMenuItemContPing, EthTesterViewContPing);
 }
-
 
 /* ==================== Traceroute IP input callback ==================== */
 
@@ -2207,9 +2452,16 @@ static void eth_tester_port_scan_end_callback(void* context) {
     }
 
     /* Now ask for IP */
-    if(app->dhcp_valid && (app->dhcp_gw[0] | app->dhcp_gw[1] | app->dhcp_gw[2] | app->dhcp_gw[3])) {
-        snprintf(app->port_scan_ip_input, sizeof(app->port_scan_ip_input),
-            "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+    if(app->dhcp_valid &&
+       (app->dhcp_gw[0] | app->dhcp_gw[1] | app->dhcp_gw[2] | app->dhcp_gw[3])) {
+        snprintf(
+            app->port_scan_ip_input,
+            sizeof(app->port_scan_ip_input),
+            "%d.%d.%d.%d",
+            app->dhcp_gw[0],
+            app->dhcp_gw[1],
+            app->dhcp_gw[2],
+            app->dhcp_gw[3]);
     }
     ip_keyboard_setup(
         app->ip_keyboard,
@@ -2319,30 +2571,52 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
 
     switch(index) {
     case EthTesterMenuItemLinkInfo:
-        eth_tester_show_view(app, app->text_box_link, EthTesterViewLinkInfo, app->link_info_text, "Reading link status...\n");
+        eth_tester_show_view(
+            app,
+            app->text_box_link,
+            EthTesterViewLinkInfo,
+            app->link_info_text,
+            "Reading link status...\n");
         eth_tester_worker_start(app, EthTesterMenuItemLinkInfo, EthTesterViewLinkInfo);
         break;
 
     case EthTesterMenuItemLldpCdp:
-        eth_tester_show_view(app, app->text_box_lldp, EthTesterViewLldp, app->lldp_text, "Listening for LLDP/CDP...\n");
+        eth_tester_show_view(
+            app,
+            app->text_box_lldp,
+            EthTesterViewLldp,
+            app->lldp_text,
+            "Listening for LLDP/CDP...\n");
         eth_tester_worker_start(app, EthTesterMenuItemLldpCdp, EthTesterViewLldp);
         break;
 
     case EthTesterMenuItemArpScan:
-        eth_tester_show_view(app, app->text_box_arp, EthTesterViewArpScan, app->arp_text, "Initializing W5500...\n");
+        eth_tester_show_view(
+            app, app->text_box_arp, EthTesterViewArpScan, app->arp_text, "Initializing W5500...\n");
         eth_tester_worker_start(app, EthTesterMenuItemArpScan, EthTesterViewArpScan);
         break;
 
     case EthTesterMenuItemDhcpAnalyze:
-        eth_tester_show_view(app, app->text_box_dhcp, EthTesterViewDhcpAnalyze, app->dhcp_text, "Initializing W5500...\n");
+        eth_tester_show_view(
+            app,
+            app->text_box_dhcp,
+            EthTesterViewDhcpAnalyze,
+            app->dhcp_text,
+            "Initializing W5500...\n");
         eth_tester_worker_start(app, EthTesterMenuItemDhcpAnalyze, EthTesterViewDhcpAnalyze);
         break;
 
     case EthTesterMenuItemPing:
         /* Pre-populate with gateway if DHCP available and no custom target set */
         if(app->dhcp_valid && strcmp(app->ping_ip_input, "8.8.8.8") == 0) {
-            snprintf(app->ping_ip_input, sizeof(app->ping_ip_input),
-                "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+            snprintf(
+                app->ping_ip_input,
+                sizeof(app->ping_ip_input),
+                "%d.%d.%d.%d",
+                app->dhcp_gw[0],
+                app->dhcp_gw[1],
+                app->dhcp_gw[2],
+                app->dhcp_gw[3]);
         }
         ip_keyboard_setup(
             app->ip_keyboard,
@@ -2358,7 +2632,12 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemStats:
-        eth_tester_show_view(app, app->text_box_stats, EthTesterViewStats, app->stats_text, "Initializing W5500...\n");
+        eth_tester_show_view(
+            app,
+            app->text_box_stats,
+            EthTesterViewStats,
+            app->stats_text,
+            "Initializing W5500...\n");
         eth_tester_worker_start(app, EthTesterMenuItemStats, EthTesterViewStats);
         break;
 
@@ -2378,12 +2657,7 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
     case EthTesterMenuItemWol:
         byte_input_set_header_text(app->byte_input_wol, "Target MAC address:");
         byte_input_set_result_callback(
-            app->byte_input_wol,
-            eth_tester_wol_input_callback,
-            NULL,
-            app,
-            app->wol_mac_input,
-            6);
+            app->byte_input_wol, eth_tester_wol_input_callback, NULL, app, app->wol_mac_input, 6);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewWolInput);
         break;
 
@@ -2393,12 +2667,22 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemStpVlan:
-        eth_tester_show_view(app, app->text_box_stp_vlan, EthTesterViewStpVlan, app->stp_vlan_text, "Listening...\n");
+        eth_tester_show_view(
+            app,
+            app->text_box_stp_vlan,
+            EthTesterViewStpVlan,
+            app->stp_vlan_text,
+            "Listening...\n");
         eth_tester_worker_start(app, EthTesterMenuItemStpVlan, EthTesterViewStpVlan);
         break;
 
     case EthTesterMenuItemDiscovery:
-        eth_tester_show_view(app, app->text_box_discovery, EthTesterViewDiscovery, app->discovery_text, "Scanning...\n");
+        eth_tester_show_view(
+            app,
+            app->text_box_discovery,
+            EthTesterViewDiscovery,
+            app->discovery_text,
+            "Scanning...\n");
         eth_tester_worker_start(app, EthTesterMenuItemDiscovery, EthTesterViewDiscovery);
         break;
 
@@ -2406,10 +2690,18 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         if(app->dhcp_valid) {
             /* Already have DHCP — go straight to input */
             uint8_t net[4];
-            for(int i = 0; i < 4; i++) net[i] = app->dhcp_ip[i] & app->dhcp_mask[i];
+            for(int i = 0; i < 4; i++)
+                net[i] = app->dhcp_ip[i] & app->dhcp_mask[i];
             uint8_t pfx = arp_mask_to_prefix(app->dhcp_mask);
-            snprintf(app->ping_sweep_ip_input, sizeof(app->ping_sweep_ip_input),
-                "%d.%d.%d.%d/%d", net[0], net[1], net[2], net[3], pfx);
+            snprintf(
+                app->ping_sweep_ip_input,
+                sizeof(app->ping_sweep_ip_input),
+                "%d.%d.%d.%d/%d",
+                net[0],
+                net[1],
+                net[2],
+                net[3],
+                pfx);
             ip_keyboard_setup(
                 app->ip_keyboard,
                 "Scan range (CIDR):",
@@ -2423,15 +2715,26 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
         } else {
             /* No DHCP yet — detect network first, then show input */
-            eth_tester_show_view(app, app->text_box_ping_sweep, EthTesterViewPingSweep, app->ping_sweep_text, "Detecting network...\n");
+            eth_tester_show_view(
+                app,
+                app->text_box_ping_sweep,
+                EthTesterViewPingSweep,
+                app->ping_sweep_text,
+                "Detecting network...\n");
             eth_tester_worker_start(app, WORKER_OP_PING_SWEEP_DETECT, EthTesterViewPingSweep);
         }
         break;
 
     case EthTesterMenuItemTraceroute:
         if(app->dhcp_valid && strcmp(app->traceroute_host_input, "8.8.8.8") == 0) {
-            snprintf(app->traceroute_host_input, sizeof(app->traceroute_host_input),
-                "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+            snprintf(
+                app->traceroute_host_input,
+                sizeof(app->traceroute_host_input),
+                "%d.%d.%d.%d",
+                app->dhcp_gw[0],
+                app->dhcp_gw[1],
+                app->dhcp_gw[2],
+                app->dhcp_gw[3]);
         }
         text_input_reset(app->text_input_traceroute);
         text_input_set_header_text(app->text_input_traceroute, "IP or hostname:");
@@ -2456,9 +2759,16 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         if(index == EthTesterMenuItemPortScan) app->port_scan_top100 = false;
         app->port_scan_custom = false;
         /* Pre-populate target with DHCP gateway if available */
-        if(app->dhcp_valid && (app->dhcp_gw[0] | app->dhcp_gw[1] | app->dhcp_gw[2] | app->dhcp_gw[3])) {
-            snprintf(app->port_scan_ip_input, sizeof(app->port_scan_ip_input),
-                "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+        if(app->dhcp_valid &&
+           (app->dhcp_gw[0] | app->dhcp_gw[1] | app->dhcp_gw[2] | app->dhcp_gw[3])) {
+            snprintf(
+                app->port_scan_ip_input,
+                sizeof(app->port_scan_ip_input),
+                "%d.%d.%d.%d",
+                app->dhcp_gw[0],
+                app->dhcp_gw[1],
+                app->dhcp_gw[2],
+                app->dhcp_gw[3]);
         }
         ip_keyboard_setup(
             app->ip_keyboard,
@@ -2489,8 +2799,14 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
 
     case EthTesterMenuItemContPing:
         if(app->dhcp_valid && strcmp(app->cont_ping_ip_input, "8.8.8.8") == 0) {
-            snprintf(app->cont_ping_ip_input, sizeof(app->cont_ping_ip_input),
-                "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+            snprintf(
+                app->cont_ping_ip_input,
+                sizeof(app->cont_ping_ip_input),
+                "%d.%d.%d.%d",
+                app->dhcp_gw[0],
+                app->dhcp_gw[1],
+                app->dhcp_gw[2],
+                app->dhcp_gw[3]);
         }
         ip_keyboard_setup(
             app->ip_keyboard,
@@ -2508,7 +2824,7 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
     case EthTesterMenuItemEthBridge:
         with_view_model(
             app->view_bridge,
-            BridgeViewModel* vm,
+            BridgeViewModel * vm,
             {
                 vm->active = false;
                 vm->status_line = "Starting ETH Bridge...";
@@ -2524,7 +2840,8 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
 
     case EthTesterMenuItemFileManager:
         furi_string_set(app->file_manager_text, "Starting File Manager...\n");
-        text_box_set_text(app->text_box_file_manager, furi_string_get_cstr(app->file_manager_text));
+        text_box_set_text(
+            app->text_box_file_manager, furi_string_get_cstr(app->file_manager_text));
         eth_tester_worker_start(app, EthTesterMenuItemFileManager, EthTesterViewFileManager);
         break;
 
@@ -2634,8 +2951,10 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
         if(elapsed_sec != last_countdown) {
             last_countdown = elapsed_sec;
             uint32_t remaining = 60 - elapsed_sec;
-            furi_string_printf(app->lldp_text,
-                "Listening for\nLLDP/CDP...\n(%lus remaining)\n", (unsigned long)remaining);
+            furi_string_printf(
+                app->lldp_text,
+                "Listening for\nLLDP/CDP...\n(%lus remaining)\n",
+                (unsigned long)remaining);
             eth_tester_update_view(app->text_box_lldp, app->lldp_text);
         }
 
@@ -2649,7 +2968,10 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
             /* Check for LLDP */
             if(ethertype == ETHERTYPE_LLDP && !lldp_neighbor.valid) {
                 FURI_LOG_I(TAG, "LLDP frame received (%d bytes)", recv_len);
-                if(lldp_parse(app->frame_buf + ETH_HEADER_SIZE, recv_len - ETH_HEADER_SIZE, &lldp_neighbor)) {
+                if(lldp_parse(
+                       app->frame_buf + ETH_HEADER_SIZE,
+                       recv_len - ETH_HEADER_SIZE,
+                       &lldp_neighbor)) {
                     lldp_neighbor.last_seen_tick = furi_get_tick();
                     found = true;
                 }
@@ -2660,7 +2982,8 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
                 uint16_t cdp_offset = cdp_check_frame(app->frame_buf, recv_len);
                 if(cdp_offset > 0) {
                     FURI_LOG_I(TAG, "CDP frame received (%d bytes)", recv_len);
-                    if(cdp_parse(app->frame_buf + cdp_offset, recv_len - cdp_offset, &cdp_neighbor)) {
+                    if(cdp_parse(
+                           app->frame_buf + cdp_offset, recv_len - cdp_offset, &cdp_neighbor)) {
                         cdp_neighbor.last_seen_tick = furi_get_tick();
                         found = true;
                     }
@@ -2707,17 +3030,20 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     eth_tester_update_view(app->text_box_arp, app->arp_text);
 
     if(!eth_tester_ensure_dhcp(app)) {
-        furi_string_set(app->arp_text,
+        furi_string_set(
+            app->arp_text,
             !app->w5500_initialized ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-            "DHCP failed.\nCannot determine\nsubnet for ARP scan.\n");
+            !w5500_hal_get_link_status() ?
+                                      "No Link!\nConnect cable.\n" :
+                                      "DHCP failed.\nCannot determine\nsubnet for ARP scan.\n");
         return;
     }
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
 
-    FURI_LOG_I(TAG, "Got IP: %d.%d.%d.%d", net_info.ip[0], net_info.ip[1], net_info.ip[2], net_info.ip[3]);
+    FURI_LOG_I(
+        TAG, "Got IP: %d.%d.%d.%d", net_info.ip[0], net_info.ip[1], net_info.ip[2], net_info.ip[3]);
 
     /* Calculate scan range */
     uint8_t start_ip[4], end_ip[4];
@@ -2789,7 +3115,11 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
             furi_string_printf(
                 app->arp_text,
                 "My IP: %s/%d\nScanning: %d/%d sent\nFound: %d hosts\n",
-                ip_str, prefix, scan->total_sent, num_hosts, scan->count);
+                ip_str,
+                prefix,
+                scan->total_sent,
+                num_hosts,
+                scan->count);
             eth_tester_update_view(app->text_box_arp, app->arp_text);
 
             /* Collect any pending replies */
@@ -2817,7 +3147,10 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     furi_string_printf(
         app->arp_text,
         "My IP: %s/%d\nAll %d sent, waiting\nfor replies... (%d found)\n",
-        ip_str, prefix, num_hosts, scan->count);
+        ip_str,
+        prefix,
+        num_hosts,
+        scan->count);
     eth_tester_update_view(app->text_box_arp, app->arp_text);
     uint32_t tail_start = furi_get_tick();
     while(furi_get_tick() - tail_start < ARP_TAIL_WAIT_MS && app->worker_running) {
@@ -2866,8 +3199,14 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
         ArpHost* h = &scan->hosts[i];
         char ip_buf[16];
         pkt_format_ip(h->ip, ip_buf);
-        furi_string_cat_printf(app->arp_text, "%s ..%02X:%02X:%02X\n %s\n",
-            ip_buf, h->mac[3], h->mac[4], h->mac[5], h->vendor);
+        furi_string_cat_printf(
+            app->arp_text,
+            "%s ..%02X:%02X:%02X\n %s\n",
+            ip_buf,
+            h->mac[3],
+            h->mac[4],
+            h->mac[5],
+            h->vendor);
     }
 
     if(scan->count == 0) {
@@ -3025,10 +3364,11 @@ static void eth_tester_do_ping(EthTesterApp* app) {
     eth_tester_update_view(app->text_box_ping, app->ping_text);
 
     if(!eth_tester_ensure_dhcp(app)) {
-        furi_string_set(app->ping_text,
-            !app->w5500_initialized ? "W5500 Not Found!\n" :
+        furi_string_set(
+            app->ping_text,
+            !app->w5500_initialized      ? "W5500 Not Found!\n" :
             !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-            "DHCP failed.\nCannot ping.\n");
+                                           "DHCP failed.\nCannot ping.\n");
         return;
     }
 
@@ -3047,11 +3387,7 @@ static void eth_tester_do_ping(EthTesterApp* app) {
     pkt_format_ip(target_ip, target_str);
     pkt_format_ip(net_info.ip, my_ip_str);
 
-    furi_string_printf(
-        app->ping_text,
-        "My IP: %s\nPing %s\n\n",
-        my_ip_str,
-        target_str);
+    furi_string_printf(app->ping_text, "My IP: %s\nPing %s\n\n", my_ip_str, target_str);
     eth_tester_update_view(app->text_box_ping, app->ping_text);
 
     /* Send pings (count from settings) */
@@ -3060,10 +3396,7 @@ static void eth_tester_do_ping(EthTesterApp* app) {
         bool ok = icmp_ping(W5500_PING_SOCKET, target_ip, i, app->ping_timeout_ms, &result);
         if(ok) {
             furi_string_cat_printf(
-                app->ping_text,
-                "#%d: %lu ms\n",
-                i,
-                (unsigned long)result.rtt_ms);
+                app->ping_text, "#%d: %lu ms\n", i, (unsigned long)result.rtt_ms);
         } else {
             furi_string_cat_printf(app->ping_text, "#%d: timeout\n", i);
         }
@@ -3081,10 +3414,11 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
     eth_tester_update_view(app->text_box_dns, app->dns_text);
 
     if(!eth_tester_ensure_dhcp(app)) {
-        furi_string_set(app->dns_text,
-            !app->w5500_initialized ? "W5500 Not Found!\n" :
+        furi_string_set(
+            app->dns_text,
+            !app->w5500_initialized      ? "W5500 Not Found!\n" :
             !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-            "DHCP failed.\nCannot resolve DNS.\n");
+                                           "DHCP failed.\nCannot resolve DNS.\n");
         return;
     }
 
@@ -3096,8 +3430,7 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
     eth_tester_get_dns_server(app, dns_ip);
 
     /* Check DNS server is valid */
-    if(dns_ip[0] == 0 && dns_ip[1] == 0 &&
-       dns_ip[2] == 0 && dns_ip[3] == 0) {
+    if(dns_ip[0] == 0 && dns_ip[1] == 0 && dns_ip[2] == 0 && dns_ip[3] == 0) {
         furi_string_set(app->dns_text, "No DNS server\navailable.\n");
         return;
     }
@@ -3108,10 +3441,7 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
     pkt_format_ip(dns_ip, dns_str);
 
     furi_string_printf(
-        app->dns_text,
-        "Resolving:\n%s\nDNS: %s\n\n",
-        app->dns_hostname_input,
-        dns_str);
+        app->dns_text, "Resolving:\n%s\nDNS: %s\n\n", app->dns_hostname_input, dns_str);
     eth_tester_update_view(app->text_box_dns, app->dns_text);
 
     /* Perform DNS lookup */
@@ -3154,10 +3484,11 @@ static void eth_tester_do_wol(EthTesterApp* app) {
     eth_tester_update_view(app->text_box_wol, app->wol_text);
 
     if(!eth_tester_ensure_dhcp(app)) {
-        furi_string_set(app->wol_text,
-            !app->w5500_initialized ? "W5500 Not Found!\n" :
+        furi_string_set(
+            app->wol_text,
+            !app->w5500_initialized      ? "W5500 Not Found!\n" :
             !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-            "DHCP failed.\nCannot send WoL.\n");
+                                           "DHCP failed.\nCannot send WoL.\n");
         return;
     }
 
@@ -3167,10 +3498,7 @@ static void eth_tester_do_wol(EthTesterApp* app) {
     char mac_str[18];
     pkt_format_mac(app->wol_mac_input, mac_str);
 
-    furi_string_printf(
-        app->wol_text,
-        "Sending WoL to:\n%s\n\n",
-        mac_str);
+    furi_string_printf(app->wol_text, "Sending WoL to:\n%s\n\n", mac_str);
     eth_tester_update_view(app->text_box_wol, app->wol_text);
 
     bool ok = wol_send(W5500_WOL_SOCKET, app->wol_mac_input);
@@ -3234,10 +3562,11 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
     eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
 
     if(!eth_tester_ensure_dhcp(app)) {
-        furi_string_set(app->traceroute_text,
-            !app->w5500_initialized ? "W5500 Not Found!\n" :
+        furi_string_set(
+            app->traceroute_text,
+            !app->w5500_initialized      ? "W5500 Not Found!\n" :
             !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-            "DHCP failed.\n");
+                                           "DHCP failed.\n");
         return;
     }
 
@@ -3258,7 +3587,8 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
         }
 
         DnsLookupResult dns_result;
-        bool resolved = dns_lookup(W5500_DNS_SOCKET, dns_ip, app->traceroute_host_input, &dns_result);
+        bool resolved =
+            dns_lookup(W5500_DNS_SOCKET, dns_ip, app->traceroute_host_input, &dns_result);
 
         if(!resolved) {
             furi_string_set(app->traceroute_text, "DNS resolve failed.\n");
@@ -3269,7 +3599,8 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
 
         char ip_str[16];
         pkt_format_ip(dns_result.resolved_ip, ip_str);
-        furi_string_printf(app->traceroute_text, "%s -> %s\n\n", app->traceroute_host_input, ip_str);
+        furi_string_printf(
+            app->traceroute_text, "%s -> %s\n\n", app->traceroute_host_input, ip_str);
         eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
     }
 
@@ -3342,10 +3673,11 @@ static void eth_tester_do_ping_sweep_detect(EthTesterApp* app) {
     eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
 
     if(!eth_tester_ensure_dhcp(app)) {
-        furi_string_set(app->ping_sweep_text,
-            !app->w5500_initialized ? "W5500 Not Found!\n" :
+        furi_string_set(
+            app->ping_sweep_text,
+            !app->w5500_initialized      ? "W5500 Not Found!\n" :
             !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-            "DHCP failed.\n");
+                                           "DHCP failed.\n");
         eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
         return;
     }
@@ -3355,10 +3687,18 @@ static void eth_tester_do_ping_sweep_detect(EthTesterApp* app) {
 
     /* Populate CIDR from detected network */
     uint8_t net[4];
-    for(int i = 0; i < 4; i++) net[i] = app->dhcp_ip[i] & app->dhcp_mask[i];
+    for(int i = 0; i < 4; i++)
+        net[i] = app->dhcp_ip[i] & app->dhcp_mask[i];
     uint8_t pfx = arp_mask_to_prefix(app->dhcp_mask);
-    snprintf(app->ping_sweep_ip_input, sizeof(app->ping_sweep_ip_input),
-        "%d.%d.%d.%d/%d", net[0], net[1], net[2], net[3], pfx);
+    snprintf(
+        app->ping_sweep_ip_input,
+        sizeof(app->ping_sweep_ip_input),
+        "%d.%d.%d.%d/%d",
+        net[0],
+        net[1],
+        net[2],
+        net[3],
+        pfx);
 
     /* Signal main thread to show input */
     view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_PING_SWEEP_READY);
@@ -3372,10 +3712,11 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
     eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
 
     if(!eth_tester_ensure_dhcp(app)) {
-        furi_string_set(app->ping_sweep_text,
-            !app->w5500_initialized ? "W5500 Not Found!\n" :
+        furi_string_set(
+            app->ping_sweep_text,
+            !app->w5500_initialized      ? "W5500 Not Found!\n" :
             !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-            "DHCP failed.\n");
+                                           "DHCP failed.\n");
         return;
     }
 
@@ -3402,9 +3743,17 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
         memcpy(mask, auto_info.sn, 4);
         prefix = arp_mask_to_prefix(mask);
         /* Calculate network address */
-        for(int i = 0; i < 4; i++) base_ip[i] &= mask[i];
-        snprintf(app->ping_sweep_ip_input, sizeof(app->ping_sweep_ip_input),
-            "%d.%d.%d.%d/%d", base_ip[0], base_ip[1], base_ip[2], base_ip[3], prefix);
+        for(int i = 0; i < 4; i++)
+            base_ip[i] &= mask[i];
+        snprintf(
+            app->ping_sweep_ip_input,
+            sizeof(app->ping_sweep_ip_input),
+            "%d.%d.%d.%d/%d",
+            base_ip[0],
+            base_ip[1],
+            base_ip[2],
+            base_ip[3],
+            prefix);
     }
 
     uint8_t start_ip[4], end_ip[4];
@@ -3440,13 +3789,15 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
         pkt_write_u32_be(target, current);
 
         PingResult result;
-        bool ok = icmp_ping(W5500_PING_SOCKET, target, (uint16_t)(scanned + 1), app->ping_timeout_ms, &result);
+        bool ok = icmp_ping(
+            W5500_PING_SOCKET, target, (uint16_t)(scanned + 1), app->ping_timeout_ms, &result);
         scanned++;
 
         if(ok) {
             char ip_str[16];
             pkt_format_ip(target, ip_str);
-            furi_string_cat_printf(results, "  %s: %lu ms\n", ip_str, (unsigned long)result.rtt_ms);
+            furi_string_cat_printf(
+                results, "  %s: %lu ms\n", ip_str, (unsigned long)result.rtt_ms);
             alive++;
 
             /* Store for interactive host list */
@@ -3513,10 +3864,11 @@ static void eth_tester_do_discovery(EthTesterApp* app) {
     eth_tester_update_view(app->text_box_discovery, app->discovery_text);
 
     if(!eth_tester_ensure_dhcp(app)) {
-        furi_string_set(app->discovery_text,
-            !app->w5500_initialized ? "W5500 Not Found!\n" :
+        furi_string_set(
+            app->discovery_text,
+            !app->w5500_initialized      ? "W5500 Not Found!\n" :
             !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-            "DHCP failed.\n");
+                                           "DHCP failed.\n");
         return;
     }
 
@@ -3552,14 +3904,16 @@ static void eth_tester_do_discovery(EthTesterApp* app) {
     uint8_t recv_buf[512];
     uint32_t start_tick = furi_get_tick();
 
-    while(furi_get_tick() - start_tick < DISCOVERY_TIMEOUT_MS && device_count < DISCOVERY_MAX_DEVICES && app->worker_running) {
+    while(furi_get_tick() - start_tick < DISCOVERY_TIMEOUT_MS &&
+          device_count < DISCOVERY_MAX_DEVICES && app->worker_running) {
         /* Check mDNS socket */
         if(mdns_ok) {
             uint16_t rx = getSn_RX_RSR(W5500_MDNS_SOCKET);
             if(rx > 0) {
                 uint8_t from_ip[4];
                 uint16_t from_port;
-                int32_t received = recvfrom(W5500_MDNS_SOCKET, recv_buf, sizeof(recv_buf), from_ip, &from_port);
+                int32_t received =
+                    recvfrom(W5500_MDNS_SOCKET, recv_buf, sizeof(recv_buf), from_ip, &from_port);
                 if(received > 0) {
                     DiscoveryDevice dev;
                     if(mdns_parse_response(recv_buf, (uint16_t)received, from_ip, &dev)) {
@@ -3586,7 +3940,8 @@ static void eth_tester_do_discovery(EthTesterApp* app) {
             if(rx > 0) {
                 uint8_t from_ip[4];
                 uint16_t from_port;
-                int32_t received = recvfrom(W5500_SSDP_SOCKET, recv_buf, sizeof(recv_buf), from_ip, &from_port);
+                int32_t received =
+                    recvfrom(W5500_SSDP_SOCKET, recv_buf, sizeof(recv_buf), from_ip, &from_port);
                 if(received > 0) {
                     DiscoveryDevice dev;
                     if(ssdp_parse_response(recv_buf, (uint16_t)received, from_ip, &dev)) {
@@ -3682,7 +4037,8 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
         uint32_t elapsed_sec = (furi_get_tick() - start_tick) / 1000;
         if(elapsed_sec != last_countdown && !bpdu.valid) {
             last_countdown = elapsed_sec;
-            furi_string_printf(app->stp_vlan_text,
+            furi_string_printf(
+                app->stp_vlan_text,
                 "Listening for BPDU\nand VLAN tags...\n(%lus remaining)\n",
                 (unsigned long)(30 - elapsed_sec));
             eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
@@ -3770,7 +4126,8 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
                 (unsigned long)vlan_state.vlans[i].frame_count);
         }
     } else {
-        furi_string_cat_str(app->stp_vlan_text, "No 802.1Q tags detected.\n(Not on trunk port?)\n");
+        furi_string_cat_str(
+            app->stp_vlan_text, "No 802.1Q tags detected.\n(Not on trunk port?)\n");
     }
 
     eth_tester_save_and_notify(app, "stp_vlan.txt", app->stp_vlan_text);
@@ -3803,7 +4160,9 @@ static void eth_tester_history_populate(EthTesterApp* app) {
         /* Build display label via temp buffer to avoid restrict overlap */
         char tmp[HISTORY_FILENAME_LEN];
         if(strlen(e->filename) > 15 && e->filename[8] == '_') {
-            snprintf(tmp, sizeof(tmp),
+            snprintf(
+                tmp,
+                sizeof(tmp),
                 "[%s] %.2s-%.2s %.2s:%.2s",
                 e->type,
                 e->filename + 4,
@@ -3816,12 +4175,7 @@ static void eth_tester_history_populate(EthTesterApp* app) {
         memcpy(e->label, tmp, sizeof(e->label));
 
         /* View entry */
-        submenu_add_item(
-            app->submenu_history,
-            e->label,
-            i,
-            eth_tester_history_file_callback,
-            app);
+        submenu_add_item(app->submenu_history, e->label, i, eth_tester_history_file_callback, app);
         /* Delete entry (index offset by HISTORY_MAX_FILES) */
         char del_label[HISTORY_FILENAME_LEN];
         snprintf(del_label, sizeof(del_label), "  DEL %s", e->label);
@@ -3883,10 +4237,11 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
     eth_tester_update_view(app->text_box_port_scan, app->port_scan_text);
 
     if(!eth_tester_ensure_dhcp(app)) {
-        furi_string_set(app->port_scan_text,
-            !app->w5500_initialized ? "W5500 Not Found!\n" :
+        furi_string_set(
+            app->port_scan_text,
+            !app->w5500_initialized      ? "W5500 Not Found!\n" :
             !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-            "DHCP failed.\nCannot scan.\n");
+                                           "DHCP failed.\nCannot scan.\n");
         return;
     }
 
@@ -3947,10 +4302,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
         uint16_t port = app->port_scan_custom ? (custom_start + i) : ports[i];
 
         PortState state = port_scan_tcp(
-            W5500_SCAN_SOCKET_BASE,
-            app->port_scan_target,
-            port,
-            PORT_SCAN_TIMEOUT_MS);
+            W5500_SCAN_SOCKET_BASE, app->port_scan_target, port, PORT_SCAN_TIMEOUT_MS);
 
         const char* state_str;
         switch(state) {
@@ -4027,17 +4379,14 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
     app->ping_graph = pg;
 
     /* Update view model */
-    with_view_model(
-        app->view_cont_ping,
-        ContPingViewModel* vm,
-        { vm->app = app; },
-        true);
+    with_view_model(app->view_cont_ping, ContPingViewModel * vm, { vm->app = app; }, true);
 
     /* Continuous ping loop */
     uint16_t seq = 1;
     while(app->worker_running) {
         PingResult result;
-        bool ok = icmp_ping(W5500_PING_SOCKET, app->cont_ping_target, seq, app->ping_timeout_ms, &result);
+        bool ok = icmp_ping(
+            W5500_PING_SOCKET, app->cont_ping_target, seq, app->ping_timeout_ms, &result);
 
         if(ok) {
             ping_graph_add_sample(pg, result.rtt_ms);
@@ -4046,11 +4395,7 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
         }
 
         /* Trigger view redraw */
-        with_view_model(
-            app->view_cont_ping,
-            ContPingViewModel* vm,
-            { UNUSED(vm); },
-            true);
+        with_view_model(app->view_cont_ping, ContPingViewModel * vm, { UNUSED(vm); }, true);
 
         seq++;
 
@@ -4174,7 +4519,8 @@ static void eth_tester_do_stats(EthTesterApp* app) {
             uint32_t sec = (furi_get_tick() - start_tick) / 1000;
             if(sec != last_sec) {
                 last_sec = sec;
-                furi_string_printf(app->stats_text,
+                furi_string_printf(
+                    app->stats_text,
                     "Capturing frames...\n(%lus remaining)\nFrames: %lu\n",
                     (unsigned long)(10 - sec),
                     (unsigned long)app->stats.total_frames);
@@ -4243,10 +4589,16 @@ static void eth_tester_save_and_notify(EthTesterApp* app, const char* type, Furi
 /* ==================== ETH Bridge ==================== */
 
 static void eth_tester_do_eth_bridge(EthTesterApp* app) {
-    /* Helper macro for status updates */
-    #define BRIDGE_SET_STATUS(msg) \
-        with_view_model(app->view_bridge, BridgeViewModel* vm, \
-            { vm->active = false; vm->status_line = (msg); }, true)
+/* Helper macro for status updates */
+#define BRIDGE_SET_STATUS(msg)       \
+    with_view_model(                 \
+        app->view_bridge,            \
+        BridgeViewModel* vm,         \
+        {                            \
+            vm->active = false;      \
+            vm->status_line = (msg); \
+        },                           \
+        true)
 
     /* Step 1: Initialize W5500 */
     if(!eth_tester_ensure_w5500(app)) {
@@ -4289,7 +4641,7 @@ static void eth_tester_do_eth_bridge(EthTesterApp* app) {
 
     with_view_model(
         app->view_bridge,
-        BridgeViewModel* vm,
+        BridgeViewModel * vm,
         {
             vm->active = true;
             vm->usb_connected = false;
@@ -4315,7 +4667,7 @@ static void eth_tester_do_eth_bridge(EthTesterApp* app) {
             EthBridgeState* bs = app->bridge_state;
             with_view_model(
                 app->view_bridge,
-                BridgeViewModel* vm,
+                BridgeViewModel * vm,
                 {
                     vm->usb_connected = bs->usb_connected;
                     vm->lan_link_up = bs->lan_link_up;
@@ -4343,20 +4695,24 @@ static void eth_tester_do_eth_bridge(EthTesterApp* app) {
     w5500_hal_close_macraw();
 
     EthBridgeState* bs = app->bridge_state;
-    FURI_LOG_I(TAG, "ETH Bridge stopped: USB->ETH=%lu ETH->USB=%lu err=%lu",
-        bs->frames_usb_to_eth, bs->frames_eth_to_usb, bs->errors);
+    FURI_LOG_I(
+        TAG,
+        "ETH Bridge stopped: USB->ETH=%lu ETH->USB=%lu err=%lu",
+        bs->frames_usb_to_eth,
+        bs->frames_eth_to_usb,
+        bs->errors);
 
     /* Show final stats */
     with_view_model(
         app->view_bridge,
-        BridgeViewModel* vm,
+        BridgeViewModel * vm,
         {
             vm->active = false;
             vm->status_line = "Bridge stopped. USB restored.";
         },
         true);
 
-    #undef BRIDGE_SET_STATUS
+#undef BRIDGE_SET_STATUS
 }
 
 /* ==================== PXE Server ==================== */
@@ -4382,13 +4738,15 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
     memset(&state, 0, sizeof(state));
 
     if(!app->pxe_scan.boot_file_found) {
-        furi_string_printf(out,
+        furi_string_printf(
+            out,
             "[PXE] No boot file!\n"
             "Place .kpxe or .efi in:\n"
             "%s/\n\n"
             "Recommended:\n"
             "undionly.kpxe from\n"
-            "netboot.xyz (~70KB)\n", PXE_BOOT_DIR);
+            "netboot.xyz (~70KB)\n",
+            PXE_BOOT_DIR);
         return;
     }
 
@@ -4405,8 +4763,10 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
 
     /* Step 5: Configure W5500 with server IP (static) */
     w5500_hal_set_net_info(
-        state.config.server_ip, state.config.subnet,
-        state.config.server_ip, state.config.server_ip);
+        state.config.server_ip,
+        state.config.subnet,
+        state.config.server_ip,
+        state.config.server_ip);
 
     /* Step 6: Open sockets */
     if(!pxe_server_start(&state)) {
@@ -4416,16 +4776,20 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
     }
 
     /* Step 7: Initial status */
-    furi_string_printf(out,
+    furi_string_printf(
+        out,
         "[PXE Server]\n"
         "IP: %d.%d.%d.%d\n"
         "DHCP: %s\n"
         "Boot: %s (%lu B)\n\n"
         "Waiting for client...\n",
-        state.config.server_ip[0], state.config.server_ip[1],
-        state.config.server_ip[2], state.config.server_ip[3],
+        state.config.server_ip[0],
+        state.config.server_ip[1],
+        state.config.server_ip[2],
+        state.config.server_ip[3],
         state.config.dhcp_enabled ? "ON" : "OFF",
-        state.boot_filename, state.boot_file_size);
+        state.boot_filename,
+        state.boot_file_size);
     eth_tester_update_view(app->text_box_pxe, out);
 
     /* Step 8: Main loop */
@@ -4445,9 +4809,13 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
             prev_blocks = state.tftp_blocks_sent;
 
             furi_string_reset(out);
-            furi_string_printf(out, "[PXE Server]\nIP: %d.%d.%d.%d  DHCP:%s\n",
-                state.config.server_ip[0], state.config.server_ip[1],
-                state.config.server_ip[2], state.config.server_ip[3],
+            furi_string_printf(
+                out,
+                "[PXE Server]\nIP: %d.%d.%d.%d  DHCP:%s\n",
+                state.config.server_ip[0],
+                state.config.server_ip[1],
+                state.config.server_ip[2],
+                state.config.server_ip[3],
                 state.config.dhcp_enabled ? "ON" : "OFF");
             furi_string_cat_printf(out, "Boot: %s\n", state.boot_filename);
 
@@ -4457,31 +4825,44 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
                 break;
             case PxeStateDhcpOfferSent:
             case PxeStateDhcpAckSent:
-                furi_string_cat_printf(out,
+                furi_string_cat_printf(
+                    out,
                     "\nClient: %02X:%02X:%02X:%02X:%02X:%02X\n"
                     "DHCP handshake...\n",
-                    state.client_mac[0], state.client_mac[1], state.client_mac[2],
-                    state.client_mac[3], state.client_mac[4], state.client_mac[5]);
+                    state.client_mac[0],
+                    state.client_mac[1],
+                    state.client_mac[2],
+                    state.client_mac[3],
+                    state.client_mac[4],
+                    state.client_mac[5]);
                 break;
             case PxeStateTftpTransfer: {
                 uint8_t pct = state.boot_file_size ?
-                    (uint8_t)((state.tftp.bytes_sent * 100) / state.boot_file_size) : 0;
+                                  (uint8_t)((state.tftp.bytes_sent * 100) / state.boot_file_size) :
+                                  0;
                 uint8_t filled = pct / 5;
                 char bar[23];
                 bar[0] = '[';
-                for(int i = 0; i < 20; i++) bar[i + 1] = (i < filled) ? '#' : '.';
+                for(int i = 0; i < 20; i++)
+                    bar[i + 1] = (i < filled) ? '#' : '.';
                 bar[21] = ']';
                 bar[22] = 0;
                 furi_string_cat_printf(out, "\n%s %d%%\n", bar, pct);
-                furi_string_cat_printf(out, "Blk %d/%d (%lu/%lu B)\n",
+                furi_string_cat_printf(
+                    out,
+                    "Blk %d/%d (%lu/%lu B)\n",
                     state.tftp.block_num,
                     (uint16_t)((state.boot_file_size + TFTP_BLOCK_SIZE - 1) / TFTP_BLOCK_SIZE),
-                    state.tftp.bytes_sent, state.boot_file_size);
+                    state.tftp.bytes_sent,
+                    state.boot_file_size);
                 break;
             }
             case PxeStateDone:
-                furi_string_cat_printf(out, "\nCOMPLETE! %lu B in %lu blk\n",
-                    state.tftp.bytes_sent, state.tftp_blocks_sent);
+                furi_string_cat_printf(
+                    out,
+                    "\nCOMPLETE! %lu B in %lu blk\n",
+                    state.tftp.bytes_sent,
+                    state.tftp_blocks_sent);
                 break;
             case PxeStateError:
                 furi_string_cat_printf(out, "\nERROR! Errs: %lu\n", state.tftp_errors);
@@ -4503,10 +4884,14 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
     /* Cleanup */
     pxe_server_stop(&state);
 
-    furi_string_printf(out,
+    furi_string_printf(
+        out,
         "[PXE Stopped]\nDHCP: %lu disc, %lu req\nTFTP: %lu req, %lu blk\nErr: %lu\n",
-        state.dhcp_discovers, state.dhcp_requests,
-        state.tftp_requests, state.tftp_blocks_sent, state.tftp_errors);
+        state.dhcp_discovers,
+        state.dhcp_requests,
+        state.tftp_requests,
+        state.tftp_blocks_sent,
+        state.tftp_errors);
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 }
 
@@ -4525,11 +4910,7 @@ static void eth_tester_do_packet_capture(EthTesterApp* app) {
     }
 
     /* Trigger initial draw */
-    with_view_model(
-        app->view_packet_capture,
-        PacketCaptureViewModel* vm,
-        { UNUSED(vm); },
-        true);
+    with_view_model(app->view_packet_capture, PacketCaptureViewModel * vm, { UNUSED(vm); }, true);
 
     while(app->worker_running) {
         uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
@@ -4538,10 +4919,7 @@ static void eth_tester_do_packet_capture(EthTesterApp* app) {
 
             /* Trigger view redraw periodically */
             with_view_model(
-                app->view_packet_capture,
-                PacketCaptureViewModel* vm,
-                { UNUSED(vm); },
-                true);
+                app->view_packet_capture, PacketCaptureViewModel * vm, { UNUSED(vm); }, true);
         } else {
             furi_delay_ms(10);
         }
@@ -4551,11 +4929,7 @@ static void eth_tester_do_packet_capture(EthTesterApp* app) {
     w5500_hal_close_macraw();
 
     /* Final redraw to show stopped state */
-    with_view_model(
-        app->view_packet_capture,
-        PacketCaptureViewModel* vm,
-        { UNUSED(vm); },
-        true);
+    with_view_model(app->view_packet_capture, PacketCaptureViewModel * vm, { UNUSED(vm); }, true);
 
     if(app->setting_sound) {
         notification_message(app->notifications, &sequence_success);
@@ -4597,14 +4971,17 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
     }
 
     /* Step 6: Show compact status with auth token */
-    furi_string_printf(out,
+    furi_string_printf(
+        out,
         "[File Manager] Running\n"
         "http://%d.%d.%d.%d/?t=%s\n"
         "Req:0 Tx:0 Rx:0\n"
         "\n"
         "Press BACK to stop.",
-        app->dhcp_ip[0], app->dhcp_ip[1],
-        app->dhcp_ip[2], app->dhcp_ip[3],
+        app->dhcp_ip[0],
+        app->dhcp_ip[1],
+        app->dhcp_ip[2],
+        app->dhcp_ip[3],
         fm_state.auth_token);
     eth_tester_update_view(app->text_box_file_manager, out);
 
@@ -4616,14 +4993,17 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
         /* Update status every 2 seconds */
         if(furi_get_tick() - last_status >= 2000) {
             last_status = furi_get_tick();
-            furi_string_printf(out,
+            furi_string_printf(
+                out,
                 "[File Manager] Running\n"
                 "http://%d.%d.%d.%d/?t=%s\n"
                 "Req:%lu Tx:%lu Rx:%lu\n"
                 "%s\n"
                 "Press BACK to stop.",
-                app->dhcp_ip[0], app->dhcp_ip[1],
-                app->dhcp_ip[2], app->dhcp_ip[3],
+                app->dhcp_ip[0],
+                app->dhcp_ip[1],
+                app->dhcp_ip[2],
+                app->dhcp_ip[3],
                 fm_state.auth_token,
                 (unsigned long)fm_state.requests_served,
                 (unsigned long)fm_state.bytes_sent,
@@ -4636,7 +5016,8 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
     /* Cleanup */
     file_manager_stop(&fm_state);
 
-    furi_string_printf(out,
+    furi_string_printf(
+        out,
         "[File Manager] Stopped\n"
         "Req:%lu Tx:%lu Rx:%lu",
         (unsigned long)fm_state.requests_served,

@@ -36,7 +36,6 @@ bool traceroute_send_hop(
     uint16_t seq,
     uint32_t timeout_ms,
     TracerouteHop* hop) {
-
     furi_assert(hop);
     memset(hop, 0, sizeof(TracerouteHop));
     hop->ttl = ttl;
@@ -60,8 +59,8 @@ bool traceroute_send_hop(
     /* Build ICMP Echo Request */
     uint8_t icmp_buf[ICMP_PACKET_SIZE];
     memset(icmp_buf, 0, sizeof(icmp_buf));
-    icmp_buf[0] = 8;  /* Echo Request */
-    icmp_buf[1] = 0;  /* Code */
+    icmp_buf[0] = 8; /* Echo Request */
+    icmp_buf[1] = 0; /* Code */
     icmp_buf[4] = 0x00; /* Identifier high */
     icmp_buf[5] = 0x01; /* Identifier low */
     icmp_buf[6] = (uint8_t)(seq >> 8);
@@ -92,7 +91,8 @@ bool traceroute_send_hop(
     while(furi_get_tick() - start_tick < timeout_ms) {
         uint16_t rx_size = getSn_RX_RSR(socket_num);
         if(rx_size > 0) {
-            int32_t received = recvfrom(socket_num, recv_buf, sizeof(recv_buf), from_ip, &from_port);
+            int32_t received =
+                recvfrom(socket_num, recv_buf, sizeof(recv_buf), from_ip, &from_port);
             if(received >= 1) {
                 uint8_t icmp_type = recv_buf[0];
 

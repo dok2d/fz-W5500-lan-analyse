@@ -11,30 +11,62 @@
 /* mDNS query for _services._dns-sd._udp.local PTR */
 static const uint8_t MDNS_QUERY[] = {
     /* Header */
-    0x00, 0x00, /* Transaction ID */
-    0x00, 0x00, /* Flags: standard query */
-    0x00, 0x01, /* QDCOUNT: 1 */
-    0x00, 0x00, /* ANCOUNT */
-    0x00, 0x00, /* NSCOUNT */
-    0x00, 0x00, /* ARCOUNT */
+    0x00,
+    0x00, /* Transaction ID */
+    0x00,
+    0x00, /* Flags: standard query */
+    0x00,
+    0x01, /* QDCOUNT: 1 */
+    0x00,
+    0x00, /* ANCOUNT */
+    0x00,
+    0x00, /* NSCOUNT */
+    0x00,
+    0x00, /* ARCOUNT */
     /* Question: _services._dns-sd._udp.local PTR IN */
-    0x09, '_', 's', 'e', 'r', 'v', 'i', 'c', 'e', 's',
-    0x07, '_', 'd', 'n', 's', '-', 's', 'd',
-    0x04, '_', 'u', 'd', 'p',
-    0x05, 'l', 'o', 'c', 'a', 'l',
-    0x00,       /* Root label */
-    0x00, 0x0C, /* QTYPE: PTR */
-    0x00, 0x01, /* QCLASS: IN */
+    0x09,
+    '_',
+    's',
+    'e',
+    'r',
+    'v',
+    'i',
+    'c',
+    'e',
+    's',
+    0x07,
+    '_',
+    'd',
+    'n',
+    's',
+    '-',
+    's',
+    'd',
+    0x04,
+    '_',
+    'u',
+    'd',
+    'p',
+    0x05,
+    'l',
+    'o',
+    'c',
+    'a',
+    'l',
+    0x00, /* Root label */
+    0x00,
+    0x0C, /* QTYPE: PTR */
+    0x00,
+    0x01, /* QCLASS: IN */
 };
 
 /* SSDP M-SEARCH request */
-static const char SSDP_MSEARCH[] =
-    "M-SEARCH * HTTP/1.1\r\n"
-    "HOST: 239.255.255.250:1900\r\n"
-    "MAN: \"ssdp:discover\"\r\n"
-    "MX: 3\r\n"
-    "ST: ssdp:all\r\n"
-    "\r\n";
+static const char SSDP_MSEARCH[] = "M-SEARCH * HTTP/1.1\r\n"
+                                   "HOST: 239.255.255.250:1900\r\n"
+                                   "MAN: \"ssdp:discover\"\r\n"
+                                   "MX: 3\r\n"
+                                   "ST: ssdp:all\r\n"
+                                   "\r\n";
 
 bool mdns_send_query(uint8_t socket_num) {
     close(socket_num);
@@ -45,7 +77,8 @@ bool mdns_send_query(uint8_t socket_num) {
     }
 
     uint8_t mcast_ip[] = MDNS_MCAST_IP;
-    int32_t sent = sendto(socket_num, (uint8_t*)MDNS_QUERY, sizeof(MDNS_QUERY), mcast_ip, MDNS_PORT);
+    int32_t sent =
+        sendto(socket_num, (uint8_t*)MDNS_QUERY, sizeof(MDNS_QUERY), mcast_ip, MDNS_PORT);
     if(sent <= 0) {
         FURI_LOG_E(TAG, "mDNS query send failed: %ld", sent);
         close(socket_num);
@@ -68,7 +101,13 @@ static uint16_t dns_skip_name_disc(const uint8_t* buf, uint16_t len, uint16_t of
 }
 
 /* Extract a DNS name as readable string (with recursion depth limit) */
-static uint16_t dns_read_name_depth(const uint8_t* buf, uint16_t len, uint16_t offset, char* out, uint16_t out_size, uint8_t depth) {
+static uint16_t dns_read_name_depth(
+    const uint8_t* buf,
+    uint16_t len,
+    uint16_t offset,
+    char* out,
+    uint16_t out_size,
+    uint8_t depth) {
     if(depth > 4) return offset; /* prevent infinite recursion from circular pointers */
 
     uint16_t pos = offset;
@@ -102,7 +141,8 @@ static uint16_t dns_read_name_depth(const uint8_t* buf, uint16_t len, uint16_t o
     return pos;
 }
 
-static uint16_t dns_read_name(const uint8_t* buf, uint16_t len, uint16_t offset, char* out, uint16_t out_size) {
+static uint16_t
+    dns_read_name(const uint8_t* buf, uint16_t len, uint16_t offset, char* out, uint16_t out_size) {
     return dns_read_name_depth(buf, len, offset, out, out_size, 0);
 }
 
@@ -111,7 +151,6 @@ bool mdns_parse_response(
     uint16_t len,
     const uint8_t from_ip[4],
     DiscoveryDevice* device) {
-
     if(len < 12) return false;
 
     /* Check it's a response */
@@ -170,8 +209,8 @@ bool ssdp_send_msearch(uint8_t socket_num) {
     }
 
     uint8_t mcast_ip[] = SSDP_MCAST_IP;
-    int32_t sent = sendto(
-        socket_num, (uint8_t*)SSDP_MSEARCH, strlen(SSDP_MSEARCH), mcast_ip, SSDP_PORT);
+    int32_t sent =
+        sendto(socket_num, (uint8_t*)SSDP_MSEARCH, strlen(SSDP_MSEARCH), mcast_ip, SSDP_PORT);
     if(sent <= 0) {
         FURI_LOG_E(TAG, "SSDP M-SEARCH send failed: %ld", sent);
         close(socket_num);
@@ -189,7 +228,6 @@ static bool ssdp_extract_header(
     const char* header,
     char* value,
     uint16_t value_size) {
-
     uint16_t hdr_len = strlen(header);
     for(uint16_t i = 0; i + hdr_len < len; i++) {
         /* Case-insensitive header match at start of line */
@@ -209,10 +247,12 @@ static bool ssdp_extract_header(
             if(match) {
                 uint16_t start = i + hdr_len;
                 /* Skip whitespace */
-                while(start < len && (buf[start] == ' ' || buf[start] == '\t')) start++;
+                while(start < len && (buf[start] == ' ' || buf[start] == '\t'))
+                    start++;
                 /* Copy until CR/LF */
                 uint16_t vpos = 0;
-                while(start < len && buf[start] != '\r' && buf[start] != '\n' && vpos < value_size - 1) {
+                while(start < len && buf[start] != '\r' && buf[start] != '\n' &&
+                      vpos < value_size - 1) {
                     value[vpos++] = buf[start++];
                 }
                 value[vpos] = '\0';
@@ -228,7 +268,6 @@ bool ssdp_parse_response(
     uint16_t len,
     const uint8_t from_ip[4],
     DiscoveryDevice* device) {
-
     if(len < 10) return false;
 
     memset(device, 0, sizeof(DiscoveryDevice));
@@ -238,7 +277,8 @@ bool ssdp_parse_response(
     char server[DISCOVERY_NAME_LEN];
     char st[DISCOVERY_TYPE_LEN];
 
-    bool has_server = ssdp_extract_header((const char*)buf, len, "SERVER:", server, sizeof(server));
+    bool has_server =
+        ssdp_extract_header((const char*)buf, len, "SERVER:", server, sizeof(server));
     bool has_st = ssdp_extract_header((const char*)buf, len, "ST:", st, sizeof(st));
 
     if(!has_server && !has_st) return false;

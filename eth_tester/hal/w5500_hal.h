@@ -29,9 +29,9 @@
 #define W5500_PHYCFGR_ADDR 0x002E
 
 /* PHY link status, speed, duplex from PHYCFGR */
-#define PHYCFGR_LNK_MASK  0x01  /* Bit 0: link status */
-#define PHYCFGR_SPD_MASK  0x02  /* Bit 1: speed (0=10M, 1=100M) */
-#define PHYCFGR_DPX_MASK  0x04  /* Bit 2: duplex (0=half, 1=full) */
+#define PHYCFGR_LNK_MASK 0x01 /* Bit 0: link status */
+#define PHYCFGR_SPD_MASK 0x02 /* Bit 1: speed (0=10M, 1=100M) */
+#define PHYCFGR_DPX_MASK 0x04 /* Bit 2: duplex (0=half, 1=full) */
 
 /**
  * Initialize SPI bus, reset pin, CS pin.

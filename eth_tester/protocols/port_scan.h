@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 /* Port scanner socket (uses sockets 3-7 for parallel scanning) */
-#define W5500_SCAN_SOCKET_BASE 3
+#define W5500_SCAN_SOCKET_BASE  3
 #define W5500_SCAN_SOCKET_COUNT 1 /* Use single socket for simplicity */
 
 /* Connect timeout per port in ms */

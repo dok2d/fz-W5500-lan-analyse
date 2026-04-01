@@ -13,8 +13,8 @@
 #define DNS_HEADER_SIZE 12
 
 /* DNS record types */
-#define DNS_TYPE_A     1
-#define DNS_CLASS_IN   1
+#define DNS_TYPE_A   1
+#define DNS_CLASS_IN 1
 
 /* Max DNS packet size */
 #define DNS_BUF_SIZE 512
@@ -31,7 +31,8 @@ static uint16_t dns_encode_qname(uint8_t* buf, uint16_t buf_size, const char* ho
     while(*ptr) {
         /* Find next dot or end */
         const char* dot = ptr;
-        while(*dot && *dot != '.') dot++;
+        while(*dot && *dot != '.')
+            dot++;
 
         uint8_t label_len = (uint8_t)(dot - ptr);
         if(label_len == 0 || label_len > 63) return 0;
@@ -53,7 +54,8 @@ static uint16_t dns_encode_qname(uint8_t* buf, uint16_t buf_size, const char* ho
  * Build a DNS query packet for A record.
  * Returns packet length, 0 on error.
  */
-static uint16_t dns_build_query(uint8_t* buf, uint16_t buf_size, const char* hostname, uint16_t tx_id) {
+static uint16_t
+    dns_build_query(uint8_t* buf, uint16_t buf_size, const char* hostname, uint16_t tx_id) {
     if(buf_size < DNS_HEADER_SIZE + 4) return 0;
 
     memset(buf, 0, DNS_HEADER_SIZE);
@@ -68,7 +70,8 @@ static uint16_t dns_build_query(uint8_t* buf, uint16_t buf_size, const char* hos
     /* ANCOUNT, NSCOUNT, ARCOUNT = 0 */
 
     /* Question section */
-    uint16_t qname_len = dns_encode_qname(&buf[DNS_HEADER_SIZE], buf_size - DNS_HEADER_SIZE - 4, hostname);
+    uint16_t qname_len =
+        dns_encode_qname(&buf[DNS_HEADER_SIZE], buf_size - DNS_HEADER_SIZE - 4, hostname);
     if(qname_len == 0) return 0;
 
     uint16_t pos = DNS_HEADER_SIZE + qname_len;
@@ -117,7 +120,8 @@ static uint16_t dns_skip_name(const uint8_t* buf, uint16_t len, uint16_t offset)
 /**
  * Parse DNS response and extract first A record.
  */
-static bool dns_parse_response(const uint8_t* buf, uint16_t len, uint16_t tx_id, DnsLookupResult* result) {
+static bool
+    dns_parse_response(const uint8_t* buf, uint16_t len, uint16_t tx_id, DnsLookupResult* result) {
     if(len < DNS_HEADER_SIZE) return false;
 
     /* Check transaction ID */

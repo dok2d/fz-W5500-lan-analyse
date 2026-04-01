@@ -9,9 +9,9 @@
 
 typedef struct {
     uint8_t octets[4];
-    uint8_t prefix;   /* CIDR prefix length 0-32 */
+    uint8_t prefix; /* CIDR prefix length 0-32 */
     bool cidr_mode;
-    uint8_t cursor;   /* 0-11 = IP digit, 12-13 = prefix digit (CIDR) */
+    uint8_t cursor; /* 0-11 = IP digit, 12-13 = prefix digit (CIDR) */
 
     const char* header;
 
@@ -29,10 +29,7 @@ struct IpKeyboard {
 /* ── Helpers ── */
 
 /** Parse "x.x.x.x" or "x.x.x.x/p" into octets[] and prefix. */
-static void ip_keyboard_parse(
-    const char* str,
-    uint8_t octets[4],
-    uint8_t* prefix) {
+static void ip_keyboard_parse(const char* str, uint8_t octets[4], uint8_t* prefix) {
     unsigned int a = 0, b = 0, c = 0, d = 0, p = 24;
     if(!str || !str[0]) {
         memset(octets, 0, 4);
@@ -77,16 +74,21 @@ static void ip_kb_set_digit(IpKeyboardModel* m, uint8_t cursor, uint8_t digit) {
         uint8_t h = val / 100;
         uint8_t t = (val / 10) % 10;
         uint8_t o = val % 10;
-        if(pos == 0) h = digit;
-        else if(pos == 1) t = digit;
-        else o = digit;
+        if(pos == 0)
+            h = digit;
+        else if(pos == 1)
+            t = digit;
+        else
+            o = digit;
         uint16_t nv = (uint16_t)h * 100 + t * 10 + o;
         m->octets[idx] = (nv > 255) ? 255 : (uint8_t)nv;
     } else {
         uint8_t t = m->prefix / 10;
         uint8_t o = m->prefix % 10;
-        if(cursor == 12) t = digit;
-        else o = digit;
+        if(cursor == 12)
+            t = digit;
+        else
+            o = digit;
         uint8_t nv = t * 10 + o;
         m->prefix = (nv > 32) ? 32 : nv;
     }
@@ -111,8 +113,7 @@ static void ip_keyboard_draw(Canvas* canvas, void* model) {
     /* ── Header ── */
     canvas_set_font(canvas, FontSecondary);
     canvas_draw_str_aligned(
-        canvas, 64, 2, AlignCenter, AlignTop,
-        m->header ? m->header : "Enter IP address:");
+        canvas, 64, 2, AlignCenter, AlignTop, m->header ? m->header : "Enter IP address:");
 
     /* ── Measure a single digit cell ── */
     canvas_set_font(canvas, FontPrimary);
@@ -215,8 +216,7 @@ static void ip_keyboard_draw(Canvas* canvas, void* model) {
 
     /* ── Hint line ── */
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str_aligned(
-        canvas, 64, 62, AlignCenter, AlignBottom, "<> move  ^v 0-9  OK send");
+    canvas_draw_str_aligned(canvas, 64, 62, AlignCenter, AlignBottom, "<> move  ^v 0-9  OK send");
 }
 
 /* ── Input callback ── */

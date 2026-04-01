@@ -29,7 +29,12 @@ bool mac_changer_save(const uint8_t mac[6]) {
             buf,
             sizeof(buf),
             "%02X:%02X:%02X:%02X:%02X:%02X",
-            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+            mac[0],
+            mac[1],
+            mac[2],
+            mac[3],
+            mac[4],
+            mac[5]);
         ok = storage_file_write(file, buf, 17) == 17;
         storage_file_close(file);
         FURI_LOG_I(TAG, "MAC saved: %s", buf);
@@ -53,9 +58,11 @@ bool mac_changer_load(uint8_t mac[6]) {
 
         if(read == 17) {
             unsigned int m[6];
-            if(sscanf(buf, "%02X:%02X:%02X:%02X:%02X:%02X",
-                       &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]) == 6) {
-                for(int i = 0; i < 6; i++) mac[i] = (uint8_t)m[i];
+            if(sscanf(
+                   buf, "%02X:%02X:%02X:%02X:%02X:%02X", &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]) ==
+               6) {
+                for(int i = 0; i < 6; i++)
+                    mac[i] = (uint8_t)m[i];
                 ok = true;
                 FURI_LOG_I(TAG, "MAC loaded: %s", buf);
             }

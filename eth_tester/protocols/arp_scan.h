@@ -36,8 +36,8 @@ typedef struct {
 } ArpHost;
 
 typedef struct {
-    ArpHost* hosts;       /* heap-allocated, capacity = max_hosts */
-    uint16_t max_hosts;   /* allocated capacity */
+    ArpHost* hosts; /* heap-allocated, capacity = max_hosts */
+    uint16_t max_hosts; /* allocated capacity */
     uint16_t count;
     uint16_t total_sent;
     uint8_t progress_percent;

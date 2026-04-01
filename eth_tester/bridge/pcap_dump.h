@@ -21,7 +21,7 @@
 /** Dump statistics */
 typedef struct {
     uint32_t frames_written;
-    uint32_t frames_dropped;  /* write errors */
+    uint32_t frames_dropped; /* write errors */
     uint32_t bytes_written;
     bool active;
 } PcapDumpState;

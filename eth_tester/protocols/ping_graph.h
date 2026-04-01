@@ -18,8 +18,8 @@
 /* Ping graph state */
 typedef struct {
     uint32_t samples[PING_GRAPH_MAX_SAMPLES]; /* RTT in ms, PING_RTT_TIMEOUT = loss */
-    uint16_t sample_count;                     /* Total samples recorded */
-    uint16_t write_idx;                        /* Next write position in ring buffer */
+    uint16_t sample_count; /* Total samples recorded */
+    uint16_t write_idx; /* Next write position in ring buffer */
     uint32_t total_sent;
     uint32_t total_received;
     uint32_t rtt_min;
