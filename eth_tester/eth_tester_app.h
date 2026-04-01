@@ -13,6 +13,7 @@
 #include "protocols/ping_graph.h"
 #include "protocols/history.h"
 #include "bridge/eth_bridge.h"
+#include "ip_keyboard.h"
 
 /* Forward declarations */
 typedef struct EthTesterApp EthTesterApp;
@@ -25,22 +26,18 @@ typedef enum {
     EthTesterViewArpScan,
     EthTesterViewDhcpAnalyze,
     EthTesterViewPing,
-    EthTesterViewPingInput,
     EthTesterViewStats,
     EthTesterViewDnsLookup,
     EthTesterViewDnsInput,
     EthTesterViewWol,
     EthTesterViewWolInput,
     EthTesterViewContPing,
-    EthTesterViewContPingInput,
     EthTesterViewPortScan,
-    EthTesterViewPortScanInput,
     EthTesterViewMacChanger,
     EthTesterViewMacChangerInput,
     EthTesterViewTraceroute,
-    EthTesterViewTracerouteInput,
     EthTesterViewPingSweep,
-    EthTesterViewPingSweepInput,
+    EthTesterViewIpKeyboard,
     EthTesterViewDiscovery,
     EthTesterViewStpVlan,
     EthTesterViewHistory,
@@ -109,19 +106,15 @@ struct EthTesterApp {
     TextBox* text_box_stats;
     TextBox* text_box_dns;
     TextBox* text_box_wol;
-    TextInput* text_input_ping;
     TextInput* text_input_dns;
     ByteInput* byte_input_wol;
     View* view_cont_ping;
-    TextInput* text_input_cont_ping;
     TextBox* text_box_port_scan;
-    TextInput* text_input_port_scan;
     TextBox* text_box_mac_changer;
     ByteInput* byte_input_mac_changer;
     TextBox* text_box_traceroute;
-    TextInput* text_input_traceroute;
     TextBox* text_box_ping_sweep;
-    TextInput* text_input_ping_sweep;
+    IpKeyboard* ip_keyboard;
     TextBox* text_box_discovery;
     TextBox* text_box_stp_vlan;
     Submenu* submenu_history;
