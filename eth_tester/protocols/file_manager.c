@@ -71,11 +71,13 @@ static bool http_wait_send_done(uint8_t sn) {
     while(furi_get_tick() - start < 3000) {
         uint8_t ir = getSn_IR(sn);
         if(ir & Sn_IR_SENDOK) {
-            setSn_IR(sn, Sn_IR_SENDOK);
+            /* Do NOT clear Sn_IR_SENDOK here! The WIZnet send() function
+             * must see this bit itself to clear its internal sock_is_sending
+             * flag. If we clear it, send() will never know the previous
+             * send completed and will return SOCK_BUSY forever. */
             return true;
         }
         if(ir & Sn_IR_TIMEOUT) {
-            setSn_IR(sn, Sn_IR_TIMEOUT);
             return false;
         }
         uint8_t sr = getSn_SR(sn);
