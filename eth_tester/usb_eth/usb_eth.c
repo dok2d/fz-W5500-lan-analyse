@@ -53,18 +53,12 @@ void usb_eth_deinit(void) {
 
     usb_eth_initialized = false;
 
-    /* Small delay to let USB stack settle before switching */
-    furi_delay_ms(10);
-
-    /* Restore previous USB interface */
+    /* Restore previous USB interface.
+     * furi_hal_usb_set_config handles disconnect/reconnect internally. */
     if(prev_usb_interface) {
-        furi_hal_usb_unlock();
         furi_hal_usb_set_config(prev_usb_interface, NULL);
         prev_usb_interface = NULL;
     }
-
-    /* Give host time to re-enumerate */
-    furi_delay_ms(500);
 
     FURI_LOG_I(TAG, "USB CDC-ECM deinitialized, previous USB restored");
 }

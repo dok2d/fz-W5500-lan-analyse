@@ -114,7 +114,7 @@ static const struct usb_device_descriptor ecm_dev_desc = {
     .bcdDevice = VERSION_BCD(1, 0, 0),
     .iManufacturer = 1,
     .iProduct = 2,
-    .iSerialNumber = 0,
+    .iSerialNumber = STR_IDX_MAC, /* String index 3 = MAC address (also used by ECM descriptor) */
     .bNumConfigurations = 1,
 };
 
@@ -223,19 +223,6 @@ static void ecm_build_mac_string(const uint8_t mac[6]) {
 }
 
 /* ==================== USB Callbacks ==================== */
-
-/* Descriptor callback - handles string descriptor requests including MAC */
-static usbd_respond ecm_getdesc(usbd_ctlreq* req, void** address, uint16_t* length) {
-    uint8_t dtype = req->wValue >> 8;
-    uint8_t dindex = req->wValue & 0xFF;
-
-    if(dtype == USB_DTYPE_STRING && dindex == STR_IDX_MAC && ecm_str_mac) {
-        *address = (void*)ecm_str_mac;
-        *length = ecm_str_mac->bLength;
-        return usbd_ack;
-    }
-    return usbd_fail;
-}
 
 /* CDC ECM Network Connection notification */
 static const uint8_t ecm_notify_connected[] = {
@@ -390,15 +377,16 @@ static void ecm_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     /* Build MAC string descriptor */
     ecm_build_mac_string(ecm_mac);
 
-    /* Set string descriptors on the interface struct */
+    /* Set string descriptors on the interface struct.
+     * str_serial_descr (index 3) serves as the MAC address string
+     * referenced by both iSerialNumber and ECM's iMACAddress. */
     intf->str_manuf_descr = (void*)&ecm_str_manuf;
     intf->str_prod_descr = (void*)&ecm_str_prod;
-    intf->str_serial_descr = NULL;
+    intf->str_serial_descr = (void*)ecm_str_mac;
 
-    /* Register callbacks — framework handles usbd_connect/usbd_enable */
+    /* Register callbacks — framework handles descriptors and usbd_connect */
     usbd_reg_config(dev, ecm_ep_config);
     usbd_reg_control(dev, ecm_control);
-    usbd_reg_descr(dev, ecm_getdesc);
 
     FURI_LOG_I(TAG, "CDC-ECM initialized");
 }
@@ -406,7 +394,6 @@ static void ecm_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
 static void ecm_deinit(usbd_device* dev) {
     usbd_reg_config(dev, NULL);
     usbd_reg_control(dev, NULL);
-    usbd_reg_descr(dev, NULL);
 
     ecm_connected = false;
     ecm_data_active = false;
