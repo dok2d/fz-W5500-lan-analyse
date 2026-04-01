@@ -52,6 +52,7 @@ typedef enum {
     EthTesterViewPxeServer,
     EthTesterViewPxeSettings,
     EthTesterViewPxeHelp,
+    EthTesterViewFileManager,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -77,6 +78,7 @@ typedef enum {
     EthTesterMenuItemAbout,
     EthTesterMenuItemEthBridge,
     EthTesterMenuItemPxeServer,
+    EthTesterMenuItemFileManager,
 } EthTesterMenuItem;
 
 /* Packet statistics counters */
@@ -215,6 +217,10 @@ struct EthTesterApp {
     uint8_t pxe_server_ip[4];          /* parsed */
     uint8_t pxe_client_ip[4];          /* parsed */
     uint8_t pxe_subnet[4];             /* parsed */
+
+    /* File Manager state */
+    TextBox* text_box_file_manager;
+    FuriString* file_manager_text;
 
     /* Text buffers for views */
     FuriString* link_info_text;

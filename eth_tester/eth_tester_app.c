@@ -15,6 +15,7 @@
 #include "protocols/stp_vlan.h"
 #include "protocols/history.h"
 #include "protocols/pxe_server.h"
+#include "protocols/file_manager.h"
 #include "bridge/eth_bridge.h"
 #include "usb_eth/usb_eth.h"
 #include "utils/packet_utils.h"
@@ -164,6 +165,7 @@ static void eth_tester_do_ping_sweep_detect(EthTesterApp* app);
 static void eth_tester_do_stp_vlan(EthTesterApp* app);
 static void eth_tester_do_eth_bridge(EthTesterApp* app);
 static void eth_tester_do_pxe_server(EthTesterApp* app);
+static void eth_tester_do_file_manager(EthTesterApp* app);
 static void eth_tester_history_populate(EthTesterApp* app);
 static void eth_tester_history_file_callback(void* context, uint32_t index);
 static void eth_tester_history_delete_callback(void* context, uint32_t index);
@@ -646,6 +648,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu_cat_tools, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu_cat_tools, "ETH Bridge", EthTesterMenuItemEthBridge, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu_cat_tools, "PXE Server", EthTesterMenuItemPxeServer, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_tools, "File Manager", EthTesterMenuItemFileManager, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu_cat_tools), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatTools, submenu_get_view(app->submenu_cat_tools));
 
@@ -877,6 +880,13 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     variable_item_list_set_enter_callback(
         app->pxe_settings_list, pxe_settings_enter_callback, app);
 
+    /* File Manager views */
+    app->file_manager_text = furi_string_alloc();
+    app->text_box_file_manager = text_box_alloc();
+    text_box_set_font(app->text_box_file_manager, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_file_manager), eth_tester_nav_back_tools);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewFileManager, text_box_get_view(app->text_box_file_manager));
+
     /* Traceroute views */
     app->text_box_traceroute = text_box_alloc();
     text_box_set_font(app->text_box_traceroute, TextBoxFontText);
@@ -1011,6 +1021,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeServer);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeSettings);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeHelp);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewFileManager);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_netinfo);
@@ -1037,6 +1048,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_box_free(app->text_box_pxe);
     text_box_free(app->text_box_pxe_help);
     variable_item_list_free(app->pxe_settings_list);
+    text_box_free(app->text_box_file_manager);
     text_box_free(app->text_box_traceroute);
     text_box_free(app->text_box_ping_sweep);
     ip_keyboard_free(app->ip_keyboard);
@@ -1067,6 +1079,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     /* history_text removed — history now uses submenu */
     furi_string_free(app->history_file_text);
     furi_string_free(app->pxe_text);
+    furi_string_free(app->file_manager_text);
 
     /* Stop and free DHCP timer */
     furi_timer_stop(app->dhcp_timer);
@@ -1261,6 +1274,9 @@ static int32_t eth_tester_worker_fn(void* context) {
         break; /* Uses custom view, not TextBox */
     case EthTesterMenuItemPxeServer:
         eth_tester_do_pxe_server(app);
+        break;
+    case EthTesterMenuItemFileManager:
+        eth_tester_do_file_manager(app);
         break;
     case EthTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
@@ -1804,6 +1820,12 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
     case EthTesterMenuItemPxeServer:
         pxe_settings_refresh_boot_file(app);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeSettings);
+        break;
+
+    case EthTesterMenuItemFileManager:
+        furi_string_set(app->file_manager_text, "Starting File Manager...\n");
+        text_box_set_text(app->text_box_file_manager, furi_string_get_cstr(app->file_manager_text));
+        eth_tester_worker_start(app, EthTesterMenuItemFileManager, EthTesterViewFileManager);
         break;
 
     case EthTesterMenuItemAbout:
@@ -3693,6 +3715,99 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
         "[PXE Stopped]\nDHCP: %lu disc, %lu req\nTFTP: %lu req, %lu blk\nErr: %lu\n",
         state.dhcp_discovers, state.dhcp_requests,
         state.tftp_requests, state.tftp_blocks_sent, state.tftp_errors);
+    if(app->setting_sound) notification_message(app->notifications, &sequence_success);
+}
+
+/* ==================== File Manager ==================== */
+
+static void eth_tester_do_file_manager(EthTesterApp* app) {
+    FuriString* out = app->file_manager_text;
+    furi_string_reset(out);
+
+    /* Step 1: Init W5500 */
+    if(!eth_tester_ensure_w5500(app)) {
+        furi_string_cat(out, "[File Manager] W5500 Not Found!\nCheck SPI wiring.\n");
+        return;
+    }
+
+    /* Step 2: Check link */
+    if(!w5500_hal_get_link_status()) {
+        furi_string_cat(out, "[File Manager] No LAN link!\nConnect Ethernet cable.\n");
+        return;
+    }
+
+    /* Step 3: Run DHCP to get IP */
+    furi_string_set(out, "[File Manager]\nRunning DHCP...\n");
+    eth_tester_update_view(app->text_box_file_manager, out);
+
+    if(!eth_tester_ensure_dhcp(app)) {
+        furi_string_set(out, "[File Manager]\nDHCP failed!\n");
+        return;
+    }
+
+    /* Step 5: Start HTTP server */
+    FileManagerState fm_state;
+    if(!file_manager_start(&fm_state)) {
+        furi_string_cat(out, "[File Manager]\nFailed to start HTTP!\n");
+        return;
+    }
+
+    /* Step 6: Show status */
+    furi_string_printf(out,
+        "[File Manager]\n"
+        "HTTP server running!\n\n"
+        "Open in browser:\n"
+        "http://%d.%d.%d.%d/\n\n"
+        "Features:\n"
+        "- Browse SD card files\n"
+        "- Download files\n"
+        "- Upload files\n"
+        "- Create folders\n"
+        "- Delete files/folders\n\n"
+        "Press BACK to stop.\n",
+        app->dhcp_ip[0], app->dhcp_ip[1],
+        app->dhcp_ip[2], app->dhcp_ip[3]);
+    eth_tester_update_view(app->text_box_file_manager, out);
+
+    /* Step 7: Main loop */
+    uint32_t last_status = furi_get_tick();
+    while(app->worker_running && fm_state.running) {
+        file_manager_poll(&fm_state, app->frame_buf, 1024);
+
+        /* Update status every 2 seconds */
+        if(furi_get_tick() - last_status >= 2000) {
+            last_status = furi_get_tick();
+            furi_string_printf(out,
+                "[File Manager]\n"
+                "http://%d.%d.%d.%d/\n\n"
+                "Requests: %lu\n"
+                "Sent: %lu B\n"
+                "Received: %lu B\n"
+                "Errors: %lu\n\n"
+                "Press BACK to stop.\n",
+                app->dhcp_ip[0], app->dhcp_ip[1],
+                app->dhcp_ip[2], app->dhcp_ip[3],
+                (unsigned long)fm_state.requests_served,
+                (unsigned long)fm_state.bytes_sent,
+                (unsigned long)fm_state.bytes_received,
+                (unsigned long)fm_state.errors);
+            eth_tester_update_view(app->text_box_file_manager, out);
+        }
+    }
+
+    /* Cleanup */
+    file_manager_stop(&fm_state);
+
+    furi_string_printf(out,
+        "[File Manager Stopped]\n"
+        "Requests: %lu\n"
+        "Sent: %lu B\n"
+        "Received: %lu B\n"
+        "Errors: %lu\n",
+        (unsigned long)fm_state.requests_served,
+        (unsigned long)fm_state.bytes_sent,
+        (unsigned long)fm_state.bytes_received,
+        (unsigned long)fm_state.errors);
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 }
 
