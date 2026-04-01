@@ -80,9 +80,8 @@ static void dhcp_timer_callback(void* context) {
 #define DEFAULT_MAC \
     { 0x00, 0x08, 0xDC, 0x47, 0x47, 0x54 }
 
-/* Frame receive buffer (shared, used one operation at a time) */
+/* Frame receive buffer size */
 #define FRAME_BUF_SIZE 1600
-static uint8_t frame_buf[FRAME_BUF_SIZE];
 
 /* ==================== Forward declarations ==================== */
 
@@ -238,6 +237,10 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     EthTesterApp* app = malloc(sizeof(EthTesterApp));
     memset(app, 0, sizeof(EthTesterApp));
     g_app = app;
+
+    /* Allocate frame buffer on heap */
+    app->frame_buf = malloc(FRAME_BUF_SIZE);
+    furi_assert(app->frame_buf);
 
     /* Set default MAC */
     uint8_t default_mac[6] = DEFAULT_MAC;
@@ -624,6 +627,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_record_close(RECORD_GUI);
     furi_record_close(RECORD_NOTIFICATION);
 
+    free(app->frame_buf);
     g_app = NULL;
     free(app);
 }
@@ -1397,17 +1401,17 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
             eth_tester_update_view(app->text_box_lldp, app->lldp_text);
         }
 
-        uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
+        uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
         if(recv_len >= ETH_HEADER_SIZE) {
             /* Count frame for statistics */
-            eth_tester_count_frame(app, frame_buf, recv_len);
+            eth_tester_count_frame(app, app->frame_buf, recv_len);
 
-            uint16_t ethertype = pkt_get_ethertype(frame_buf);
+            uint16_t ethertype = pkt_get_ethertype(app->frame_buf);
 
             /* Check for LLDP */
             if(ethertype == ETHERTYPE_LLDP && !lldp_neighbor.valid) {
                 FURI_LOG_I(TAG, "LLDP frame received (%d bytes)", recv_len);
-                if(lldp_parse(frame_buf + ETH_HEADER_SIZE, recv_len - ETH_HEADER_SIZE, &lldp_neighbor)) {
+                if(lldp_parse(app->frame_buf + ETH_HEADER_SIZE, recv_len - ETH_HEADER_SIZE, &lldp_neighbor)) {
                     lldp_neighbor.last_seen_tick = furi_get_tick();
                     found = true;
                 }
@@ -1415,10 +1419,10 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
 
             /* Check for CDP (LLC/SNAP) */
             if(!cdp_neighbor.valid) {
-                uint16_t cdp_offset = cdp_check_frame(frame_buf, recv_len);
+                uint16_t cdp_offset = cdp_check_frame(app->frame_buf, recv_len);
                 if(cdp_offset > 0) {
                     FURI_LOG_I(TAG, "CDP frame received (%d bytes)", recv_len);
-                    if(cdp_parse(frame_buf + cdp_offset, recv_len - cdp_offset, &cdp_neighbor)) {
+                    if(cdp_parse(app->frame_buf + cdp_offset, recv_len - cdp_offset, &cdp_neighbor)) {
                         cdp_neighbor.last_seen_tick = furi_get_tick();
                         found = true;
                     }
@@ -1552,11 +1556,11 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
 
             /* Collect any pending replies */
             for(uint8_t i = 0; i < 20; i++) {
-                uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
+                uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
                 if(recv_len == 0) break;
 
                 uint8_t sender_mac[6], sender_ip[4];
-                if(arp_parse_reply(frame_buf, recv_len, sender_mac, sender_ip)) {
+                if(arp_parse_reply(app->frame_buf, recv_len, sender_mac, sender_ip)) {
                     if(scan->count < scan->max_hosts) {
                         ArpHost* host = &scan->hosts[scan->count];
                         memcpy(host->ip, sender_ip, 4);
@@ -1579,10 +1583,10 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     eth_tester_update_view(app->text_box_arp, app->arp_text);
     uint32_t tail_start = furi_get_tick();
     while(furi_get_tick() - tail_start < ARP_TAIL_WAIT_MS && app->worker_running) {
-        uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
+        uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
         if(recv_len > 0) {
             uint8_t sender_mac[6], sender_ip[4];
-            if(arp_parse_reply(frame_buf, recv_len, sender_mac, sender_ip)) {
+            if(arp_parse_reply(app->frame_buf, recv_len, sender_mac, sender_ip)) {
                 /* Check for duplicate */
                 bool duplicate = false;
                 for(uint16_t j = 0; j < scan->count; j++) {
@@ -2381,19 +2385,19 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
             eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
         }
 
-        uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
+        uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
         if(recv_len >= ETH_HEADER_SIZE) {
             /* Count frame for stats */
-            eth_tester_count_frame(app, frame_buf, recv_len);
+            eth_tester_count_frame(app, app->frame_buf, recv_len);
 
             /* Check for BPDU */
             if(!bpdu.valid) {
-                stp_parse_bpdu(frame_buf, recv_len, &bpdu);
+                stp_parse_bpdu(app->frame_buf, recv_len, &bpdu);
             }
 
             /* Check for 802.1Q VLAN tag */
             uint16_t vlan_id;
-            if(vlan_extract_tag(frame_buf, recv_len, &vlan_id)) {
+            if(vlan_extract_tag(app->frame_buf, recv_len, &vlan_id)) {
                 vlan_state_add(&vlan_state, vlan_id);
             }
         }
@@ -2815,9 +2819,9 @@ static void eth_tester_do_stats(EthTesterApp* app) {
         uint32_t start_tick = furi_get_tick();
         uint32_t last_sec = 0;
         while(furi_get_tick() - start_tick < 10000 && app->worker_running) {
-            uint16_t recv_len = w5500_hal_macraw_recv(frame_buf, FRAME_BUF_SIZE);
+            uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
             if(recv_len >= ETH_HEADER_SIZE) {
-                eth_tester_count_frame(app, frame_buf, recv_len);
+                eth_tester_count_frame(app, app->frame_buf, recv_len);
             }
             /* Update countdown every second */
             uint32_t sec = (furi_get_tick() - start_tick) / 1000;

@@ -139,6 +139,9 @@ struct EthTesterApp {
     uint8_t link_duplex;  /* 0 = half, 1 = full */
     uint8_t mac_addr[6];
 
+    /* Frame receive buffer (heap-allocated, shared by worker thread) */
+    uint8_t* frame_buf;
+
     /* DHCP timer (1 second periodic for DHCP_time_handler) */
     FuriTimer* dhcp_timer;
 
