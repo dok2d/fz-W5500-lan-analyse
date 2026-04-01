@@ -47,10 +47,12 @@ typedef enum {
     LanTesterViewHistory,
     LanTesterViewHistoryFile,
     LanTesterViewAbout,
-    LanTesterViewCatNetInfo,
-    LanTesterViewCatDiscovery,
+    LanTesterViewCatPortInfo,
+    LanTesterViewCatScan,
     LanTesterViewCatDiag,
-    LanTesterViewCatTools,
+    LanTesterViewCatTraffic,
+    LanTesterViewCatUtilities,
+    LanTesterViewPortScanMode,
     LanTesterViewSettings,
     LanTesterViewEthBridge,
     LanTesterViewPxeServer,
@@ -118,10 +120,12 @@ struct LanTesterApp {
     Gui* gui;
     ViewDispatcher* view_dispatcher;
     Submenu* submenu;
-    Submenu* submenu_cat_netinfo;
-    Submenu* submenu_cat_discovery;
+    Submenu* submenu_cat_portinfo;
+    Submenu* submenu_cat_scan;
     Submenu* submenu_cat_diag;
-    Submenu* submenu_cat_tools;
+    Submenu* submenu_cat_traffic;
+    Submenu* submenu_cat_utilities;
+    Submenu* submenu_port_scan_mode;
     TextBox* text_box_link;
     TextBox* text_box_lldp;
     TextBox* text_box_arp;

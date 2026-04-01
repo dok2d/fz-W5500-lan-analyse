@@ -195,12 +195,14 @@ static void lan_tester_submenu_callback(void* context, uint32_t index);
 static uint32_t lan_tester_navigation_exit_callback(void* context);
 static uint32_t lan_tester_navigation_submenu_callback(void* context);
 static uint32_t lan_tester_navigation_history_callback(void* context);
-static uint32_t lan_tester_nav_back_netinfo(void* context);
-static uint32_t lan_tester_nav_back_discovery(void* context);
+static uint32_t lan_tester_nav_back_portinfo(void* context);
+static uint32_t lan_tester_nav_back_scan(void* context);
 static uint32_t lan_tester_nav_back_ping_sweep(void* context);
 static uint32_t lan_tester_nav_back_arp_scan(void* context);
 static uint32_t lan_tester_nav_back_diag(void* context);
-static uint32_t lan_tester_nav_back_tools(void* context);
+static uint32_t lan_tester_nav_back_traffic(void* context);
+static uint32_t lan_tester_nav_back_utilities(void* context);
+static uint32_t lan_tester_nav_back_port_scan_mode(void* context);
 static uint32_t lan_tester_nav_back_settings(void* context);
 static uint32_t lan_tester_nav_back_host_list(void* context);
 static uint32_t lan_tester_nav_back_host_actions(void* context);
@@ -371,7 +373,7 @@ static bool bridge_input_callback(InputEvent* event, void* context) {
 
 static uint32_t lan_tester_nav_back_host_list(void* context) {
     UNUSED(context);
-    return LanTesterViewCatDiscovery;
+    return LanTesterViewCatScan;
 }
 
 static uint32_t lan_tester_nav_back_host_actions(void* context) {
@@ -796,9 +798,24 @@ static void lan_tester_get_dns_server(LanTesterApp* app, uint8_t out_ip[4]) {
     }
 }
 
+/* Settings item indices — keep in sync with variable_item_list_add order */
+typedef enum {
+    LanTesterSettingsItemAutosave = 0,
+    LanTesterSettingsItemSound = 1,
+    LanTesterSettingsItemDnsCustom = 2,
+    LanTesterSettingsItemDnsServer = 3,
+    LanTesterSettingsItemPingCount = 4,
+    LanTesterSettingsItemPingTimeout = 5,
+    LanTesterSettingsItemPingInterval = 6,
+    LanTesterSettingsItemClearHistory = 7,
+    LanTesterSettingsItemMacChanger = 8,
+    LanTesterSettingsItemAbout = 9,
+    LanTesterSettingsItemCount,
+} LanTesterSettingsItem;
+
 static void settings_enter_callback(void* context, uint32_t index) {
     LanTesterApp* app = context;
-    if(index == 3) { /* "DNS Server" IP input */
+    if(index == LanTesterSettingsItemDnsServer) {
         ip_keyboard_setup(
             app->ip_keyboard,
             "DNS Server IP:",
@@ -810,7 +827,7 @@ static void settings_enter_callback(void* context, uint32_t index) {
             sizeof(app->dns_custom_ip_input),
             lan_tester_nav_back_settings);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
-    } else if(index == 7) { /* "Clear History" */
+    } else if(index == LanTesterSettingsItemClearHistory) {
         HistoryState* hs = malloc(sizeof(HistoryState));
         if(hs) {
             uint16_t count = history_list(hs);
@@ -822,7 +839,7 @@ static void settings_enter_callback(void* context, uint32_t index) {
         if(app->setting_sound) {
             notification_message(app->notifications, &sequence_success);
         }
-    } else if(index == 8) { /* "MAC Changer" */
+    } else if(index == LanTesterSettingsItemMacChanger) {
         mac_changer_generate_random(app->mac_changer_input);
         byte_input_set_header_text(app->byte_input_mac_changer, "New MAC (edit or OK):");
         byte_input_set_result_callback(
@@ -833,6 +850,8 @@ static void settings_enter_callback(void* context, uint32_t index) {
             app->mac_changer_input,
             6);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewMacChangerInput);
+    } else if(index == LanTesterSettingsItemAbout) {
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewAbout);
     }
 }
 
@@ -1118,83 +1137,78 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* Main menu (Submenu view) */
     app->submenu = submenu_alloc();
     /* Main menu: grouped categories */
-    submenu_add_item(app->submenu, "Network Info", 100, lan_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Discovery", 101, lan_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Port Info", 100, lan_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Scan", 101, lan_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Diagnostics", 102, lan_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Tools", 103, lan_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Traffic", 105, lan_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Utilities", 103, lan_tester_submenu_callback, app);
     submenu_add_item(
         app->submenu, "History", LanTesterMenuItemHistory, lan_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Settings", 104, lan_tester_submenu_callback, app);
-    submenu_add_item(
-        app->submenu, "About", LanTesterMenuItemAbout, lan_tester_submenu_callback, app);
     view_set_previous_callback(
         submenu_get_view(app->submenu), lan_tester_navigation_exit_callback);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewMainMenu, submenu_get_view(app->submenu));
 
-    /* Category: Network Info */
-    app->submenu_cat_netinfo = submenu_alloc();
+    /* Category: Port Info */
+    app->submenu_cat_portinfo = submenu_alloc();
     submenu_add_item(
-        app->submenu_cat_netinfo,
+        app->submenu_cat_portinfo,
         "Link Info",
         LanTesterMenuItemLinkInfo,
         lan_tester_submenu_callback,
         app);
     submenu_add_item(
-        app->submenu_cat_netinfo,
+        app->submenu_cat_portinfo,
         "DHCP Analyze",
         LanTesterMenuItemDhcpAnalyze,
         lan_tester_submenu_callback,
         app);
     submenu_add_item(
-        app->submenu_cat_netinfo,
-        "Statistics",
-        LanTesterMenuItemStats,
-        lan_tester_submenu_callback,
-        app);
-    view_set_previous_callback(
-        submenu_get_view(app->submenu_cat_netinfo), lan_tester_navigation_submenu_callback);
-    view_dispatcher_add_view(
-        app->view_dispatcher, LanTesterViewCatNetInfo, submenu_get_view(app->submenu_cat_netinfo));
-
-    /* Category: Discovery */
-    app->submenu_cat_discovery = submenu_alloc();
-    submenu_add_item(
-        app->submenu_cat_discovery,
-        "ARP Scan",
-        LanTesterMenuItemArpScan,
-        lan_tester_submenu_callback,
-        app);
-    submenu_add_item(
-        app->submenu_cat_discovery,
-        "Ping Sweep",
-        LanTesterMenuItemPingSweep,
-        lan_tester_submenu_callback,
-        app);
-    submenu_add_item(
-        app->submenu_cat_discovery,
+        app->submenu_cat_portinfo,
         "LLDP/CDP",
         LanTesterMenuItemLldpCdp,
         lan_tester_submenu_callback,
         app);
     submenu_add_item(
-        app->submenu_cat_discovery,
-        "mDNS/SSDP",
-        LanTesterMenuItemDiscovery,
-        lan_tester_submenu_callback,
-        app);
-    submenu_add_item(
-        app->submenu_cat_discovery,
+        app->submenu_cat_portinfo,
         "STP/VLAN",
         LanTesterMenuItemStpVlan,
         lan_tester_submenu_callback,
         app);
     view_set_previous_callback(
-        submenu_get_view(app->submenu_cat_discovery), lan_tester_navigation_submenu_callback);
+        submenu_get_view(app->submenu_cat_portinfo), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        LanTesterViewCatDiscovery,
-        submenu_get_view(app->submenu_cat_discovery));
+        LanTesterViewCatPortInfo,
+        submenu_get_view(app->submenu_cat_portinfo));
+
+    /* Category: Scan */
+    app->submenu_cat_scan = submenu_alloc();
+    submenu_add_item(
+        app->submenu_cat_scan,
+        "ARP Scan",
+        LanTesterMenuItemArpScan,
+        lan_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_scan,
+        "Ping Sweep",
+        LanTesterMenuItemPingSweep,
+        lan_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_scan,
+        "mDNS/SSDP",
+        LanTesterMenuItemDiscovery,
+        lan_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_scan, "Port Scan", 106, lan_tester_submenu_callback, app);
+    view_set_previous_callback(
+        submenu_get_view(app->submenu_cat_scan), lan_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewCatScan, submenu_get_view(app->submenu_cat_scan));
 
     /* Category: Diagnostics */
     app->submenu_cat_diag = submenu_alloc();
@@ -1218,77 +1232,104 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         LanTesterMenuItemTraceroute,
         lan_tester_submenu_callback,
         app);
-    submenu_add_item(
-        app->submenu_cat_diag,
-        "Port Scan (Top 20)",
-        LanTesterMenuItemPortScan,
-        lan_tester_submenu_callback,
-        app);
-    submenu_add_item(
-        app->submenu_cat_diag,
-        "Port Scan (Top 100)",
-        LanTesterMenuItemPortScanFull,
-        lan_tester_submenu_callback,
-        app);
-    submenu_add_item(
-        app->submenu_cat_diag,
-        "Port Scan (Custom)",
-        LanTesterMenuItemPortScanCustom,
-        lan_tester_submenu_callback,
-        app);
     view_set_previous_callback(
         submenu_get_view(app->submenu_cat_diag), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewCatDiag, submenu_get_view(app->submenu_cat_diag));
 
-    /* Category: Tools */
-    app->submenu_cat_tools = submenu_alloc();
+    /* Category: Traffic */
+    app->submenu_cat_traffic = submenu_alloc();
     submenu_add_item(
-        app->submenu_cat_tools,
-        "Wake-on-LAN",
-        LanTesterMenuItemWol,
+        app->submenu_cat_traffic,
+        "Packet Capture",
+        LanTesterMenuItemPacketCapture,
         lan_tester_submenu_callback,
         app);
     submenu_add_item(
-        app->submenu_cat_tools,
+        app->submenu_cat_traffic,
         "ETH Bridge",
         LanTesterMenuItemEthBridge,
         lan_tester_submenu_callback,
         app);
     submenu_add_item(
-        app->submenu_cat_tools,
+        app->submenu_cat_traffic,
+        "Statistics",
+        LanTesterMenuItemStats,
+        lan_tester_submenu_callback,
+        app);
+    view_set_previous_callback(
+        submenu_get_view(app->submenu_cat_traffic), lan_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        LanTesterViewCatTraffic,
+        submenu_get_view(app->submenu_cat_traffic));
+
+    /* Category: Utilities */
+    app->submenu_cat_utilities = submenu_alloc();
+    submenu_add_item(
+        app->submenu_cat_utilities,
+        "Wake-on-LAN",
+        LanTesterMenuItemWol,
+        lan_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_utilities,
         "PXE Server",
         LanTesterMenuItemPxeServer,
         lan_tester_submenu_callback,
         app);
     submenu_add_item(
-        app->submenu_cat_tools,
+        app->submenu_cat_utilities,
         "File Manager",
         LanTesterMenuItemFileManager,
         lan_tester_submenu_callback,
         app);
+    view_set_previous_callback(
+        submenu_get_view(app->submenu_cat_utilities), lan_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        LanTesterViewCatUtilities,
+        submenu_get_view(app->submenu_cat_utilities));
+
+    /* Port Scan Mode submenu */
+    app->submenu_port_scan_mode = submenu_alloc();
     submenu_add_item(
-        app->submenu_cat_tools,
-        "Packet Capture",
-        LanTesterMenuItemPacketCapture,
+        app->submenu_port_scan_mode,
+        "Top 20",
+        LanTesterMenuItemPortScan,
+        lan_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_port_scan_mode,
+        "Top 100",
+        LanTesterMenuItemPortScanFull,
+        lan_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_port_scan_mode,
+        "Custom Range",
+        LanTesterMenuItemPortScanCustom,
         lan_tester_submenu_callback,
         app);
     view_set_previous_callback(
-        submenu_get_view(app->submenu_cat_tools), lan_tester_navigation_submenu_callback);
+        submenu_get_view(app->submenu_port_scan_mode), lan_tester_nav_back_scan);
     view_dispatcher_add_view(
-        app->view_dispatcher, LanTesterViewCatTools, submenu_get_view(app->submenu_cat_tools));
+        app->view_dispatcher,
+        LanTesterViewPortScanMode,
+        submenu_get_view(app->submenu_port_scan_mode));
 
     /* TextBox views for each feature */
     app->text_box_link = text_box_alloc();
     text_box_set_font(app->text_box_link, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_link), lan_tester_nav_back_netinfo);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_link), lan_tester_nav_back_portinfo);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewLinkInfo, text_box_get_view(app->text_box_link));
 
     app->text_box_lldp = text_box_alloc();
     text_box_set_font(app->text_box_lldp, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_lldp), lan_tester_nav_back_discovery);
+        text_box_get_view(app->text_box_lldp), lan_tester_nav_back_portinfo);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewLldp, text_box_get_view(app->text_box_lldp));
 
@@ -1300,7 +1341,8 @@ static LanTesterApp* lan_tester_app_alloc(void) {
 
     app->text_box_dhcp = text_box_alloc();
     text_box_set_font(app->text_box_dhcp, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_dhcp), lan_tester_nav_back_netinfo);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_dhcp), lan_tester_nav_back_portinfo);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewDhcpAnalyze, text_box_get_view(app->text_box_dhcp));
 
@@ -1313,7 +1355,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->text_box_stats = text_box_alloc();
     text_box_set_font(app->text_box_stats, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_stats), lan_tester_nav_back_netinfo);
+        text_box_get_view(app->text_box_stats), lan_tester_nav_back_traffic);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewStats, text_box_get_view(app->text_box_stats));
 
@@ -1343,13 +1385,14 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* Wake-on-LAN views */
     app->text_box_wol = text_box_alloc();
     text_box_set_font(app->text_box_wol, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_wol), lan_tester_nav_back_tools);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_wol), lan_tester_nav_back_utilities);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewWol, text_box_get_view(app->text_box_wol));
 
     app->byte_input_wol = byte_input_alloc();
     view_set_previous_callback(
-        byte_input_get_view(app->byte_input_wol), lan_tester_nav_back_tools);
+        byte_input_get_view(app->byte_input_wol), lan_tester_nav_back_utilities);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewWolInput, byte_input_get_view(app->byte_input_wol));
 
@@ -1369,7 +1412,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->text_box_port_scan = text_box_alloc();
     text_box_set_font(app->text_box_port_scan, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_port_scan), lan_tester_nav_back_diag);
+        text_box_get_view(app->text_box_port_scan), lan_tester_nav_back_port_scan_mode);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewPortScan, text_box_get_view(app->text_box_port_scan));
 
@@ -1383,7 +1426,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* Port scan custom range text input */
     app->text_input_port_custom = text_input_alloc();
     view_set_previous_callback(
-        text_input_get_view(app->text_input_port_custom), lan_tester_nav_back_diag);
+        text_input_get_view(app->text_input_port_custom), lan_tester_nav_back_port_scan_mode);
     view_dispatcher_add_view(
         app->view_dispatcher,
         LanTesterViewPortScanCustomInput,
@@ -1413,7 +1456,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     view_set_draw_callback(app->view_bridge, bridge_draw_callback);
     view_set_input_callback(app->view_bridge, bridge_input_callback);
     view_set_context(app->view_bridge, app);
-    view_set_previous_callback(app->view_bridge, lan_tester_nav_back_tools);
+    view_set_previous_callback(app->view_bridge, lan_tester_nav_back_traffic);
     with_view_model(
         app->view_bridge,
         BridgeViewModel * vm,
@@ -1449,7 +1492,8 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* PXE TextBox (live status during server run) */
     app->text_box_pxe = text_box_alloc();
     text_box_set_font(app->text_box_pxe, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_pxe), lan_tester_nav_back_tools);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_pxe), lan_tester_nav_back_utilities);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewPxeServer, text_box_get_view(app->text_box_pxe));
 
@@ -1509,7 +1553,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* PXE Settings (VariableItemList) — reordered: Start first */
     app->pxe_settings_list = variable_item_list_alloc();
     view_set_previous_callback(
-        variable_item_list_get_view(app->pxe_settings_list), lan_tester_nav_back_tools);
+        variable_item_list_get_view(app->pxe_settings_list), lan_tester_nav_back_utilities);
     view_dispatcher_add_view(
         app->view_dispatcher,
         LanTesterViewPxeSettings,
@@ -1553,7 +1597,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->text_box_file_manager = text_box_alloc();
     text_box_set_font(app->text_box_file_manager, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_file_manager), lan_tester_nav_back_tools);
+        text_box_get_view(app->text_box_file_manager), lan_tester_nav_back_utilities);
     view_dispatcher_add_view(
         app->view_dispatcher,
         LanTesterViewFileManager,
@@ -1566,7 +1610,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     view_set_draw_callback(app->view_packet_capture, packet_capture_draw_callback);
     view_set_input_callback(app->view_packet_capture, packet_capture_input_callback);
     view_set_context(app->view_packet_capture, app);
-    view_set_previous_callback(app->view_packet_capture, lan_tester_nav_back_tools);
+    view_set_previous_callback(app->view_packet_capture, lan_tester_nav_back_traffic);
     with_view_model(
         app->view_packet_capture, PacketCaptureViewModel * vm, { vm->app = app; }, false);
     view_dispatcher_add_view(
@@ -1628,7 +1672,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->text_box_discovery = text_box_alloc();
     text_box_set_font(app->text_box_discovery, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_discovery), lan_tester_nav_back_discovery);
+        text_box_get_view(app->text_box_discovery), lan_tester_nav_back_scan);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewDiscovery, text_box_get_view(app->text_box_discovery));
 
@@ -1653,7 +1697,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->text_box_stp_vlan = text_box_alloc();
     text_box_set_font(app->text_box_stp_vlan, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_stp_vlan), lan_tester_nav_back_discovery);
+        text_box_get_view(app->text_box_stp_vlan), lan_tester_nav_back_portinfo);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewStpVlan, text_box_get_view(app->text_box_stp_vlan));
 
@@ -1674,7 +1718,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
-        text_box_get_view(app->text_box_about), lan_tester_navigation_submenu_callback);
+        text_box_get_view(app->text_box_about), lan_tester_nav_back_settings);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewAbout, text_box_get_view(app->text_box_about));
 
@@ -1718,8 +1762,11 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         variable_item_list_add(app->settings_list, "Clear History", 0, NULL, app);
     variable_item_set_current_value_text(item_clear, "Press OK");
 
-    /* MAC Changer — opens byte input for MAC address (index 8) */
+    /* MAC Changer — opens byte input for MAC address */
     variable_item_list_add(app->settings_list, "MAC Changer", 0, NULL, app);
+
+    /* About — last item in Settings */
+    variable_item_list_add(app->settings_list, "About", 0, NULL, app);
 
     variable_item_list_set_enter_callback(app->settings_list, settings_enter_callback, app);
 
@@ -1800,10 +1847,12 @@ static void lan_tester_app_free(LanTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHistory);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHistoryFile);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewAbout);
-    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatNetInfo);
-    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatDiscovery);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatPortInfo);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatScan);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatDiag);
-    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatTools);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatTraffic);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatUtilities);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPortScanMode);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewSettings);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewEthBridge);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPxeServer);
@@ -1815,10 +1864,12 @@ static void lan_tester_app_free(LanTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHostActions);
 
     submenu_free(app->submenu);
-    submenu_free(app->submenu_cat_netinfo);
-    submenu_free(app->submenu_cat_discovery);
+    submenu_free(app->submenu_cat_portinfo);
+    submenu_free(app->submenu_cat_scan);
     submenu_free(app->submenu_cat_diag);
-    submenu_free(app->submenu_cat_tools);
+    submenu_free(app->submenu_cat_traffic);
+    submenu_free(app->submenu_cat_utilities);
+    submenu_free(app->submenu_port_scan_mode);
     variable_item_list_free(app->settings_list);
     text_box_free(app->text_box_link);
     text_box_free(app->text_box_lldp);
@@ -1947,16 +1998,16 @@ static uint32_t lan_tester_navigation_submenu_callback(void* context) {
     return LanTesterViewMainMenu;
 }
 
-static uint32_t lan_tester_nav_back_netinfo(void* context) {
+static uint32_t lan_tester_nav_back_portinfo(void* context) {
     UNUSED(context);
     lan_tester_stop_worker_on_back();
-    return LanTesterViewCatNetInfo;
+    return LanTesterViewCatPortInfo;
 }
 
-static uint32_t lan_tester_nav_back_discovery(void* context) {
+static uint32_t lan_tester_nav_back_scan(void* context) {
     UNUSED(context);
     lan_tester_stop_worker_on_back();
-    return LanTesterViewCatDiscovery;
+    return LanTesterViewCatScan;
 }
 
 static uint32_t lan_tester_nav_back_ping_sweep(void* context) {
@@ -1971,7 +2022,7 @@ static uint32_t lan_tester_nav_back_ping_sweep(void* context) {
         return LanTesterViewPingSweep;
     }
     lan_tester_stop_worker_on_back();
-    return LanTesterViewCatDiscovery;
+    return LanTesterViewCatScan;
 }
 
 static uint32_t lan_tester_nav_back_arp_scan(void* context) {
@@ -1986,7 +2037,7 @@ static uint32_t lan_tester_nav_back_arp_scan(void* context) {
         return LanTesterViewArpScan;
     }
     lan_tester_stop_worker_on_back();
-    return LanTesterViewCatDiscovery;
+    return LanTesterViewCatScan;
 }
 
 static uint32_t lan_tester_nav_back_diag(void* context) {
@@ -1995,10 +2046,22 @@ static uint32_t lan_tester_nav_back_diag(void* context) {
     return LanTesterViewCatDiag;
 }
 
-static uint32_t lan_tester_nav_back_tools(void* context) {
+static uint32_t lan_tester_nav_back_traffic(void* context) {
     UNUSED(context);
     lan_tester_stop_worker_on_back();
-    return LanTesterViewCatTools;
+    return LanTesterViewCatTraffic;
+}
+
+static uint32_t lan_tester_nav_back_utilities(void* context) {
+    UNUSED(context);
+    lan_tester_stop_worker_on_back();
+    return LanTesterViewCatUtilities;
+}
+
+static uint32_t lan_tester_nav_back_port_scan_mode(void* context) {
+    UNUSED(context);
+    lan_tester_stop_worker_on_back();
+    return LanTesterViewPortScanMode;
 }
 
 static uint32_t lan_tester_navigation_history_callback(void* context) {
@@ -2048,7 +2111,7 @@ static bool lan_tester_custom_event_cb(void* context, uint32_t event) {
             app,
             app->ping_sweep_ip_input,
             sizeof(app->ping_sweep_ip_input),
-            lan_tester_nav_back_discovery);
+            lan_tester_nav_back_scan);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         return true;
     }
@@ -2711,7 +2774,7 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
                 app,
                 app->ping_sweep_ip_input,
                 sizeof(app->ping_sweep_ip_input),
-                lan_tester_nav_back_discovery);
+                lan_tester_nav_back_scan);
             view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         } else {
             /* No DHCP yet — detect network first, then show input */
@@ -2779,7 +2842,7 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
             app,
             app->port_scan_ip_input,
             sizeof(app->port_scan_ip_input),
-            lan_tester_nav_back_diag);
+            lan_tester_nav_back_port_scan_mode);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
 
@@ -2853,20 +2916,26 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewAbout);
         break;
 
-    case 100: /* Network Info category */
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatNetInfo);
+    case 100: /* Port Info category */
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatPortInfo);
         break;
-    case 101: /* Discovery category */
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatDiscovery);
+    case 101: /* Scan category */
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatScan);
         break;
     case 102: /* Diagnostics category */
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatDiag);
         break;
-    case 103: /* Tools category */
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatTools);
+    case 103: /* Utilities category */
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatUtilities);
         break;
     case 104: /* Settings */
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewSettings);
+        break;
+    case 105: /* Traffic category */
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatTraffic);
+        break;
+    case 106: /* Port Scan mode submenu */
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPortScanMode);
         break;
 
     default:
