@@ -139,6 +139,13 @@ static void cont_ping_draw_callback(Canvas* canvas, void* model) {
     canvas_set_font(canvas, FontSecondary);
 
     char buf[64];
+
+    /* Show target IP */
+    snprintf(buf, sizeof(buf), "Ping %d.%d.%d.%d",
+        app->cont_ping_target[0], app->cont_ping_target[1],
+        app->cont_ping_target[2], app->cont_ping_target[3]);
+    canvas_draw_str(canvas, 0, 7, buf);
+
     uint32_t cur = 0;
     if(pg->sample_count > 0) {
         uint32_t last = ping_graph_get_sample(pg, pg->sample_count - 1);
@@ -147,15 +154,9 @@ static void cont_ping_draw_callback(Canvas* canvas, void* model) {
     uint32_t avg = ping_graph_avg_rtt(pg);
     uint8_t loss = ping_graph_loss_percent(pg);
 
-    snprintf(buf, sizeof(buf), "Cur:%lums Avg:%lums", (unsigned long)cur, (unsigned long)avg);
-    canvas_draw_str(canvas, 0, 8, buf);
-
-    uint32_t mn = (pg->rtt_min == UINT32_MAX) ? 0 : pg->rtt_min;
-    snprintf(
-        buf, sizeof(buf),
-        "Min:%lu Max:%lu Loss:%d%%",
-        (unsigned long)mn, (unsigned long)pg->rtt_max, loss);
-    canvas_draw_str(canvas, 0, 18, buf);
+    snprintf(buf, sizeof(buf), "%lums avg:%lu loss:%d%%",
+        (unsigned long)cur, (unsigned long)avg, loss);
+    canvas_draw_str(canvas, 0, 16, buf);
 
     uint8_t graph_top = 22;
     uint8_t graph_bottom = 63;
