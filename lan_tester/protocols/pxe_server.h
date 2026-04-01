@@ -15,7 +15,7 @@
 #define TFTP_DATA_PORT_BASE 51000
 
 /* PXE boot file path on SD card */
-#define PXE_BOOT_DIR          EXT_PATH("apps_data/eth_tester/pxe")
+#define PXE_BOOT_DIR          EXT_PATH("apps_data/lan_tester/pxe")
 #define PXE_DEFAULT_BOOT_FILE "undionly.kpxe"
 
 /* TFTP opcodes (RFC 1350) */

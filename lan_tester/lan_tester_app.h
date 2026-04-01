@@ -18,77 +18,77 @@
 #include "ip_keyboard.h"
 
 /* Forward declarations */
-typedef struct EthTesterApp EthTesterApp;
+typedef struct LanTesterApp LanTesterApp;
 
 /* View IDs for ViewDispatcher */
 typedef enum {
-    EthTesterViewMainMenu,
-    EthTesterViewLinkInfo,
-    EthTesterViewLldp,
-    EthTesterViewArpScan,
-    EthTesterViewDhcpAnalyze,
-    EthTesterViewPing,
-    EthTesterViewStats,
-    EthTesterViewDnsLookup,
-    EthTesterViewDnsInput,
-    EthTesterViewWol,
-    EthTesterViewWolInput,
-    EthTesterViewContPing,
-    EthTesterViewPortScan,
-    EthTesterViewMacChanger,
-    EthTesterViewMacChangerInput,
-    EthTesterViewTraceroute,
-    EthTesterViewTracerouteInput,
-    EthTesterViewPortScanCustomInput,
-    EthTesterViewPingSweep,
-    EthTesterViewIpKeyboard,
-    EthTesterViewDiscovery,
-    EthTesterViewStpVlan,
-    EthTesterViewHistory,
-    EthTesterViewHistoryFile,
-    EthTesterViewAbout,
-    EthTesterViewCatNetInfo,
-    EthTesterViewCatDiscovery,
-    EthTesterViewCatDiag,
-    EthTesterViewCatTools,
-    EthTesterViewSettings,
-    EthTesterViewEthBridge,
-    EthTesterViewPxeServer,
-    EthTesterViewPxeSettings,
-    EthTesterViewPxeHelp,
-    EthTesterViewFileManager,
-    EthTesterViewPacketCapture,
-    EthTesterViewHostList,
-    EthTesterViewHostActions,
-    EthTesterViewCount,
-} EthTesterView;
+    LanTesterViewMainMenu,
+    LanTesterViewLinkInfo,
+    LanTesterViewLldp,
+    LanTesterViewArpScan,
+    LanTesterViewDhcpAnalyze,
+    LanTesterViewPing,
+    LanTesterViewStats,
+    LanTesterViewDnsLookup,
+    LanTesterViewDnsInput,
+    LanTesterViewWol,
+    LanTesterViewWolInput,
+    LanTesterViewContPing,
+    LanTesterViewPortScan,
+    LanTesterViewMacChanger,
+    LanTesterViewMacChangerInput,
+    LanTesterViewTraceroute,
+    LanTesterViewTracerouteInput,
+    LanTesterViewPortScanCustomInput,
+    LanTesterViewPingSweep,
+    LanTesterViewIpKeyboard,
+    LanTesterViewDiscovery,
+    LanTesterViewStpVlan,
+    LanTesterViewHistory,
+    LanTesterViewHistoryFile,
+    LanTesterViewAbout,
+    LanTesterViewCatNetInfo,
+    LanTesterViewCatDiscovery,
+    LanTesterViewCatDiag,
+    LanTesterViewCatTools,
+    LanTesterViewSettings,
+    LanTesterViewEthBridge,
+    LanTesterViewPxeServer,
+    LanTesterViewPxeSettings,
+    LanTesterViewPxeHelp,
+    LanTesterViewFileManager,
+    LanTesterViewPacketCapture,
+    LanTesterViewHostList,
+    LanTesterViewHostActions,
+    LanTesterViewCount,
+} LanTesterView;
 
 /* Main menu item indices */
 typedef enum {
-    EthTesterMenuItemLinkInfo,
-    EthTesterMenuItemLldpCdp,
-    EthTesterMenuItemArpScan,
-    EthTesterMenuItemDhcpAnalyze,
-    EthTesterMenuItemPing,
-    EthTesterMenuItemStats,
-    EthTesterMenuItemDnsLookup,
-    EthTesterMenuItemWol,
-    EthTesterMenuItemContPing,
-    EthTesterMenuItemPortScan,
-    EthTesterMenuItemPortScanFull,
-    EthTesterMenuItemMacChanger,
-    EthTesterMenuItemTraceroute,
-    EthTesterMenuItemPortScanCustom,
-    EthTesterMenuItemPingSweep,
-    EthTesterMenuItemDiscovery,
-    EthTesterMenuItemStpVlan,
-    EthTesterMenuItemHistory,
-    EthTesterMenuItemAbout,
-    EthTesterMenuItemEthBridge,
-    EthTesterMenuItemPxeServer,
-    EthTesterMenuItemFileManager,
-    EthTesterMenuItemPacketCapture,
-} EthTesterMenuItem;
+    LanTesterMenuItemLinkInfo,
+    LanTesterMenuItemLldpCdp,
+    LanTesterMenuItemArpScan,
+    LanTesterMenuItemDhcpAnalyze,
+    LanTesterMenuItemPing,
+    LanTesterMenuItemStats,
+    LanTesterMenuItemDnsLookup,
+    LanTesterMenuItemWol,
+    LanTesterMenuItemContPing,
+    LanTesterMenuItemPortScan,
+    LanTesterMenuItemPortScanFull,
+    LanTesterMenuItemMacChanger,
+    LanTesterMenuItemTraceroute,
+    LanTesterMenuItemPortScanCustom,
+    LanTesterMenuItemPingSweep,
+    LanTesterMenuItemDiscovery,
+    LanTesterMenuItemStpVlan,
+    LanTesterMenuItemHistory,
+    LanTesterMenuItemAbout,
+    LanTesterMenuItemEthBridge,
+    LanTesterMenuItemPxeServer,
+    LanTesterMenuItemFileManager,
+    LanTesterMenuItemPacketCapture,
+} LanTesterMenuItem;
 
 /* Packet statistics counters */
 typedef struct {
@@ -114,7 +114,7 @@ typedef struct {
 #define MAX_DISCOVERED_HOSTS 64
 
 /* Application state */
-struct EthTesterApp {
+struct LanTesterApp {
     Gui* gui;
     ViewDispatcher* view_dispatcher;
     Submenu* submenu;
@@ -166,7 +166,7 @@ struct EthTesterApp {
     /* Worker thread for non-blocking operations */
     FuriThread* worker_thread;
     volatile bool worker_running;
-    uint32_t worker_op; /* EthTesterMenuItem value */
+    uint32_t worker_op; /* LanTesterMenuItem value */
 
     /* W5500 state */
     bool w5500_initialized;
