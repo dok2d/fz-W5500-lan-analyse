@@ -5134,6 +5134,88 @@ typedef enum {
     AutoTestStateDone,
 } AutoTestState;
 
+static int32_t autotest_lldp_thread_fn(void* context) {
+    LanTesterApp* app = context;
+
+    /* Allocate a private buffer — do NOT use app->frame_buf (shared) */
+    uint8_t* lbuf = malloc(FRAME_BUF_SIZE);
+    if(!lbuf) {
+        furi_mutex_acquire(app->autotest_lldp_mutex, FuriWaitForever);
+        furi_string_set(app->autotest_lldp_result, "LLDP: alloc err\n");
+        furi_mutex_release(app->autotest_lldp_mutex);
+        app->autotest_lldp_done = true;
+        return 0;
+    }
+
+    if(!w5500_hal_open_macraw()) {
+        furi_mutex_acquire(app->autotest_lldp_mutex, FuriWaitForever);
+        furi_string_set(app->autotest_lldp_result, "LLDP: sock err\n");
+        furi_mutex_release(app->autotest_lldp_mutex);
+        free(lbuf);
+        app->autotest_lldp_done = true;
+        return 0;
+    }
+
+    LldpNeighbor lldp = {0};
+    CdpNeighbor cdp = {0};
+    bool found_lldp = false;
+    bool found_cdp = false;
+
+    uint32_t start = furi_get_tick();
+    uint32_t timeout_ms = (uint32_t)app->autotest_lldp_wait_s * 1000;
+
+    while(app->autotest_running && (furi_get_tick() - start < timeout_ms)) {
+        uint16_t recv_len = w5500_hal_macraw_recv(lbuf, FRAME_BUF_SIZE);
+        if(recv_len >= ETH_HEADER_SIZE) {
+            uint16_t ethertype = pkt_get_ethertype(lbuf);
+
+            if(ethertype == ETHERTYPE_LLDP && !found_lldp) {
+                if(lldp_parse(lbuf + ETH_HEADER_SIZE, recv_len - ETH_HEADER_SIZE, &lldp)) {
+                    found_lldp = true;
+                    break; /* Got LLDP — no need to wait further */
+                }
+            }
+
+            if(!found_cdp) {
+                uint16_t cdp_offset = cdp_check_frame(lbuf, recv_len);
+                if(cdp_offset > 0) {
+                    if(cdp_parse(lbuf + cdp_offset, recv_len - cdp_offset, &cdp)) {
+                        found_cdp = true;
+                        /* Keep listening for LLDP — it takes priority */
+                    }
+                }
+            }
+        } else {
+            furi_delay_ms(50);
+        }
+    }
+
+    w5500_hal_close_macraw();
+    free(lbuf);
+
+    /* Write result */
+    furi_mutex_acquire(app->autotest_lldp_mutex, FuriWaitForever);
+    if(found_lldp) {
+        furi_string_printf(
+            app->autotest_lldp_result,
+            "LLDP: %s %s\n",
+            lldp.system_name[0] ? lldp.system_name : "?",
+            lldp.port_id[0] ? lldp.port_id : "");
+    } else if(found_cdp) {
+        furi_string_printf(
+            app->autotest_lldp_result,
+            "CDP: %s %s\n",
+            cdp.device_id[0] ? cdp.device_id : "?",
+            cdp.port_id[0] ? cdp.port_id : "");
+    } else {
+        furi_string_set(app->autotest_lldp_result, "LLDP: none\n");
+    }
+    furi_mutex_release(app->autotest_lldp_mutex);
+
+    app->autotest_lldp_done = true;
+    return 0;
+}
+
 static void lan_tester_do_autotest(LanTesterApp* app) {
     if(!lan_tester_ensure_w5500(app)) {
         furi_string_set(app->autotest_text, "W5500 Not Found!\nCheck SPI wiring.\n");
@@ -5194,8 +5276,23 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
             furi_string_cat(app->autotest_text, body);
             lan_tester_update_view(app->text_box_autotest, app->autotest_text);
 
-            /* Step 2: DHCP */
+            /* Start LLDP thread in parallel (uses Socket 0 / MACRAW) */
+            app->autotest_lldp_done = false;
+            furi_mutex_acquire(app->autotest_lldp_mutex, FuriWaitForever);
+            furi_string_reset(app->autotest_lldp_result);
+            furi_mutex_release(app->autotest_lldp_mutex);
+            app->autotest_lldp_thread = furi_thread_alloc_ex(
+                "AutoLLDP", 3 * 1024, autotest_lldp_thread_fn, app);
+            furi_thread_start(app->autotest_lldp_thread);
+
+            /* Step 2: DHCP (Socket 1 — no conflict with LLDP) */
             if(!w5500_hal_get_link_status() || !app->autotest_running) {
+                /* Wait for LLDP thread to finish before bailing */
+                app->autotest_running = false;
+                furi_thread_join(app->autotest_lldp_thread);
+                furi_thread_free(app->autotest_lldp_thread);
+                app->autotest_lldp_thread = NULL;
+                app->autotest_running = true;
                 furi_string_free(body);
                 state = AutoTestStateIdle;
                 continue;
@@ -5229,9 +5326,96 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
             furi_string_cat(app->autotest_text, body);
             lan_tester_update_view(app->text_box_autotest, app->autotest_text);
 
-            /* Steps 3-7 will be added in subsequent stages */
+            /* Step 3: Ping Gateway (Socket 2 — no conflict) */
+            if(dhcp_ok && w5500_hal_get_link_status() && app->autotest_running) {
+                PingResult pr;
+                gw_ok =
+                    icmp_ping(W5500_PING_SOCKET, app->dhcp_gw, 1, app->ping_timeout_ms, &pr);
+                if(gw_ok) {
+                    furi_string_cat_printf(
+                        body, "GW ping: %lums\n", (unsigned long)pr.rtt_ms);
+                } else {
+                    furi_string_cat_str(body, "GW ping: FAIL\n");
+                }
+                furi_string_set(app->autotest_text, "[Auto Test]\n");
+                furi_string_cat(app->autotest_text, body);
+                lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+            }
 
-            /* Final render with verdict */
+            /* Step 4: DNS Resolve (Socket 3 — no conflict) */
+            DnsLookupResult dr = {0};
+            if(dhcp_ok && w5500_hal_get_link_status() && app->autotest_running) {
+                uint8_t dns_ip[4];
+                if(app->dns_custom_enabled) {
+                    memcpy(dns_ip, app->dns_custom_server, 4);
+                } else {
+                    memcpy(dns_ip, app->dhcp_dns, 4);
+                }
+                dns_ok =
+                    dns_lookup(W5500_DNS_SOCKET, dns_ip, app->autotest_dns_host, &dr);
+                if(dns_ok) {
+                    furi_string_cat_printf(
+                        body,
+                        "DNS: %s -> %d.%d.%d.%d\n",
+                        app->autotest_dns_host,
+                        dr.resolved_ip[0],
+                        dr.resolved_ip[1],
+                        dr.resolved_ip[2],
+                        dr.resolved_ip[3]);
+                } else {
+                    furi_string_cat_str(body, "DNS: FAIL\n");
+                }
+                furi_string_set(app->autotest_text, "[Auto Test]\n");
+                furi_string_cat(app->autotest_text, body);
+                lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+            }
+
+            /* Step 5: Internet Ping (Socket 2 — only if GW ping OK) */
+            if(gw_ok && w5500_hal_get_link_status() && app->autotest_running) {
+                uint8_t inet_target[4];
+                if(dns_ok) {
+                    memcpy(inet_target, dr.resolved_ip, 4);
+                } else {
+                    inet_target[0] = 8;
+                    inet_target[1] = 8;
+                    inet_target[2] = 8;
+                    inet_target[3] = 8;
+                }
+                PingResult ir;
+                bool inet_ok = icmp_ping(
+                    W5500_PING_SOCKET, inet_target, 2, app->ping_timeout_ms, &ir);
+                if(inet_ok) {
+                    furi_string_cat_printf(
+                        body, "Internet: %lums\n", (unsigned long)ir.rtt_ms);
+                } else {
+                    furi_string_cat_str(body, "Internet: FAIL\n");
+                }
+                furi_string_set(app->autotest_text, "[Auto Test]\n");
+                furi_string_cat(app->autotest_text, body);
+                lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+            }
+
+            /* Step 6: Wait for LLDP thread to finish */
+            {
+                uint32_t lldp_wait_start = furi_get_tick();
+                uint32_t lldp_max_wait_ms =
+                    (uint32_t)app->autotest_lldp_wait_s * 1000 + 2000;
+                while(!app->autotest_lldp_done && app->autotest_running &&
+                      (furi_get_tick() - lldp_wait_start < lldp_max_wait_ms)) {
+                    furi_delay_ms(100);
+                }
+                furi_thread_join(app->autotest_lldp_thread);
+                furi_thread_free(app->autotest_lldp_thread);
+                app->autotest_lldp_thread = NULL;
+
+                furi_mutex_acquire(app->autotest_lldp_mutex, FuriWaitForever);
+                furi_string_cat(body, app->autotest_lldp_result);
+                furi_mutex_release(app->autotest_lldp_mutex);
+            }
+
+            /* Step 7: ARP scan — will be added in Stage 5 */
+
+            /* Final render with verdict (steps 2-4; internet ping not counted) */
             bool all_ok = dhcp_ok && gw_ok && dns_ok;
             furi_string_reset(app->autotest_text);
             furi_string_cat_str(
