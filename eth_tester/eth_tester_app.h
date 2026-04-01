@@ -12,6 +12,7 @@
 #include <notification/notification_messages.h>
 #include "protocols/ping_graph.h"
 #include "protocols/history.h"
+#include "bridge/eth_bridge.h"
 
 /* Forward declarations */
 typedef struct EthTesterApp EthTesterApp;
@@ -50,6 +51,7 @@ typedef enum {
     EthTesterViewCatDiag,
     EthTesterViewCatTools,
     EthTesterViewSettings,
+    EthTesterViewEthBridge,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -73,6 +75,7 @@ typedef enum {
     EthTesterMenuItemStpVlan,
     EthTesterMenuItemHistory,
     EthTesterMenuItemAbout,
+    EthTesterMenuItemEthBridge,
 } EthTesterMenuItem;
 
 /* Packet statistics counters */
@@ -192,6 +195,11 @@ struct EthTesterApp {
 
     /* Ping sweep state */
     char ping_sweep_ip_input[20]; /* "192.168.1.0/24" */
+
+    /* ETH Bridge state */
+    TextBox* text_box_bridge;
+    EthBridgeState* bridge_state;
+    FuriString* bridge_text;
 
     /* Text buffers for views */
     FuriString* link_info_text;
