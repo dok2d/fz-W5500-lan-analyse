@@ -14,6 +14,7 @@
 #include "protocols/discovery.h"
 #include "protocols/stp_vlan.h"
 #include "protocols/history.h"
+#include "protocols/pxe_server.h"
 #include "bridge/eth_bridge.h"
 #include "usb_eth/usb_eth.h"
 #include "utils/packet_utils.h"
@@ -139,8 +140,11 @@ static uint32_t eth_tester_nav_back_tools(void* context);
 static bool eth_tester_nav_event_cb(void* context);
 static bool eth_tester_custom_event_cb(void* context, uint32_t event);
 static void eth_tester_worker_stop(EthTesterApp* app);
+static void eth_tester_worker_start(EthTesterApp* app, uint32_t op, EthTesterView result_view);
 static void eth_tester_update_view(TextBox* tb, FuriString* text);
 static void eth_tester_show_view(EthTesterApp* app, TextBox* tb, EthTesterView view, FuriString* text, const char* initial);
+static bool eth_tester_parse_ip(const char* str, uint8_t ip[4]);
+static bool eth_tester_ensure_w5500(EthTesterApp* app);
 
 static void eth_tester_do_link_info(EthTesterApp* app);
 static void eth_tester_do_lldp_cdp(EthTesterApp* app);
@@ -159,6 +163,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app);
 static void eth_tester_do_ping_sweep_detect(EthTesterApp* app);
 static void eth_tester_do_stp_vlan(EthTesterApp* app);
 static void eth_tester_do_eth_bridge(EthTesterApp* app);
+static void eth_tester_do_pxe_server(EthTesterApp* app);
 static void eth_tester_history_populate(EthTesterApp* app);
 static void eth_tester_history_file_callback(void* context, uint32_t index);
 static void eth_tester_history_delete_callback(void* context, uint32_t index);
@@ -421,6 +426,118 @@ static void settings_enter_callback(void* context, uint32_t index) {
     }
 }
 
+/* ==================== PXE Settings callbacks ==================== */
+
+static uint32_t eth_tester_nav_back_pxe_settings(void* context) {
+    UNUSED(context);
+    return EthTesterViewPxeSettings;
+}
+
+static void pxe_server_ip_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+    eth_tester_parse_ip(app->pxe_server_ip_input, app->pxe_server_ip);
+    variable_item_set_current_value_text(app->pxe_item_sip, app->pxe_server_ip_input);
+    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeSettings);
+}
+
+static void pxe_client_ip_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+    eth_tester_parse_ip(app->pxe_client_ip_input, app->pxe_client_ip);
+    variable_item_set_current_value_text(app->pxe_item_cip, app->pxe_client_ip_input);
+    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeSettings);
+}
+
+static void pxe_subnet_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+    eth_tester_parse_ip(app->pxe_subnet_input, app->pxe_subnet);
+    variable_item_set_current_value_text(app->pxe_item_sub, app->pxe_subnet_input);
+    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeSettings);
+}
+
+static void pxe_dhcp_toggle_callback(VariableItem* item) {
+    uint8_t idx = variable_item_get_current_value_index(item);
+    variable_item_set_current_value_text(item, setting_onoff[idx]);
+    if(g_app) {
+        g_app->pxe_dhcp_enabled = (idx == 1);
+    }
+}
+
+static void pxe_settings_enter_callback(void* context, uint32_t index) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    switch(index) {
+    case 0: /* Server IP */
+        ip_keyboard_setup(
+            app->ip_keyboard,
+            "Server IP:",
+            app->pxe_server_ip_input,
+            false,
+            pxe_server_ip_input_callback,
+            app,
+            app->pxe_server_ip_input,
+            sizeof(app->pxe_server_ip_input),
+            eth_tester_nav_back_pxe_settings);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+        break;
+    case 1: /* Client IP */
+        ip_keyboard_setup(
+            app->ip_keyboard,
+            "Client IP:",
+            app->pxe_client_ip_input,
+            false,
+            pxe_client_ip_input_callback,
+            app,
+            app->pxe_client_ip_input,
+            sizeof(app->pxe_client_ip_input),
+            eth_tester_nav_back_pxe_settings);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+        break;
+    case 2: /* Subnet Mask */
+        ip_keyboard_setup(
+            app->ip_keyboard,
+            "Subnet Mask:",
+            app->pxe_subnet_input,
+            false,
+            pxe_subnet_input_callback,
+            app,
+            app->pxe_subnet_input,
+            sizeof(app->pxe_subnet_input),
+            eth_tester_nav_back_pxe_settings);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+        break;
+    case 3: /* DHCP Server toggle — handled by change_callback */
+        break;
+    case 4: /* Boot File — read-only */
+        break;
+    case 5: /* >>> Start PXE <<< */
+        furi_string_set(app->pxe_text, "Starting PXE Server...\n");
+        text_box_set_text(app->text_box_pxe, furi_string_get_cstr(app->pxe_text));
+        eth_tester_worker_start(app, EthTesterMenuItemPxeServer, EthTesterViewPxeServer);
+        break;
+    case 6: /* ? Help */
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeHelp);
+        break;
+    }
+}
+
+/* Refresh boot file info in PXE settings list */
+static void pxe_settings_refresh_boot_file(EthTesterApp* app) {
+    PxeServerState tmp_state;
+    memset(&tmp_state, 0, sizeof(tmp_state));
+    bool found = pxe_detect_boot_file(&tmp_state);
+    if(found) {
+        char info[48];
+        snprintf(info, sizeof(info), "%s (%luB)", tmp_state.boot_filename, tmp_state.boot_file_size);
+        variable_item_set_current_value_text(app->pxe_item_boot, info);
+    } else {
+        variable_item_set_current_value_text(app->pxe_item_boot, "Not found!");
+    }
+}
+
 static EthTesterApp* eth_tester_app_alloc(void) {
     EthTesterApp* app = malloc(sizeof(EthTesterApp));
     memset(app, 0, sizeof(EthTesterApp));
@@ -528,6 +645,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu_cat_tools, "Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu_cat_tools, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu_cat_tools, "ETH Bridge", EthTesterMenuItemEthBridge, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_tools, "PXE Server", EthTesterMenuItemPxeServer, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu_cat_tools), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatTools, submenu_get_view(app->submenu_cat_tools));
 
@@ -644,6 +762,120 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         false);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewEthBridge, app->view_bridge);
     app->bridge_state = malloc(sizeof(EthBridgeState));
+
+    /* PXE Server views */
+    app->pxe_text = furi_string_alloc();
+
+    /* PXE defaults */
+    strncpy(app->pxe_server_ip_input, "192.168.77.1", sizeof(app->pxe_server_ip_input));
+    strncpy(app->pxe_client_ip_input, "192.168.77.10", sizeof(app->pxe_client_ip_input));
+    strncpy(app->pxe_subnet_input, "255.255.255.0", sizeof(app->pxe_subnet_input));
+    app->pxe_dhcp_enabled = true;
+    app->pxe_server_ip[0] = 192; app->pxe_server_ip[1] = 168;
+    app->pxe_server_ip[2] = 77;  app->pxe_server_ip[3] = 1;
+    app->pxe_client_ip[0] = 192; app->pxe_client_ip[1] = 168;
+    app->pxe_client_ip[2] = 77;  app->pxe_client_ip[3] = 10;
+    app->pxe_subnet[0] = 255; app->pxe_subnet[1] = 255;
+    app->pxe_subnet[2] = 255; app->pxe_subnet[3] = 0;
+
+    /* PXE TextBox (live status during server run) */
+    app->text_box_pxe = text_box_alloc();
+    text_box_set_font(app->text_box_pxe, TextBoxFontText);
+    view_set_previous_callback(text_box_get_view(app->text_box_pxe), eth_tester_nav_back_tools);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPxeServer, text_box_get_view(app->text_box_pxe));
+
+    /* PXE Help TextBox */
+    app->text_box_pxe_help = text_box_alloc();
+    text_box_set_font(app->text_box_pxe_help, TextBoxFontText);
+    text_box_set_text(app->text_box_pxe_help,
+        "[PXE Server Help]\n\n"
+        "== Prerequisites ==\n\n"
+        "1. Place boot file on SD:\n"
+        "   /ext/apps_data/\n"
+        "     eth_tester/pxe/\n\n"
+        "   Supported formats:\n"
+        "   .kpxe (Legacy BIOS)\n"
+        "   .efi  (UEFI)\n"
+        "   .pxe  .0\n\n"
+        "   Recommended:\n"
+        "   undionly.kpxe (~70KB)\n"
+        "   from boot.netboot.xyz\n\n"
+        "2. Connect W5500 module\n"
+        "   to Flipper via SPI.\n\n"
+        "3. Connect RJ45 cable\n"
+        "   to target machine.\n\n"
+        "== Modes ==\n\n"
+        "DHCP ON (default):\n"
+        "  Flipper assigns IP to\n"
+        "  client and provides\n"
+        "  TFTP server address +\n"
+        "  boot filename via\n"
+        "  DHCP options 66/67.\n"
+        "  Direct cable connect.\n\n"
+        "DHCP OFF (TFTP only):\n"
+        "  Flipper only serves\n"
+        "  files via TFTP.\n"
+        "  Client must know the\n"
+        "  server IP. Use when:\n"
+        "  - External DHCP with\n"
+        "    option 66/67 set\n"
+        "  - Manual IP on target\n"
+        "  - Existing network\n\n"
+        "== Network ==\n\n"
+        "Default: 192.168.77.0/24\n"
+        "Server:  192.168.77.1\n"
+        "Client:  192.168.77.10\n"
+        "All IPs configurable.\n\n"
+        "== Target BIOS ==\n\n"
+        "Enable Network/PXE Boot\n"
+        "in BIOS/UEFI settings.\n"
+        "Set boot order to\n"
+        "Network first.\n");
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_pxe_help),
+        eth_tester_nav_back_pxe_settings);
+    view_dispatcher_add_view(app->view_dispatcher,
+        EthTesterViewPxeHelp,
+        text_box_get_view(app->text_box_pxe_help));
+
+    /* PXE Settings (VariableItemList) */
+    app->pxe_settings_list = variable_item_list_alloc();
+    view_set_previous_callback(
+        variable_item_list_get_view(app->pxe_settings_list),
+        eth_tester_nav_back_tools);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewPxeSettings,
+        variable_item_list_get_view(app->pxe_settings_list));
+
+    app->pxe_item_sip = variable_item_list_add(
+        app->pxe_settings_list, "Server IP", 0, NULL, app);
+    variable_item_set_current_value_text(app->pxe_item_sip, app->pxe_server_ip_input);
+
+    app->pxe_item_cip = variable_item_list_add(
+        app->pxe_settings_list, "Client IP", 0, NULL, app);
+    variable_item_set_current_value_text(app->pxe_item_cip, app->pxe_client_ip_input);
+
+    app->pxe_item_sub = variable_item_list_add(
+        app->pxe_settings_list, "Subnet Mask", 0, NULL, app);
+    variable_item_set_current_value_text(app->pxe_item_sub, app->pxe_subnet_input);
+
+    VariableItem* pxe_item_dhcp = variable_item_list_add(
+        app->pxe_settings_list, "DHCP Server", 2, pxe_dhcp_toggle_callback, app);
+    variable_item_set_current_value_index(pxe_item_dhcp, 1); /* ON by default */
+    variable_item_set_current_value_text(pxe_item_dhcp, "ON");
+
+    app->pxe_item_boot = variable_item_list_add(
+        app->pxe_settings_list, "Boot File", 0, NULL, app);
+    variable_item_set_current_value_text(app->pxe_item_boot, "Detecting...");
+
+    variable_item_list_add(
+        app->pxe_settings_list, ">>> Start PXE <<<", 0, NULL, app);
+
+    variable_item_list_add(
+        app->pxe_settings_list, "? Help", 0, NULL, app);
+
+    variable_item_list_set_enter_callback(
+        app->pxe_settings_list, pxe_settings_enter_callback, app);
 
     /* Traceroute views */
     app->text_box_traceroute = text_box_alloc();
@@ -776,6 +1008,9 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatTools);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewSettings);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewEthBridge);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeServer);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeSettings);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeHelp);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_netinfo);
@@ -799,6 +1034,9 @@ static void eth_tester_app_free(EthTesterApp* app) {
     byte_input_free(app->byte_input_mac_changer);
     view_free(app->view_bridge);
     if(app->bridge_state) free(app->bridge_state);
+    text_box_free(app->text_box_pxe);
+    text_box_free(app->text_box_pxe_help);
+    variable_item_list_free(app->pxe_settings_list);
     text_box_free(app->text_box_traceroute);
     text_box_free(app->text_box_ping_sweep);
     ip_keyboard_free(app->ip_keyboard);
@@ -828,6 +1066,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->stp_vlan_text);
     /* history_text removed — history now uses submenu */
     furi_string_free(app->history_file_text);
+    furi_string_free(app->pxe_text);
 
     /* Stop and free DHCP timer */
     furi_timer_stop(app->dhcp_timer);
@@ -1020,6 +1259,9 @@ static int32_t eth_tester_worker_fn(void* context) {
     case EthTesterMenuItemEthBridge:
         eth_tester_do_eth_bridge(app);
         break; /* Uses custom view, not TextBox */
+    case EthTesterMenuItemPxeServer:
+        eth_tester_do_pxe_server(app);
+        break;
     case EthTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
     case WORKER_OP_PING_SWEEP_DETECT:
@@ -1557,6 +1799,11 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             },
             true);
         eth_tester_worker_start(app, EthTesterMenuItemEthBridge, EthTesterViewEthBridge);
+        break;
+
+    case EthTesterMenuItemPxeServer:
+        pxe_settings_refresh_boot_file(app);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeSettings);
         break;
 
     case EthTesterMenuItemAbout:
@@ -3303,6 +3550,150 @@ static void eth_tester_do_eth_bridge(EthTesterApp* app) {
         true);
 
     #undef BRIDGE_SET_STATUS
+}
+
+/* ==================== PXE Server ==================== */
+
+static void eth_tester_do_pxe_server(EthTesterApp* app) {
+    FuriString* out = app->pxe_text;
+    furi_string_reset(out);
+
+    /* Step 1: Init W5500 */
+    if(!eth_tester_ensure_w5500(app)) {
+        furi_string_cat(out, "[PXE] W5500 Not Found!\nCheck SPI wiring.\n");
+        return;
+    }
+
+    /* Step 2: Check link */
+    if(!w5500_hal_get_link_status()) {
+        furi_string_cat(out, "[PXE] No LAN link!\nConnect Ethernet cable.\n");
+        return;
+    }
+
+    /* Step 3: Build config from user settings */
+    PxeServerState state;
+    memset(&state, 0, sizeof(state));
+    memcpy(state.config.server_ip, app->pxe_server_ip, 4);
+    memcpy(state.config.client_ip, app->pxe_client_ip, 4);
+    memcpy(state.config.subnet, app->pxe_subnet, 4);
+    state.config.dhcp_enabled = app->pxe_dhcp_enabled;
+
+    /* Step 4: Detect boot file */
+    if(!pxe_detect_boot_file(&state)) {
+        furi_string_printf(out,
+            "[PXE] No boot file!\n"
+            "Place .kpxe or .efi in:\n"
+            "%s/\n\n"
+            "Recommended:\n"
+            "undionly.kpxe from\n"
+            "netboot.xyz (~70KB)\n", PXE_BOOT_DIR);
+        return;
+    }
+
+    /* Step 5: Configure W5500 with server IP (static) */
+    w5500_hal_set_net_info(
+        state.config.server_ip, state.config.subnet,
+        state.config.server_ip, state.config.server_ip);
+
+    /* Step 6: Open sockets */
+    if(!pxe_server_start(&state)) {
+        furi_string_cat(out, "[PXE] Failed to open sockets!\n");
+        return;
+    }
+
+    /* Step 7: Initial status */
+    furi_string_printf(out,
+        "[PXE Server]\n"
+        "IP: %d.%d.%d.%d\n"
+        "DHCP: %s\n"
+        "Boot: %s (%lu B)\n\n"
+        "Waiting for client...\n",
+        state.config.server_ip[0], state.config.server_ip[1],
+        state.config.server_ip[2], state.config.server_ip[3],
+        state.config.dhcp_enabled ? "ON" : "OFF (TFTP only)",
+        state.boot_filename, state.boot_file_size);
+    eth_tester_update_view(app->text_box_pxe, out);
+
+    /* Step 8: Main loop */
+    state.running = true;
+    PxeState prev_state = PxeStateIdle;
+    uint32_t prev_blocks = 0;
+
+    while(app->worker_running && state.running) {
+        pxe_server_poll(&state, app->frame_buf, 1024);
+
+        /* Update UI on state change or every 16 blocks */
+        bool need_update = (state.state != prev_state) ||
+                           (state.tftp_blocks_sent - prev_blocks >= 16);
+
+        if(need_update) {
+            prev_state = state.state;
+            prev_blocks = state.tftp_blocks_sent;
+
+            furi_string_reset(out);
+            furi_string_printf(out, "[PXE Server]\nIP: %d.%d.%d.%d  DHCP:%s\n",
+                state.config.server_ip[0], state.config.server_ip[1],
+                state.config.server_ip[2], state.config.server_ip[3],
+                state.config.dhcp_enabled ? "ON" : "OFF");
+            furi_string_cat_printf(out, "Boot: %s\n", state.boot_filename);
+
+            switch(state.state) {
+            case PxeStateIdle:
+                furi_string_cat(out, "\nWaiting for client...\n");
+                break;
+            case PxeStateDhcpOfferSent:
+            case PxeStateDhcpAckSent:
+                furi_string_cat_printf(out,
+                    "\nClient: %02X:%02X:%02X:%02X:%02X:%02X\n"
+                    "DHCP handshake...\n",
+                    state.client_mac[0], state.client_mac[1], state.client_mac[2],
+                    state.client_mac[3], state.client_mac[4], state.client_mac[5]);
+                break;
+            case PxeStateTftpTransfer: {
+                uint8_t pct = state.boot_file_size ?
+                    (uint8_t)((state.tftp.bytes_sent * 100) / state.boot_file_size) : 0;
+                uint8_t filled = pct / 5;
+                char bar[23];
+                bar[0] = '[';
+                for(int i = 0; i < 20; i++) bar[i + 1] = (i < filled) ? '#' : '.';
+                bar[21] = ']';
+                bar[22] = 0;
+                furi_string_cat_printf(out, "\n%s %d%%\n", bar, pct);
+                furi_string_cat_printf(out, "Blk %d/%d (%lu/%lu B)\n",
+                    state.tftp.block_num,
+                    (uint16_t)((state.boot_file_size + TFTP_BLOCK_SIZE - 1) / TFTP_BLOCK_SIZE),
+                    state.tftp.bytes_sent, state.boot_file_size);
+                break;
+            }
+            case PxeStateDone:
+                furi_string_cat_printf(out, "\nCOMPLETE! %lu B in %lu blk\n",
+                    state.tftp.bytes_sent, state.tftp_blocks_sent);
+                break;
+            case PxeStateError:
+                furi_string_cat_printf(out, "\nERROR! Errs: %lu\n", state.tftp_errors);
+                break;
+            }
+            eth_tester_update_view(app->text_box_pxe, out);
+        }
+
+        /* After Done → reset to Idle for next client */
+        if(state.state == PxeStateDone) {
+            furi_delay_ms(2000); /* Show "COMPLETE" for 2 sec */
+            state.state = PxeStateIdle;
+            state.client_seen = false;
+        }
+
+        furi_delay_ms(10);
+    }
+
+    /* Cleanup */
+    pxe_server_stop(&state);
+
+    furi_string_printf(out,
+        "[PXE Stopped]\nDHCP: %lu disc, %lu req\nTFTP: %lu req, %lu blk\nErr: %lu\n",
+        state.dhcp_discovers, state.dhcp_requests,
+        state.tftp_requests, state.tftp_blocks_sent, state.tftp_errors);
+    if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 }
 
 /* ==================== Entry point ==================== */

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.11.0] - 2025
+
+### Added
+- **PXE Server**: minimal PXE boot server in Tools category
+  - Configurable Server IP, Client IP, Subnet via IP Keyboard before start
+  - Optional DHCP server (toggle ON/OFF; OFF = TFTP-only mode)
+  - TFTP server reads boot files from SD (`/ext/apps_data/eth_tester/pxe/`)
+  - Auto-detects boot file: .kpxe, .efi, .pxe, .0
+  - Real-time progress bar with block counters
+  - Resets to idle after each transfer (multi-client sequential)
+
 ## [0.10.0] - 2025
 
 ### Added
