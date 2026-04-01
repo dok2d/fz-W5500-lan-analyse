@@ -911,6 +911,25 @@ static bool eth_tester_ensure_dhcp(EthTesterApp* app) {
     return got_ip;
 }
 
+/* ==================== ASCII progress bar ==================== */
+
+/**
+ * Generate an ASCII progress bar like "[=========>    ] 75%"
+ * buf must be at least 24 bytes.
+ */
+static void eth_tester_progress_bar(char* buf, size_t buf_size, uint16_t current, uint16_t total) {
+    if(total == 0) total = 1;
+    uint8_t pct = (uint8_t)((current * 100) / total);
+    uint8_t filled = (uint8_t)((current * 16) / total);
+    if(filled > 16) filled = 16;
+    char bar[18];
+    for(uint8_t i = 0; i < 16; i++) {
+        bar[i] = (i < filled) ? '#' : '.';
+    }
+    bar[16] = '\0';
+    snprintf(buf, buf_size, "[%s] %d%%", bar, pct);
+}
+
 /* ==================== View update helpers ==================== */
 
 static void eth_tester_show_view(EthTesterApp* app, TextBox* tb, EthTesterView view, FuriString* text, const char* initial) {
@@ -2095,16 +2114,16 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
 
         /* Update progress every 5 hosts */
         if(scanned % 5 == 0 || current == last) {
+            char progress[24];
+            eth_tester_progress_bar(progress, sizeof(progress), scanned, num_hosts);
             furi_string_printf(
                 app->ping_sweep_text,
                 "[Ping Sweep]\n"
-                "Range: %s\n"
-                "Progress: %d/%d\n"
-                "Alive: %d\n\n%s",
-                app->ping_sweep_ip_input,
-                scanned,
-                num_hosts,
+                "%s\n"
+                "Alive: %d/%d scanned\n\n%s",
+                progress,
                 alive,
+                scanned,
                 furi_string_get_cstr(results));
             eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
         }
@@ -2561,16 +2580,18 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
         }
 
         /* Update progress */
-        furi_string_printf(
-            app->port_scan_text,
-            "[Port Scan]\n"
-            "Target: %s\n"
-            "Progress: %d/%d\n\n"
-            "Open ports:\n%s",
-            target_str,
-            i + 1,
-            port_count,
-            furi_string_get_cstr(results));
+        {
+            char progress[24];
+            eth_tester_progress_bar(progress, sizeof(progress), i + 1, port_count);
+            furi_string_printf(
+                app->port_scan_text,
+                "[Port Scan] %s\n"
+                "%s\n\n"
+                "Open ports:\n%s",
+                target_str,
+                progress,
+                furi_string_get_cstr(results));
+        }
         eth_tester_update_view(app->text_box_port_scan, app->port_scan_text);
     }
 
