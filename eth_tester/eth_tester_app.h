@@ -38,6 +38,7 @@ typedef enum {
     EthTesterViewMacChangerInput,
     EthTesterViewTraceroute,
     EthTesterViewTracerouteInput,
+    EthTesterViewPortScanCustomInput,
     EthTesterViewPingSweep,
     EthTesterViewIpKeyboard,
     EthTesterViewDiscovery,
@@ -73,6 +74,7 @@ typedef enum {
     EthTesterMenuItemPortScanFull,
     EthTesterMenuItemMacChanger,
     EthTesterMenuItemTraceroute,
+    EthTesterMenuItemPortScanCustom,
     EthTesterMenuItemPingSweep,
     EthTesterMenuItemDiscovery,
     EthTesterMenuItemStpVlan,
@@ -122,6 +124,7 @@ struct EthTesterApp {
     ByteInput* byte_input_mac_changer;
     TextBox* text_box_traceroute;
     TextInput* text_input_traceroute;
+    TextInput* text_input_port_custom;
     TextBox* text_box_ping_sweep;
     IpKeyboard* ip_keyboard;
     TextBox* text_box_discovery;
@@ -195,6 +198,11 @@ struct EthTesterApp {
     char port_scan_ip_input[16]; /* text input buffer */
     uint8_t port_scan_target[4]; /* parsed target IP */
     bool port_scan_top100;       /* false=Top20, true=Top100 */
+    bool port_scan_custom;       /* true = custom range mode */
+    uint16_t port_scan_custom_start; /* default 1 */
+    uint16_t port_scan_custom_end;   /* default 1024 */
+    char port_scan_start_input[6];   /* text buffer "xxxxx" */
+    char port_scan_end_input[6];
 
     /* MAC changer state */
     uint8_t mac_changer_input[6]; /* byte input buffer for custom MAC */

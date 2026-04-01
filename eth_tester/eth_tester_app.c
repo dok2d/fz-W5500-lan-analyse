@@ -871,6 +871,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu_cat_diag, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu_cat_diag, "Port Scan (Top 20)", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu_cat_diag, "Port Scan (Top 100)", EthTesterMenuItemPortScanFull, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_diag, "Port Scan (Custom)", EthTesterMenuItemPortScanCustom, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu_cat_diag), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatDiag, submenu_get_view(app->submenu_cat_diag));
 
@@ -968,6 +969,15 @@ static EthTesterApp* eth_tester_app_alloc(void) {
 
     /* Port scan target defaults to empty — filled from DHCP gateway when available */
     app->port_scan_ip_input[0] = '\0';
+    app->port_scan_custom_start = 1;
+    app->port_scan_custom_end = 1024;
+    strncpy(app->port_scan_start_input, "1", sizeof(app->port_scan_start_input));
+    strncpy(app->port_scan_end_input, "1024", sizeof(app->port_scan_end_input));
+
+    /* Port scan custom range text input */
+    app->text_input_port_custom = text_input_alloc();
+    view_set_previous_callback(text_input_get_view(app->text_input_port_custom), eth_tester_nav_back_diag);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPortScanCustomInput, text_input_get_view(app->text_input_port_custom));
 
     /* MAC Changer views */
     app->text_box_mac_changer = text_box_alloc();
@@ -1300,6 +1310,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewWolInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewContPing);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPortScan);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPortScanCustomInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChanger);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChangerInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTraceroute);
@@ -1340,6 +1351,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     byte_input_free(app->byte_input_wol);
     view_free(app->view_cont_ping);
     text_box_free(app->text_box_port_scan);
+    text_input_free(app->text_input_port_custom);
     text_box_free(app->text_box_mac_changer);
     byte_input_free(app->byte_input_mac_changer);
     view_free(app->view_bridge);
@@ -1909,6 +1921,77 @@ static void eth_tester_port_scan_ip_input_callback(void* context) {
     eth_tester_worker_start(app, EthTesterMenuItemPortScan, EthTesterViewPortScan);
 }
 
+/* Custom port scan: step 3 — IP entered, start scan */
+static void eth_tester_port_scan_custom_ip_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    if(!eth_tester_parse_ip(app->port_scan_ip_input, app->port_scan_target)) {
+        furi_string_set(app->port_scan_text, "Invalid IP address!\n");
+        text_box_set_text(app->text_box_port_scan, furi_string_get_cstr(app->port_scan_text));
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPortScan);
+        return;
+    }
+
+    app->port_scan_custom = true;
+    furi_string_set(app->port_scan_text, "Initializing...\n");
+    text_box_set_text(app->text_box_port_scan, furi_string_get_cstr(app->port_scan_text));
+    eth_tester_worker_start(app, EthTesterMenuItemPortScan, EthTesterViewPortScan);
+}
+
+/* Custom port scan: step 2 — end port entered, ask for IP */
+static void eth_tester_port_scan_end_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    int end = atoi(app->port_scan_end_input);
+    if(end < 1 || end > 65535) end = 1024;
+    app->port_scan_custom_end = (uint16_t)end;
+
+    if(app->port_scan_custom_end < app->port_scan_custom_start) {
+        app->port_scan_custom_end = app->port_scan_custom_start;
+    }
+
+    /* Now ask for IP */
+    if(app->dhcp_valid && (app->dhcp_gw[0] | app->dhcp_gw[1] | app->dhcp_gw[2] | app->dhcp_gw[3])) {
+        snprintf(app->port_scan_ip_input, sizeof(app->port_scan_ip_input),
+            "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+    }
+    ip_keyboard_setup(
+        app->ip_keyboard,
+        "Target IP (Custom):",
+        app->port_scan_ip_input,
+        false,
+        eth_tester_port_scan_custom_ip_callback,
+        app,
+        app->port_scan_ip_input,
+        sizeof(app->port_scan_ip_input),
+        eth_tester_nav_back_diag);
+    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+}
+
+/* Custom port scan: step 1 — start port entered, ask for end port */
+static void eth_tester_port_scan_start_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    int start = atoi(app->port_scan_start_input);
+    if(start < 1 || start > 65535) start = 1;
+    app->port_scan_custom_start = (uint16_t)start;
+
+    /* Ask for end port */
+    text_input_reset(app->text_input_port_custom);
+    text_input_set_header_text(app->text_input_port_custom, "End port (1-65535):");
+    text_input_set_result_callback(
+        app->text_input_port_custom,
+        eth_tester_port_scan_end_callback,
+        app,
+        app->port_scan_end_input,
+        sizeof(app->port_scan_end_input),
+        false);
+    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPortScanCustomInput);
+}
+
 /* ==================== Ping sweep CIDR input callback ==================== */
 
 static void eth_tester_ping_sweep_input_callback(void* context) {
@@ -2117,6 +2200,7 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         /* fall through */
     case EthTesterMenuItemPortScan:
         if(index == EthTesterMenuItemPortScan) app->port_scan_top100 = false;
+        app->port_scan_custom = false;
         /* Pre-populate target with DHCP gateway if available */
         if(app->dhcp_valid && (app->dhcp_gw[0] | app->dhcp_gw[1] | app->dhcp_gw[2] | app->dhcp_gw[3])) {
             snprintf(app->port_scan_ip_input, sizeof(app->port_scan_ip_input),
@@ -2133,6 +2217,20 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             sizeof(app->port_scan_ip_input),
             eth_tester_nav_back_diag);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+        break;
+
+    case EthTesterMenuItemPortScanCustom:
+        app->port_scan_custom = true;
+        text_input_reset(app->text_input_port_custom);
+        text_input_set_header_text(app->text_input_port_custom, "Start port (1-65535):");
+        text_input_set_result_callback(
+            app->text_input_port_custom,
+            eth_tester_port_scan_start_callback,
+            app,
+            app->port_scan_start_input,
+            sizeof(app->port_scan_start_input),
+            false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPortScanCustomInput);
         break;
 
     case EthTesterMenuItemContPing:
@@ -3510,10 +3608,16 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
     char target_str[16];
     pkt_format_ip(app->port_scan_target, target_str);
 
-    /* Select port preset */
-    const uint16_t* ports;
+    /* Select port list: preset or custom range */
+    const uint16_t* ports = NULL;
     uint16_t port_count;
-    if(app->port_scan_top100) {
+    uint16_t custom_start = 0, custom_end = 0;
+
+    if(app->port_scan_custom) {
+        custom_start = app->port_scan_custom_start;
+        custom_end = app->port_scan_custom_end;
+        port_count = custom_end - custom_start + 1;
+    } else if(app->port_scan_top100) {
         ports = PORT_PRESET_TOP100;
         port_count = PORT_PRESET_TOP100_COUNT;
     } else {
@@ -3521,14 +3625,26 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
         port_count = PORT_PRESET_TOP20_COUNT;
     }
 
-    furi_string_printf(
-        app->port_scan_text,
-        "[Port Scan]\n"
-        "Target: %s\n"
-        "Ports: Top %d\n\n"
-        "Scanning...\n",
-        target_str,
-        port_count);
+    if(app->port_scan_custom) {
+        furi_string_printf(
+            app->port_scan_text,
+            "[Port Scan]\n"
+            "Target: %s\n"
+            "Range: %d-%d\n\n"
+            "Scanning...\n",
+            target_str,
+            custom_start,
+            custom_end);
+    } else {
+        furi_string_printf(
+            app->port_scan_text,
+            "[Port Scan]\n"
+            "Target: %s\n"
+            "Ports: Top %d\n\n"
+            "Scanning...\n",
+            target_str,
+            port_count);
+    }
     eth_tester_update_view(app->text_box_port_scan, app->port_scan_text);
 
     /* Scan ports and collect results */
@@ -3540,7 +3656,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
     FuriString* results = furi_string_alloc();
 
     for(uint16_t i = 0; i < port_count && app->worker_running; i++) {
-        uint16_t port = ports[i];
+        uint16_t port = app->port_scan_custom ? (custom_start + i) : ports[i];
 
         PortState state = port_scan_tcp(
             W5500_SCAN_SOCKET_BASE,
