@@ -598,6 +598,25 @@ static void eth_tester_app_free(EthTesterApp* app) {
 
 /* ==================== Navigation callbacks ==================== */
 
+/* Update main menu header with link status */
+static void eth_tester_update_menu_header(EthTesterApp* app) {
+    if(app->w5500_initialized) {
+        bool link = w5500_hal_get_link_status();
+        if(link) {
+            uint8_t speed = 0, duplex = 0;
+            bool up = false;
+            w5500_hal_get_phy_info(&up, &speed, &duplex);
+            submenu_set_header(app->submenu,
+                speed ? (duplex ? "LAN [UP 100M FD]" : "LAN [UP 100M HD]")
+                      : (duplex ? "LAN [UP 10M FD]" : "LAN [UP 10M HD]"));
+        } else {
+            submenu_set_header(app->submenu, "LAN [NO LINK]");
+        }
+    } else {
+        submenu_set_header(app->submenu, "LAN Tester");
+    }
+}
+
 static uint32_t eth_tester_navigation_exit_callback(void* context) {
     UNUSED(context);
     return VIEW_NONE;
@@ -606,7 +625,10 @@ static uint32_t eth_tester_navigation_exit_callback(void* context) {
 static uint32_t eth_tester_navigation_submenu_callback(void* context) {
     UNUSED(context);
     /* Signal worker to stop immediately so it doesn't block next action */
-    if(g_app) g_app->worker_running = false;
+    if(g_app) {
+        g_app->worker_running = false;
+        eth_tester_update_menu_header(g_app);
+    }
     return EthTesterViewMainMenu;
 }
 
@@ -2804,6 +2826,7 @@ int32_t eth_tester_app(void* p) {
     EthTesterApp* app = eth_tester_app_alloc();
 
     /* Start on main menu */
+    eth_tester_update_menu_header(app);
     view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
     view_dispatcher_run(app->view_dispatcher);
 
