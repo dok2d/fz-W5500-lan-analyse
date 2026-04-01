@@ -45,12 +45,12 @@ PRs without corresponding documentation updates will be asked to add them before
 
 ## Project Structure
 
-- `lan_tester/hal/` — W5500 hardware abstraction
-- `lan_tester/protocols/` — network protocol implementations
-- `lan_tester/bridge/` — Ethernet bridge engine + PCAP
-- `lan_tester/usb_eth/` — USB CDC-ECM driver
-- `lan_tester/utils/` — shared utilities (OUI lookup, packet parsing)
-- `lan_tester/lib/` — vendored WIZnet ioLibrary_Driver (do not modify)
+- `hal/` — W5500 hardware abstraction
+- `protocols/` — network protocol implementations
+- `bridge/` — Ethernet bridge engine + PCAP
+- `usb_eth/` — USB CDC-ECM driver
+- `utils/` — shared utilities (OUI lookup, packet parsing)
+- `lib/` — vendored WIZnet ioLibrary_Driver (do not modify)
 
 ## License
 

@@ -5,7 +5,6 @@
 ## Структура проекта
 
 ```
-lan_tester/
 ├── application.fam              # Манифест FAP (appid, entry point, библиотеки)
 ├── lan_tester_app.c             # Точка входа, ViewDispatcher, логика всех функций
 ├── lan_tester_app.h             # Общие типы, перечисления, структура состояния

@@ -114,7 +114,7 @@ Cisco, HP/HPE, Dell, Intel, Broadcom, Realtek, Apple, Samsung, Huawei, TP-Link, 
 
 ### WIZnet ioLibrary_Driver
 
-Вендорная копия (не git-submodule) [официального драйвера W5500](https://github.com/Wiznet/ioLibrary_Driver). Расположена в `lan_tester/lib/ioLibrary_Driver/`.
+Вендорная копия (не git-submodule) [официального драйвера W5500](https://github.com/Wiznet/ioLibrary_Driver). Расположена в `lib/ioLibrary_Driver/`.
 
 **Компилируемые компоненты:**
 - `Ethernet/W5500/*.c` -- драйвер чипа W5500

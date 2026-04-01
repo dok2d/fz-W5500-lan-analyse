@@ -14,11 +14,9 @@ pip install ufbt
 
 ## Build Commands
 
-All commands are run from the `lan_tester/` directory:
+All commands are run from the project root directory:
 
 ```bash
-cd lan_tester
-
 ufbt build              # compile the .fap binary
 ufbt launch             # build and deploy to connected Flipper via USB
 ufbt install            # build and install .fap to Flipper's SD card
@@ -28,7 +26,7 @@ ufbt lint               # check formatting without modifying files
 
 ## Build Output
 
-The compiled `.fap` file appears in `lan_tester/dist/`. You can copy it manually to the Flipper's SD card:
+The compiled `.fap` file appears in `dist/`. You can copy it manually to the Flipper's SD card:
 
 ```
 /ext/apps/GPIO/lan_tester.fap
@@ -73,7 +71,7 @@ Defined in `.github/workflows/release.yml`. When a version tag (`v*.*.*`) is pus
 ## Development Workflow
 
 1. Create a feature branch: `git checkout -b feat/my-feature`
-2. Make changes in `lan_tester/`
+2. Make changes in the project
 3. Format code: `ufbt format`
 4. Build and test: `ufbt build` or `ufbt launch`
 5. Update documentation if needed (see [CONTRIBUTING.md](../../CONTRIBUTING.md))
