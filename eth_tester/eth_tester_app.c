@@ -278,19 +278,20 @@ static EthTesterApp* eth_tester_app_alloc(void) {
 
     /* Main menu (Submenu view) */
     app->submenu = submenu_alloc();
+    /* Menu ordered by typical workflow: check link, scan, diagnose, utilities */
     submenu_add_item(app->submenu, "Link Info", EthTesterMenuItemLinkInfo, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "LLDP/CDP", EthTesterMenuItemLldpCdp, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "DHCP Analyze", EthTesterMenuItemDhcpAnalyze, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "ARP Scan", EthTesterMenuItemArpScan, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Port Scanner", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "mDNS/SSDP", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "STP/VLAN", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Continuous Ping", EthTesterMenuItemContPing, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "DNS Lookup", EthTesterMenuItemDnsLookup, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Port Scanner", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "LLDP/CDP", EthTesterMenuItemLldpCdp, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "mDNS/SSDP", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "STP/VLAN", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
