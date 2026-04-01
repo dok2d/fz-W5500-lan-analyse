@@ -62,9 +62,18 @@ struct ecm_config_desc {
 /* MAC address string descriptor (dynamically built) */
 static struct usb_string_descriptor* ecm_str_mac = NULL;
 
-/* Manufacturer and product string descriptors */
-static const struct usb_string_descriptor ecm_str_manuf = USB_STRING_DESC("Flipper Devices");
-static const struct usb_string_descriptor ecm_str_prod = USB_STRING_DESC("Flipper ECM Network");
+/* Manufacturer and product string descriptors (built as raw uint16_t arrays
+ * because USB_STRING_DESC macro fails with -Werror on some SDK versions) */
+static const struct usb_string_descriptor ecm_str_manuf = {
+    .bLength = 2 + 15 * 2, /* "Flipper Devices" = 15 chars */
+    .bDescriptorType = USB_DTYPE_STRING,
+    .wString = {'F','l','i','p','p','e','r',' ','D','e','v','i','c','e','s'},
+};
+static const struct usb_string_descriptor ecm_str_prod = {
+    .bLength = 2 + 19 * 2, /* "Flipper ECM Network" = 19 chars */
+    .bDescriptorType = USB_DTYPE_STRING,
+    .wString = {'F','l','i','p','p','e','r',' ','E','C','M',' ','N','e','t','w','o','r','k'},
+};
 
 /* ==================== Global State ==================== */
 
