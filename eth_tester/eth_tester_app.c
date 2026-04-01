@@ -1132,6 +1132,14 @@ static void eth_tester_stop_worker_on_back(void) {
             submenu_set_header(g_app->submenu, "Stopping...");
         }
         g_app->worker_running = false;
+        /* Force-close HTTP socket to unblock WIZnet's blocking send()/recv().
+         * Without this, the worker thread hangs in send()'s internal while(1)
+         * loop waiting for TX buffer free space, and furi_thread_join() blocks
+         * forever causing the Flipper to freeze. Socket 3 is shared across
+         * multiple tools that never run concurrently, so this is safe. */
+        if(g_app->worker_op == EthTesterMenuItemFileManager) {
+            close(FILEMGR_HTTP_SOCKET);
+        }
         eth_tester_update_menu_header(g_app);
     }
 }
@@ -1292,6 +1300,10 @@ static int32_t eth_tester_worker_fn(void* context) {
 static void eth_tester_worker_stop(EthTesterApp* app) {
     if(app->worker_thread) {
         app->worker_running = false;
+        /* Force-close file manager socket to unblock blocking send/recv */
+        if(app->worker_op == EthTesterMenuItemFileManager) {
+            close(FILEMGR_HTTP_SOCKET);
+        }
         furi_thread_join(app->worker_thread);
         furi_thread_free(app->worker_thread);
         app->worker_thread = NULL;
@@ -1302,6 +1314,9 @@ static void eth_tester_worker_start(EthTesterApp* app, uint32_t op, EthTesterVie
     /* If old worker is done, clean it up (non-blocking) */
     if(app->worker_thread) {
         app->worker_running = false;
+        if(app->worker_op == EthTesterMenuItemFileManager) {
+            close(FILEMGR_HTTP_SOCKET);
+        }
         if(furi_thread_get_state(app->worker_thread) == FuriThreadStateStopped) {
             furi_thread_join(app->worker_thread);
             furi_thread_free(app->worker_thread);
