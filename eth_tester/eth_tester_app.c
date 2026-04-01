@@ -179,6 +179,9 @@ typedef struct {
     uint32_t frames_to_usb;
     uint32_t errors;
     const char* status_line; /* "Starting...", "Running", "Stopped" */
+    bool dump_active;     /* PCAP dump is recording */
+    uint32_t dump_frames; /* frames written to pcap */
+    uint32_t dump_dropped; /* frames dropped (write errors) */
 } BridgeViewModel;
 
 static void bridge_draw_callback(Canvas* canvas, void* model) {
@@ -221,8 +224,16 @@ static void bridge_draw_callback(Canvas* canvas, void* model) {
         canvas_draw_str(canvas, 80, 48, buf);
     }
 
+    /* PCAP dump status */
+    if(vm->dump_active) {
+        snprintf(buf, sizeof(buf), "REC %lu", (unsigned long)vm->dump_frames);
+        canvas_draw_str(canvas, 80, 38, buf);
+    }
+
     /* Footer */
-    canvas_draw_str_aligned(canvas, 64, 62, AlignCenter, AlignBottom, "[Back] Stop");
+    snprintf(buf, sizeof(buf), "[OK] %s  [<] Stop",
+        vm->dump_active ? "Stop rec" : "Record");
+    canvas_draw_str_aligned(canvas, 64, 62, AlignCenter, AlignBottom, buf);
 }
 
 static bool bridge_input_callback(InputEvent* event, void* context) {
@@ -239,6 +250,29 @@ static bool bridge_input_callback(InputEvent* event, void* context) {
         /* Bridge already stopped — let the default previous_callback
          * handle Back navigation (return to Tools menu) */
         return false;
+    }
+    /* OK button toggles PCAP dump */
+    if(event->type == InputTypeShort && event->key == InputKeyOk) {
+        if(app->worker_running && app->bridge_state) {
+            EthBridgeState* bs = app->bridge_state;
+            if(!bs->dump_enabled) {
+                /* Start PCAP dump */
+                if(pcap_dump_start(&bs->pcap)) {
+                    bs->dump_enabled = true;
+                    if(app->setting_sound) {
+                        notification_message(app->notifications, &sequence_success);
+                    }
+                }
+            } else {
+                /* Stop PCAP dump */
+                bs->dump_enabled = false;
+                pcap_dump_stop(&bs->pcap);
+                if(app->setting_sound) {
+                    notification_message(app->notifications, &sequence_success);
+                }
+            }
+        }
+        return true;
     }
     return false;
 }
@@ -3234,11 +3268,20 @@ static void eth_tester_do_eth_bridge(EthTesterApp* app) {
                     vm->frames_to_eth = bs->frames_usb_to_eth;
                     vm->frames_to_usb = bs->frames_eth_to_usb;
                     vm->errors = bs->errors;
+                    vm->dump_active = bs->dump_enabled && bs->pcap.active;
+                    vm->dump_frames = bs->pcap.frames_written;
+                    vm->dump_dropped = bs->pcap.frames_dropped;
                 },
                 true);
         }
 
         furi_delay_us(100);
+    }
+
+    /* Stop PCAP dump if active */
+    if(app->bridge_state->dump_enabled) {
+        app->bridge_state->dump_enabled = false;
+        pcap_dump_stop(&app->bridge_state->pcap);
     }
 
     /* Cleanup */

@@ -31,7 +31,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | **Statistics** | Frame counters by type (unicast/broadcast/multicast) and EtherType |
 | **Wake-on-LAN** | Send magic packets to any MAC address |
 | **MAC Changer** | Randomize or set custom MAC, persisted to SD card |
-| **ETH Bridge** | USB-to-Ethernet bridge: phone/PC gets LAN access via Flipper (CDC-ECM) |
+| **ETH Bridge** | USB-to-Ethernet bridge: phone/PC gets LAN access via Flipper (CDC-ECM), optional PCAP traffic dump to SD card |
 | **History** | All scan results auto-saved with timestamps, browsable and deletable |
 | **Settings** | Toggle auto-save and sound/vibro notifications, clear history |
 
@@ -50,6 +50,10 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 
 - **Flipper Zero** (OFW firmware)
 - **W5500 Lite** Ethernet module (or any W5500-based board with SPI)
+
+### Where to buy
+
+- [W5500 Ethernet Module for Flipper Zero](https://flipperaddons.com/product/w5500-ethernet/) — ready-to-use module with RJ45
 
 ### Wiring
 
@@ -102,7 +106,9 @@ eth_tester/
 │
 ├── bridge/
 │   ├── eth_bridge.c             # Bidirectional L2 frame forwarding engine
-│   └── eth_bridge.h
+│   ├── eth_bridge.h
+│   ├── pcap_dump.c              # PCAP traffic dump to SD card (Wireshark-compatible)
+│   └── pcap_dump.h
 │
 ├── protocols/
 │   ├── lldp.c / lldp.h         # IEEE 802.1AB LLDP parser
@@ -161,7 +167,7 @@ eth_tester/
 ### Tools
 - **Wake-on-LAN** — send magic packet to wake a device by MAC address.
 - **MAC Changer** — generate random MAC or enter custom, saved to SD.
-- **ETH Bridge** — turns Flipper into a USB-to-Ethernet bridge. Phone/PC connects via USB (CDC-ECM), traffic is bridged to LAN via W5500 at Layer 2. The host gets an IP from the LAN's DHCP server transparently. Live stats show frame counts and link status. Press Back to stop and restore USB.
+- **ETH Bridge** — turns Flipper into a USB-to-Ethernet bridge. Phone/PC connects via USB (CDC-ECM), traffic is bridged to LAN via W5500 at Layer 2. The host gets an IP from the LAN's DHCP server transparently. Live stats show frame counts and link status. Press **OK** to start/stop PCAP traffic recording to SD card (Wireshark-compatible `.pcap` files saved to `apps_data/eth_tester/pcap/`). Press Back to stop and restore USB.
 
 ### Settings
 - **Auto-save results** — ON/OFF, controls automatic history saving.
@@ -223,7 +229,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 | **Статистика** | Счётчики фреймов по типу и EtherType |
 | **Wake-on-LAN** | Отправка magic-пакетов на любой MAC-адрес |
 | **MAC Changer** | Рандомизация или ручной ввод MAC, сохранение на SD |
-| **ETH Bridge** | USB-Ethernet мост: телефон/ПК получает доступ в LAN через Flipper (CDC-ECM) |
+| **ETH Bridge** | USB-Ethernet мост: телефон/ПК получает доступ в LAN через Flipper (CDC-ECM), опциональный PCAP-дамп трафика на SD |
 | **История** | Все результаты автосохраняются с метками времени, просмотр и удаление |
 | **Настройки** | Переключение автосохранения и звука/вибрации, очистка истории |
 
@@ -242,6 +248,10 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 - **Flipper Zero** (официальная прошивка OFW)
 - **W5500 Lite** Ethernet-модуль (или любая плата на W5500 с SPI)
+
+### Где купить
+
+- [W5500 Ethernet модуль для Flipper Zero](https://flipperaddons.com/product/w5500-ethernet/) — готовый модуль с RJ45
 
 ### Подключение
 
@@ -294,7 +304,9 @@ eth_tester/
 │
 ├── bridge/                      # Движок Ethernet-моста
 │   ├── eth_bridge.c             # Двунаправленная L2-пересылка фреймов
-│   └── eth_bridge.h
+│   ├── eth_bridge.h
+│   ├── pcap_dump.c              # PCAP-дамп трафика на SD (совместим с Wireshark)
+│   └── pcap_dump.h
 │
 ├── protocols/                   # Парсеры и генераторы протоколов
 │   ├── lldp.c / lldp.h         # Парсер IEEE 802.1AB LLDP
@@ -353,7 +365,7 @@ eth_tester/
 ### Tools
 - **Wake-on-LAN** — отправка magic-пакета для пробуждения устройства по MAC.
 - **MAC Changer** — рандомный или пользовательский MAC, сохраняется на SD.
-- **ETH Bridge** — превращает Flipper в USB-Ethernet мост. Телефон/ПК подключается по USB (CDC-ECM), трафик прозрачно передаётся в LAN через W5500 на уровне L2. Хост получает IP от DHCP-сервера сети. На экране отображаются счётчики фреймов и статус соединений. Нажмите Back для остановки и восстановления USB.
+- **ETH Bridge** — превращает Flipper в USB-Ethernet мост. Телефон/ПК подключается по USB (CDC-ECM), трафик прозрачно передаётся в LAN через W5500 на уровне L2. Хост получает IP от DHCP-сервера сети. На экране отображаются счётчики фреймов и статус соединений. Нажмите **OK** для старта/остановки записи PCAP-дампа на SD-карту (файлы `.pcap`, совместимые с Wireshark, сохраняются в `apps_data/eth_tester/pcap/`). Нажмите Back для остановки и восстановления USB.
 
 ### Settings
 - **Auto-save results** — вкл/выкл автосохранение результатов в историю.
@@ -377,7 +389,7 @@ eth_tester/
 ## Что нельзя реализовать на Flipper + W5500
 
 - **802.1X** --- нужен полноценный supplicant, не хватит RAM
-- **Wireshark-захват** --- SPI слишком медленный для полного capture на 100 Мбит
+- **Полный Wireshark-захват на 100 Мбит** --- SPI ограничивает пропускную способность; PCAP-дамп в режиме ETH Bridge записывает трафик, реально проходящий через мост
 - **SNMP-запросы** --- ASN.1 парсер слишком тяжёл для RAM
 - **TLS/HTTPS** --- нет криптобиблиотек в FAP SDK
 

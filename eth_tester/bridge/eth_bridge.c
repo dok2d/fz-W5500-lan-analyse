@@ -26,6 +26,9 @@ void eth_bridge_poll(EthBridgeState* state, uint8_t* frame_buf, uint16_t buf_siz
         if(sent > 0) {
             state->frames_usb_to_eth++;
             state->bytes_usb_to_eth += (uint32_t)len;
+            if(state->dump_enabled && state->pcap.active) {
+                pcap_dump_frame(&state->pcap, frame_buf, (uint16_t)len);
+            }
         } else {
             state->errors++;
         }
@@ -37,6 +40,9 @@ void eth_bridge_poll(EthBridgeState* state, uint8_t* frame_buf, uint16_t buf_siz
         if(usb_eth_send_frame(frame_buf, recv_len)) {
             state->frames_eth_to_usb++;
             state->bytes_eth_to_usb += recv_len;
+            if(state->dump_enabled && state->pcap.active) {
+                pcap_dump_frame(&state->pcap, frame_buf, recv_len);
+            }
         } else {
             state->errors++;
         }
