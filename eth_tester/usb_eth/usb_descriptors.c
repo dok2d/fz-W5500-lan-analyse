@@ -395,11 +395,25 @@ static void ecm_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
 }
 
 static void ecm_deinit(usbd_device* dev) {
+    /* Stop data flow first to prevent callbacks from firing */
+    ecm_connected = false;
+    ecm_data_active = false;
+
+    /* Deconfig all endpoints and unregister callbacks to clear
+     * any pending transfers that accumulated during long operation */
+    usbd_ep_deconfig(dev, CDC_ECM_EP_NOTIF);
+    usbd_ep_deconfig(dev, CDC_ECM_EP_IN);
+    usbd_ep_deconfig(dev, CDC_ECM_EP_OUT);
+    usbd_reg_endpoint(dev, CDC_ECM_EP_OUT, 0);
+    usbd_reg_endpoint(dev, CDC_ECM_EP_IN, 0);
+
+    /* Wait for any in-flight TX to settle */
+    usb_tx_busy = false;
+    usb_tx_data = NULL;
+
     usbd_reg_config(dev, NULL);
     usbd_reg_control(dev, NULL);
 
-    ecm_connected = false;
-    ecm_data_active = false;
     ecm_usbd = NULL;
 
     if(ecm_str_mac) {
