@@ -301,7 +301,8 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "DNS Lookup", EthTesterMenuItemDnsLookup, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Port Scanner", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Port Scan (Top 20)", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Port Scan (Top 100)", EthTesterMenuItemPortScanFull, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "LLDP/CDP", EthTesterMenuItemLldpCdp, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "mDNS/SSDP", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "STP/VLAN", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
@@ -1179,14 +1180,19 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMacChangerInput);
         break;
 
+    case EthTesterMenuItemPortScanFull:
+        app->port_scan_top100 = true;
+        /* fall through */
     case EthTesterMenuItemPortScan:
+        if(index == EthTesterMenuItemPortScan) app->port_scan_top100 = false;
         /* Pre-populate target with DHCP gateway if available */
         if(app->dhcp_valid && (app->dhcp_gw[0] | app->dhcp_gw[1] | app->dhcp_gw[2] | app->dhcp_gw[3])) {
             snprintf(app->port_scan_ip_input, sizeof(app->port_scan_ip_input),
                 "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
         }
         text_input_reset(app->text_input_port_scan);
-        text_input_set_header_text(app->text_input_port_scan, "Target IP for scan:");
+        text_input_set_header_text(app->text_input_port_scan,
+            app->port_scan_top100 ? "Target IP (Top 100):" : "Target IP (Top 20):");
         text_input_set_result_callback(
             app->text_input_port_scan,
             eth_tester_port_scan_ip_input_callback,
@@ -2465,9 +2471,16 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
     char target_str[16];
     pkt_format_ip(app->port_scan_target, target_str);
 
-    /* Use Top-20 preset */
-    const uint16_t* ports = PORT_PRESET_TOP20;
-    uint16_t port_count = PORT_PRESET_TOP20_COUNT;
+    /* Select port preset */
+    const uint16_t* ports;
+    uint16_t port_count;
+    if(app->port_scan_top100) {
+        ports = PORT_PRESET_TOP100;
+        port_count = PORT_PRESET_TOP100_COUNT;
+    } else {
+        ports = PORT_PRESET_TOP20;
+        port_count = PORT_PRESET_TOP20_COUNT;
+    }
 
     furi_string_printf(
         app->port_scan_text,

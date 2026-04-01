@@ -59,6 +59,7 @@ typedef enum {
     EthTesterMenuItemWol,
     EthTesterMenuItemContPing,
     EthTesterMenuItemPortScan,
+    EthTesterMenuItemPortScanFull,
     EthTesterMenuItemMacChanger,
     EthTesterMenuItemTraceroute,
     EthTesterMenuItemPingSweep,
@@ -162,6 +163,7 @@ struct EthTesterApp {
     /* Port scanner state */
     char port_scan_ip_input[16]; /* text input buffer */
     uint8_t port_scan_target[4]; /* parsed target IP */
+    bool port_scan_top100;       /* false=Top20, true=Top100 */
 
     /* MAC changer state */
     uint8_t mac_changer_input[6]; /* byte input buffer for custom MAC */
