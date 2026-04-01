@@ -5413,7 +5413,69 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                 furi_mutex_release(app->autotest_lldp_mutex);
             }
 
-            /* Step 7: ARP scan — will be added in Stage 5 */
+            /* Step 7: ARP Host Count (Socket 0 — AFTER LLDP thread join) */
+            if(dhcp_ok && app->autotest_arp_enabled && w5500_hal_get_link_status() &&
+               app->autotest_running) {
+                wiz_NetInfo net_info;
+                wizchip_getnetinfo(&net_info);
+                uint8_t start_ip[4], end_ip[4];
+                uint16_t num_hosts =
+                    arp_calc_scan_range(net_info.ip, net_info.sn, start_ip, end_ip);
+                if(num_hosts > 0 && w5500_hal_open_macraw()) {
+                    uint32_t current_ip = pkt_read_u32_be(start_ip);
+                    uint32_t last_ip = pkt_read_u32_be(end_ip);
+                    uint16_t found_count = 0;
+                    uint8_t arp_frame[42];
+                    uint16_t batch_count = 0;
+
+                    /* Send ARP requests in batches */
+                    while(current_ip <= last_ip && app->autotest_running) {
+                        uint8_t target[4];
+                        pkt_write_u32_be(target, current_ip);
+                        arp_build_request(arp_frame, net_info.mac, net_info.ip, target);
+                        w5500_hal_macraw_send(arp_frame, 42);
+                        current_ip++;
+                        batch_count++;
+                        if(batch_count >= ARP_BATCH_SIZE) {
+                            batch_count = 0;
+                            furi_delay_ms(ARP_BATCH_DELAY_MS);
+                            /* Collect replies */
+                            for(uint8_t i = 0; i < 20; i++) {
+                                uint16_t recv_len =
+                                    w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+                                if(recv_len == 0) break;
+                                uint8_t s_mac[6], s_ip[4];
+                                if(arp_parse_reply(
+                                       app->frame_buf, recv_len, s_mac, s_ip)) {
+                                    found_count++;
+                                }
+                            }
+                        }
+                    }
+                    /* Wait for late replies */
+                    uint32_t tail_start = furi_get_tick();
+                    while(furi_get_tick() - tail_start < ARP_TAIL_WAIT_MS &&
+                          app->autotest_running) {
+                        uint16_t recv_len =
+                            w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+                        if(recv_len > 0) {
+                            uint8_t s_mac[6], s_ip[4];
+                            if(arp_parse_reply(
+                                   app->frame_buf, recv_len, s_mac, s_ip)) {
+                                found_count++;
+                            }
+                        } else {
+                            furi_delay_ms(50);
+                        }
+                    }
+                    w5500_hal_close_macraw();
+                    furi_string_cat_printf(
+                        body, "Hosts: %d in subnet\n", found_count);
+                    furi_string_set(app->autotest_text, "[Auto Test]\n");
+                    furi_string_cat(app->autotest_text, body);
+                    lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+                }
+            }
 
             /* Final render with verdict (steps 2-4; internet ping not counted) */
             bool all_ok = dhcp_ok && gw_ok && dns_ok;
@@ -5423,6 +5485,9 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
             furi_string_cat(app->autotest_text, body);
             furi_string_free(body);
             lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+
+            /* Save to history */
+            lan_tester_save_and_notify(app, "autotest.txt", app->autotest_text);
 
             state = AutoTestStateDone;
         }
