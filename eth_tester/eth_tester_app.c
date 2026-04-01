@@ -289,6 +289,24 @@ static void settings_sound_changed(VariableItem* item) {
     }
 }
 
+static void settings_enter_callback(void* context, uint32_t index) {
+    EthTesterApp* app = context;
+    if(index == 2) { /* "Clear History" is the 3rd item (index 2) */
+        /* Delete all history files */
+        HistoryState* hs = malloc(sizeof(HistoryState));
+        if(hs) {
+            uint16_t count = history_list(hs);
+            for(uint16_t i = 0; i < count; i++) {
+                history_delete_file(hs->files[i].filename);
+            }
+            free(hs);
+        }
+        if(app->setting_sound) {
+            notification_message(app->notifications, &sequence_success);
+        }
+    }
+}
+
 static EthTesterApp* eth_tester_app_alloc(void) {
     EthTesterApp* app = malloc(sizeof(EthTesterApp));
     memset(app, 0, sizeof(EthTesterApp));
@@ -583,6 +601,13 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         app->settings_list, "Auto-save results", 2, settings_autosave_changed, app);
     VariableItem* item_sound = variable_item_list_add(
         app->settings_list, "Sound & vibro", 2, settings_sound_changed, app);
+
+    /* "Clear History" — no value cycling, action on OK press */
+    VariableItem* item_clear = variable_item_list_add(
+        app->settings_list, "Clear History", 0, NULL, app);
+    variable_item_set_current_value_text(item_clear, "Press OK");
+    variable_item_list_set_enter_callback(
+        app->settings_list, settings_enter_callback, app);
 
     /* Load settings from SD */
     eth_tester_settings_load(app);
@@ -2998,8 +3023,10 @@ static void eth_tester_do_stats(EthTesterApp* app) {
         (unsigned long)s->cdp_frames,
         (unsigned long)s->unknown_frames);
 
-    /* Save stats to SD card */
-    eth_tester_save_and_notify(app, "stats.txt", app->stats_text);
+    /* Save stats to SD card (no sound — passive capture) */
+    if(app->setting_autosave) {
+        eth_tester_save_results("stats.txt", furi_string_get_cstr(app->stats_text));
+    }
 }
 
 /* ==================== Save results to SD card ==================== */
