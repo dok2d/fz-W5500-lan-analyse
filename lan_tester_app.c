@@ -119,6 +119,9 @@ static void lan_tester_settings_load(LanTesterApp* app) {
     app->ping_count = 4;
     app->ping_timeout_ms = 3000;
     app->ping_interval_ms = 1000;
+    strncpy(app->autotest_dns_host, "google.com", sizeof(app->autotest_dns_host));
+    app->autotest_lldp_wait_s = 30;
+    app->autotest_arp_enabled = true;
 
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);
@@ -159,6 +162,22 @@ static void lan_tester_settings_load(LanTesterApp* app) {
             int val = atoi(pi + 14);
             if(val >= 200 && val <= 5000) app->ping_interval_ms = (uint16_t)val;
         }
+        char* at_dns = strstr(buf, "autotest_dns=");
+        if(at_dns) {
+            at_dns += 13;
+            int j = 0;
+            while(at_dns[j] && at_dns[j] != '\n' && j < 63) {
+                app->autotest_dns_host[j] = at_dns[j];
+                j++;
+            }
+            app->autotest_dns_host[j] = '\0';
+        }
+        char* at_lldp = strstr(buf, "autotest_lldp_wait=");
+        if(at_lldp) {
+            int val = atoi(at_lldp + 19);
+            if(val >= 10 && val <= 60) app->autotest_lldp_wait_s = (uint8_t)val;
+        }
+        if(strstr(buf, "autotest_arp=0")) app->autotest_arp_enabled = false;
     }
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
@@ -169,19 +188,23 @@ static void lan_tester_settings_save(LanTesterApp* app) {
     storage_simply_mkdir(storage, APP_DATA_PATH(""));
     File* file = storage_file_alloc(storage);
     if(storage_file_open(file, SETTINGS_PATH, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
-        char buf[192];
+        char buf[320];
         snprintf(
             buf,
             sizeof(buf),
             "autosave=%d\nsound=%d\ndns_custom=%d\ndns_ip=%s\n"
-            "ping_count=%d\nping_timeout=%d\nping_interval=%d\n",
+            "ping_count=%d\nping_timeout=%d\nping_interval=%d\n"
+            "autotest_dns=%s\nautotest_lldp_wait=%d\nautotest_arp=%d\n",
             app->setting_autosave ? 1 : 0,
             app->setting_sound ? 1 : 0,
             app->dns_custom_enabled ? 1 : 0,
             app->dns_custom_ip_input,
             app->ping_count,
             app->ping_timeout_ms,
-            app->ping_interval_ms);
+            app->ping_interval_ms,
+            app->autotest_dns_host,
+            app->autotest_lldp_wait_s,
+            app->autotest_arp_enabled ? 1 : 0);
         storage_file_write(file, buf, strlen(buf));
         storage_file_close(file);
     }
@@ -782,6 +805,37 @@ static void settings_ping_interval_changed(VariableItem* item) {
     }
 }
 
+static const uint8_t autotest_lldp_wait_options[] = {10, 20, 30, 60};
+#define AUTOTEST_LLDP_WAIT_COUNT 4
+
+static void settings_autotest_lldp_wait_changed(VariableItem* item) {
+    uint8_t idx = variable_item_get_current_value_index(item);
+    if(idx >= AUTOTEST_LLDP_WAIT_COUNT) idx = 2; /* default 30s */
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d s", autotest_lldp_wait_options[idx]);
+    variable_item_set_current_value_text(item, buf);
+    if(g_app) {
+        g_app->autotest_lldp_wait_s = autotest_lldp_wait_options[idx];
+        lan_tester_settings_save(g_app);
+    }
+}
+
+static void settings_autotest_arp_changed(VariableItem* item) {
+    uint8_t idx = variable_item_get_current_value_index(item);
+    variable_item_set_current_value_text(item, setting_onoff[idx]);
+    if(g_app) {
+        g_app->autotest_arp_enabled = (idx == 1);
+        lan_tester_settings_save(g_app);
+    }
+}
+
+static void autotest_dns_host_input_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    lan_tester_settings_save(app);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewSettings);
+}
+
 static void dns_custom_ip_input_callback(void* context) {
     LanTesterApp* app = context;
     furi_assert(app);
@@ -810,7 +864,10 @@ typedef enum {
     LanTesterSettingsItemPingInterval = 6,
     LanTesterSettingsItemClearHistory = 7,
     LanTesterSettingsItemMacChanger = 8,
-    LanTesterSettingsItemAbout = 9,
+    LanTesterSettingsItemAutoTestDnsHost = 9,
+    LanTesterSettingsItemAutoTestLldpWait = 10,
+    LanTesterSettingsItemAutoTestArpScan = 11,
+    LanTesterSettingsItemAbout = 12,
     LanTesterSettingsItemCount,
 } LanTesterSettingsItem;
 
@@ -851,6 +908,17 @@ static void settings_enter_callback(void* context, uint32_t index) {
             app->mac_changer_input,
             6);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewMacChangerInput);
+    } else if(index == LanTesterSettingsItemAutoTestDnsHost) {
+        text_input_reset(app->text_input_dns);
+        text_input_set_header_text(app->text_input_dns, "AutoTest DNS host:");
+        text_input_set_result_callback(
+            app->text_input_dns,
+            autotest_dns_host_input_callback,
+            app,
+            app->autotest_dns_host,
+            sizeof(app->autotest_dns_host),
+            false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewDnsInput);
     } else if(index == LanTesterSettingsItemAbout) {
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewAbout);
     }
@@ -1793,6 +1861,23 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* MAC Changer — opens byte input for MAC address */
     variable_item_list_add(app->settings_list, "MAC Changer", 0, NULL, app);
 
+    /* AutoTest DNS host — opens text input */
+    VariableItem* item_at_dns =
+        variable_item_list_add(app->settings_list, "AT DNS host", 0, NULL, app);
+    variable_item_set_current_value_text(item_at_dns, app->autotest_dns_host);
+
+    /* AutoTest LLDP wait — 10/20/30/60 seconds */
+    VariableItem* item_at_lldp = variable_item_list_add(
+        app->settings_list,
+        "AT LLDP wait",
+        AUTOTEST_LLDP_WAIT_COUNT,
+        settings_autotest_lldp_wait_changed,
+        app);
+
+    /* AutoTest ARP scan — On/Off */
+    VariableItem* item_at_arp = variable_item_list_add(
+        app->settings_list, "AT ARP scan", 2, settings_autotest_arp_changed, app);
+
     /* About — last item in Settings */
     variable_item_list_add(app->settings_list, "About", 0, NULL, app);
 
@@ -1831,6 +1916,27 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         snprintf(buf, sizeof(buf), "%d", app->ping_interval_ms);
         variable_item_set_current_value_text(item_ping_interval, buf);
     }
+
+    /* AutoTest LLDP wait: find matching index */
+    {
+        uint8_t lldp_idx = 2; /* default 30s = index 2 */
+        for(uint8_t i = 0; i < AUTOTEST_LLDP_WAIT_COUNT; i++) {
+            if(autotest_lldp_wait_options[i] == app->autotest_lldp_wait_s) {
+                lldp_idx = i;
+                break;
+            }
+        }
+        variable_item_set_current_value_index(item_at_lldp, lldp_idx);
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d s", autotest_lldp_wait_options[lldp_idx]);
+        variable_item_set_current_value_text(item_at_lldp, buf);
+    }
+    /* AutoTest ARP scan */
+    variable_item_set_current_value_index(item_at_arp, app->autotest_arp_enabled ? 1 : 0);
+    variable_item_set_current_value_text(
+        item_at_arp, setting_onoff[app->autotest_arp_enabled ? 1 : 0]);
+    /* AutoTest DNS host — already set from load */
+    variable_item_set_current_value_text(item_at_dns, app->autotest_dns_host);
 
     /* Load saved MAC from SD card if available, otherwise save the generated one */
     if(mac_changer_load(app->mac_addr)) {
@@ -5022,13 +5128,131 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
 
 /* ==================== Auto Test ==================== */
 
+typedef enum {
+    AutoTestStateIdle,
+    AutoTestStateTesting,
+    AutoTestStateDone,
+} AutoTestState;
+
 static void lan_tester_do_autotest(LanTesterApp* app) {
-    furi_string_set(app->autotest_text, "Waiting for link...\n");
-    lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->autotest_text, "W5500 Not Found!\nCheck SPI wiring.\n");
+        lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+        return;
+    }
+
+    AutoTestState state = AutoTestStateIdle;
 
     /* Main loop: IDLE → TESTING → DONE → wait for link loss → IDLE */
     while(app->autotest_running && app->worker_running) {
-        furi_delay_ms(200);
+        bool link = w5500_hal_get_link_status();
+
+        if(state == AutoTestStateIdle) {
+            if(!link) {
+                furi_string_set(app->autotest_text, "Waiting for link...\n");
+                lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+                while(app->autotest_running && app->worker_running) {
+                    if(w5500_hal_get_link_status()) break;
+                    furi_delay_ms(200);
+                }
+                if(!app->autotest_running || !app->worker_running) break;
+                /* Small delay for link to stabilize */
+                furi_delay_ms(500);
+            }
+            state = AutoTestStateTesting;
+        }
+
+        if(state == AutoTestStateTesting) {
+            FuriString* body = furi_string_alloc();
+            bool dhcp_ok = false;
+            bool gw_ok = false;
+            bool dns_ok = false;
+
+            furi_string_set(app->autotest_text, "[Auto Test]\n");
+            lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+
+            /* Step 1: Link Info */
+            if(!w5500_hal_get_link_status() || !app->autotest_running) {
+                furi_string_free(body);
+                state = AutoTestStateIdle;
+                continue;
+            }
+            {
+                bool link_up = false;
+                uint8_t speed = 0, duplex = 0;
+                w5500_hal_get_phy_info(&link_up, &speed, &duplex);
+                app->link_up = link_up;
+                app->link_speed = speed;
+                app->link_duplex = duplex;
+                furi_string_cat_printf(
+                    body,
+                    "Link: UP %sM %s\n",
+                    speed ? "100" : "10",
+                    duplex ? "Full" : "Half");
+            }
+            furi_string_set(app->autotest_text, "[Auto Test]\n");
+            furi_string_cat(app->autotest_text, body);
+            lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+
+            /* Step 2: DHCP */
+            if(!w5500_hal_get_link_status() || !app->autotest_running) {
+                furi_string_free(body);
+                state = AutoTestStateIdle;
+                continue;
+            }
+            app->dhcp_valid = false; /* force fresh DHCP */
+            dhcp_ok = lan_tester_ensure_dhcp(app);
+            if(dhcp_ok) {
+                uint8_t pfx = arp_mask_to_prefix(app->dhcp_mask);
+                furi_string_cat_printf(
+                    body,
+                    "DHCP: %d.%d.%d.%d/%d\n"
+                    "GW:   %d.%d.%d.%d\n"
+                    "DNS:  %d.%d.%d.%d\n",
+                    app->dhcp_ip[0],
+                    app->dhcp_ip[1],
+                    app->dhcp_ip[2],
+                    app->dhcp_ip[3],
+                    pfx,
+                    app->dhcp_gw[0],
+                    app->dhcp_gw[1],
+                    app->dhcp_gw[2],
+                    app->dhcp_gw[3],
+                    app->dhcp_dns[0],
+                    app->dhcp_dns[1],
+                    app->dhcp_dns[2],
+                    app->dhcp_dns[3]);
+            } else {
+                furi_string_cat_str(body, "DHCP: FAIL\n");
+            }
+            furi_string_set(app->autotest_text, "[Auto Test]\n");
+            furi_string_cat(app->autotest_text, body);
+            lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+
+            /* Steps 3-7 will be added in subsequent stages */
+
+            /* Final render with verdict */
+            bool all_ok = dhcp_ok && gw_ok && dns_ok;
+            furi_string_reset(app->autotest_text);
+            furi_string_cat_str(
+                app->autotest_text, all_ok ? "[Auto Test] OK\n" : "[Auto Test]\n");
+            furi_string_cat(app->autotest_text, body);
+            furi_string_free(body);
+            lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+
+            state = AutoTestStateDone;
+        }
+
+        if(state == AutoTestStateDone) {
+            /* Wait for link loss */
+            while(app->autotest_running && app->worker_running) {
+                if(!w5500_hal_get_link_status()) {
+                    state = AutoTestStateIdle;
+                    break;
+                }
+                furi_delay_ms(200);
+            }
+        }
     }
 }
 
