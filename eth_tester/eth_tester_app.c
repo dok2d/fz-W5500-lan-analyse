@@ -292,27 +292,51 @@ static EthTesterApp* eth_tester_app_alloc(void) {
 
     /* Main menu (Submenu view) */
     app->submenu = submenu_alloc();
-    /* Menu ordered by typical workflow: check link, scan, diagnose, utilities */
-    submenu_add_item(app->submenu, "Link Info", EthTesterMenuItemLinkInfo, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "DHCP Analyze", EthTesterMenuItemDhcpAnalyze, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "ARP Scan", EthTesterMenuItemArpScan, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Continuous Ping", EthTesterMenuItemContPing, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "DNS Lookup", EthTesterMenuItemDnsLookup, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Port Scan (Top 20)", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Port Scan (Top 100)", EthTesterMenuItemPortScanFull, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "LLDP/CDP", EthTesterMenuItemLldpCdp, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "mDNS/SSDP", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "STP/VLAN", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
+    /* Main menu: grouped categories */
+    submenu_add_item(app->submenu, "Network Info", 100, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Discovery", 101, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Diagnostics", 102, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Tools", 103, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "About", EthTesterMenuItemAbout, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
+
+    /* Category: Network Info */
+    app->submenu_cat_netinfo = submenu_alloc();
+    submenu_add_item(app->submenu_cat_netinfo, "Link Info", EthTesterMenuItemLinkInfo, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_netinfo, "DHCP Analyze", EthTesterMenuItemDhcpAnalyze, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_netinfo, "Statistics", EthTesterMenuItemStats, eth_tester_submenu_callback, app);
+    view_set_previous_callback(submenu_get_view(app->submenu_cat_netinfo), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatNetInfo, submenu_get_view(app->submenu_cat_netinfo));
+
+    /* Category: Discovery */
+    app->submenu_cat_discovery = submenu_alloc();
+    submenu_add_item(app->submenu_cat_discovery, "ARP Scan", EthTesterMenuItemArpScan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_discovery, "Ping Sweep", EthTesterMenuItemPingSweep, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_discovery, "LLDP/CDP", EthTesterMenuItemLldpCdp, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_discovery, "mDNS/SSDP", EthTesterMenuItemDiscovery, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_discovery, "STP/VLAN", EthTesterMenuItemStpVlan, eth_tester_submenu_callback, app);
+    view_set_previous_callback(submenu_get_view(app->submenu_cat_discovery), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatDiscovery, submenu_get_view(app->submenu_cat_discovery));
+
+    /* Category: Diagnostics */
+    app->submenu_cat_diag = submenu_alloc();
+    submenu_add_item(app->submenu_cat_diag, "Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_diag, "Continuous Ping", EthTesterMenuItemContPing, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_diag, "DNS Lookup", EthTesterMenuItemDnsLookup, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_diag, "Traceroute", EthTesterMenuItemTraceroute, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_diag, "Port Scan (Top 20)", EthTesterMenuItemPortScan, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_diag, "Port Scan (Top 100)", EthTesterMenuItemPortScanFull, eth_tester_submenu_callback, app);
+    view_set_previous_callback(submenu_get_view(app->submenu_cat_diag), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatDiag, submenu_get_view(app->submenu_cat_diag));
+
+    /* Category: Tools */
+    app->submenu_cat_tools = submenu_alloc();
+    submenu_add_item(app->submenu_cat_tools, "Wake-on-LAN", EthTesterMenuItemWol, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_tools, "MAC Changer", EthTesterMenuItemMacChanger, eth_tester_submenu_callback, app);
+    view_set_previous_callback(submenu_get_view(app->submenu_cat_tools), eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewCatTools, submenu_get_view(app->submenu_cat_tools));
 
     /* TextBox views for each feature */
     app->text_box_link = text_box_alloc();
@@ -530,8 +554,16 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHistory);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHistoryFile);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewAbout);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatNetInfo);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatDiscovery);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatDiag);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatTools);
 
     submenu_free(app->submenu);
+    submenu_free(app->submenu_cat_netinfo);
+    submenu_free(app->submenu_cat_discovery);
+    submenu_free(app->submenu_cat_diag);
+    submenu_free(app->submenu_cat_tools);
     text_box_free(app->text_box_link);
     text_box_free(app->text_box_lldp);
     text_box_free(app->text_box_arp);
@@ -1263,6 +1295,19 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
 
     case EthTesterMenuItemAbout:
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewAbout);
+        break;
+
+    case 100: /* Network Info category */
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewCatNetInfo);
+        break;
+    case 101: /* Discovery category */
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewCatDiscovery);
+        break;
+    case 102: /* Diagnostics category */
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewCatDiag);
+        break;
+    case 103: /* Tools category */
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewCatTools);
         break;
 
     default:

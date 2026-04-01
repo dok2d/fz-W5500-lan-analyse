@@ -44,6 +44,10 @@ typedef enum {
     EthTesterViewHistory,
     EthTesterViewHistoryFile,
     EthTesterViewAbout,
+    EthTesterViewCatNetInfo,
+    EthTesterViewCatDiscovery,
+    EthTesterViewCatDiag,
+    EthTesterViewCatTools,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -88,6 +92,10 @@ struct EthTesterApp {
     Gui* gui;
     ViewDispatcher* view_dispatcher;
     Submenu* submenu;
+    Submenu* submenu_cat_netinfo;
+    Submenu* submenu_cat_discovery;
+    Submenu* submenu_cat_diag;
+    Submenu* submenu_cat_tools;
     TextBox* text_box_link;
     TextBox* text_box_lldp;
     TextBox* text_box_arp;
