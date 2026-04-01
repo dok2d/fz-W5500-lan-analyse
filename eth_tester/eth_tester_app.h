@@ -49,6 +49,9 @@ typedef enum {
     EthTesterViewCatTools,
     EthTesterViewSettings,
     EthTesterViewEthBridge,
+    EthTesterViewPxeServer,
+    EthTesterViewPxeSettings,
+    EthTesterViewPxeHelp,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -73,6 +76,7 @@ typedef enum {
     EthTesterMenuItemHistory,
     EthTesterMenuItemAbout,
     EthTesterMenuItemEthBridge,
+    EthTesterMenuItemPxeServer,
 } EthTesterMenuItem;
 
 /* Packet statistics counters */
@@ -192,6 +196,25 @@ struct EthTesterApp {
     /* ETH Bridge state */
     View* view_bridge;
     EthBridgeState* bridge_state;
+
+    /* PXE Server state */
+    TextBox* text_box_pxe;
+    TextBox* text_box_pxe_help;
+    FuriString* pxe_text;
+    VariableItemList* pxe_settings_list;
+    VariableItem* pxe_item_sip;
+    VariableItem* pxe_item_cip;
+    VariableItem* pxe_item_sub;
+    VariableItem* pxe_item_boot;
+
+    /* PXE settings (user-configurable) */
+    char pxe_server_ip_input[16];      /* "192.168.77.1" */
+    char pxe_client_ip_input[16];      /* "192.168.77.10" */
+    char pxe_subnet_input[16];         /* "255.255.255.0" */
+    bool pxe_dhcp_enabled;             /* true = run DHCP server */
+    uint8_t pxe_server_ip[4];          /* parsed */
+    uint8_t pxe_client_ip[4];          /* parsed */
+    uint8_t pxe_subnet[4];             /* parsed */
 
     /* Text buffers for views */
     FuriString* link_info_text;
