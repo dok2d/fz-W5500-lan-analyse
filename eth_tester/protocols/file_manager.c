@@ -138,11 +138,25 @@ static bool http_send_fstr(uint8_t sn, FuriString* fstr) {
 }
 
 /*
- * Wait for the last send to complete before closing connection.
- * Without this, disconnect() can cut off in-flight data.
+ * Wait for ALL pending data to be transmitted before closing connection.
+ * 1. Wait for SEND_OK (last send command completed)
+ * 2. Wait for TX buffer to drain (all data ACK'd by remote)
+ * Without this, disconnect() sends FIN while data is still in flight.
  */
 static void http_flush(uint8_t sn) {
+    /* Wait for last send command to complete */
     http_wait_send_done(sn);
+
+    /* Wait for TX buffer to fully drain (remote ACK'd all data) */
+    uint32_t start = furi_get_tick();
+    while(furi_get_tick() - start < 5000) {
+        uint8_t sr = getSn_SR(sn);
+        if(sr != SOCK_ESTABLISHED && sr != SOCK_CLOSE_WAIT) break;
+        uint16_t txfree = getSn_TX_FSR(sn);
+        uint16_t txmax = getSn_TxMAX(sn);
+        if(txfree >= txmax) break; /* All data sent and ACK'd */
+        furi_delay_ms(5);
+    }
 }
 
 /* ==================== HTML generation ==================== */
@@ -825,6 +839,19 @@ void file_manager_poll(FileManagerState* state, uint8_t* buf, uint16_t buf_size)
         handle_connection(FILEMGR_HTTP_SOCKET, buf, buf_size, state);
         /* Data already flushed inside handlers. Now close gracefully. */
         disconnect(FILEMGR_HTTP_SOCKET);
+        /* Wait for disconnect to complete, then immediately re-listen
+         * so the next request (e.g. redirect follow) doesn't get refused */
+        {
+            uint32_t dstart = furi_get_tick();
+            while(furi_get_tick() - dstart < 2000) {
+                uint8_t dsr = getSn_SR(FILEMGR_HTTP_SOCKET);
+                if(dsr == SOCK_CLOSED) break;
+                furi_delay_ms(5);
+            }
+        }
+        /* Re-open and listen immediately */
+        socket(FILEMGR_HTTP_SOCKET, Sn_MR_TCP, FILEMGR_HTTP_PORT, 0);
+        listen(FILEMGR_HTTP_SOCKET);
         break;
 
     case SOCK_CLOSE_WAIT:
