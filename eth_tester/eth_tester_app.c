@@ -228,11 +228,17 @@ static void bridge_draw_callback(Canvas* canvas, void* model) {
 static bool bridge_input_callback(InputEvent* event, void* context) {
     EthTesterApp* app = context;
     if(event->type == InputTypeShort && event->key == InputKeyBack) {
-        if(app->bridge_state) {
-            app->bridge_state->running = false;
+        if(app->worker_running) {
+            /* Bridge is active — signal it to stop */
+            if(app->bridge_state) {
+                app->bridge_state->running = false;
+            }
+            app->worker_running = false;
+            return true; /* consumed — worker will clean up */
         }
-        app->worker_running = false;
-        return true;
+        /* Bridge already stopped — let the default previous_callback
+         * handle Back navigation (return to Tools menu) */
+        return false;
     }
     return false;
 }
