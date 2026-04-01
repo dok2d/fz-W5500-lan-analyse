@@ -79,6 +79,15 @@ typedef struct {
     bool dhcp_enabled;          /* Run built-in DHCP server? */
 } PxeConfig;
 
+/* Maximum number of detected boot files */
+#define PXE_MAX_BOOT_FILES 8
+
+/* Single boot file entry */
+typedef struct {
+    char filename[64];
+    uint32_t file_size;
+} PxeBootFile;
+
 /* PXE server overall state */
 typedef struct {
     volatile bool running;
@@ -93,15 +102,39 @@ typedef struct {
     uint32_t tftp_blocks_sent;
     uint32_t tftp_errors;
 
-    /* Boot file info */
+    /* Boot file info (selected) */
     char boot_filename[64];
     uint32_t boot_file_size;
     bool boot_file_found;
+
+    /* All detected boot files */
+    PxeBootFile boot_files[PXE_MAX_BOOT_FILES];
+    uint8_t boot_file_count;
 
     /* Client info (for display) */
     uint8_t client_mac[6];
     bool client_seen;
 } PxeServerState;
+
+/* Result of external DHCP detection */
+typedef struct {
+    bool found;              /* true if external DHCP responded */
+    uint8_t offered_ip[4];   /* IP offered to us */
+    uint8_t server_ip[4];    /* DHCP server IP */
+    uint8_t subnet[4];       /* Subnet from DHCP */
+    uint8_t gateway[4];      /* Gateway from DHCP */
+} PxeExternalDhcp;
+
+/**
+ * Probe the network for an existing DHCP server.
+ * Sends a DHCP Discover and waits up to 5 seconds for an Offer.
+ * If found, populates result with the external DHCP info.
+ * Returns true if an external DHCP server was detected.
+ */
+bool pxe_detect_external_dhcp(
+    uint8_t socket_num,
+    const uint8_t mac[6],
+    PxeExternalDhcp* result);
 
 /**
  * Detect boot file on SD card.

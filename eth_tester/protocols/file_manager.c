@@ -3,6 +3,7 @@
 #include <furi.h>
 #include <furi_hal_power.h>
 #include <furi_hal_version.h>
+#include <furi_hal_random.h>
 #include <storage/storage.h>
 #include <socket.h>
 #include <wizchip_conf.h>
@@ -226,6 +227,24 @@ static void format_size(uint64_t size, char* buf, size_t buf_size) {
     }
 }
 
+/* Escape HTML special chars into a separate buffer.
+ * Only escapes <, >, &, " which are dangerous in HTML context.
+ * Returns pointer to buf (NOT reentrant, but we are single-threaded). */
+static const char* html_escape(const char* src, char* buf, size_t buf_size) {
+    size_t di = 0;
+    for(size_t i = 0; src[i] && di < buf_size - 6; i++) {
+        switch(src[i]) {
+        case '<': memcpy(buf + di, "&lt;", 4); di += 4; break;
+        case '>': memcpy(buf + di, "&gt;", 4); di += 4; break;
+        case '&': memcpy(buf + di, "&amp;", 5); di += 5; break;
+        case '"': memcpy(buf + di, "&#34;", 5); di += 5; break;
+        default: buf[di++] = src[i]; break;
+        }
+    }
+    buf[di] = '\0';
+    return buf;
+}
+
 /* Build parent path from current path */
 static void get_parent_path(const char* path, char* parent, size_t parent_size) {
     strncpy(parent, path, parent_size);
@@ -252,7 +271,10 @@ static void get_parent_path(const char* path, char* parent, size_t parent_size) 
  * Uses Connection: close without Content-Length so the browser reads
  * until the server closes the connection.
  */
-static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_path) {
+static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_path, const char* token) {
+    /* Token suffix for all URLs */
+    char tsuf[16];
+    snprintf(tsuf, sizeof(tsuf), "?t=%s", token);
     /* HTTP headers (no Content-Length — we stream until close) */
     http_send_str(sn, "HTTP/1.1 200 OK\r\n"
         "Content-Type: text/html;charset=utf-8\r\n"
@@ -279,6 +301,7 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
         get_parent_path(web_path, parent, sizeof(parent));
         http_send_str(sn, "<a href='/browse");
         http_send_str(sn, parent);
+        http_send_str(sn, tsuf);
         http_send_str(sn, "' class='b bs'>Up</a> ");
     }
 
@@ -286,6 +309,7 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
     http_send_str(sn, "<div class='uf'>"
         "<form method='POST' action='/upload");
     http_send_str(sn, web_path);
+    http_send_str(sn, tsuf);
     http_send_str(sn, "' enctype='multipart/form-data'>"
         "<input type='file' name='file'> "
         "<button type='submit' class='b bs'>Upload</button>"
@@ -295,6 +319,7 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
     http_send_str(sn, "<div class='mf'>"
         "<form method='POST' action='/mkdir");
     http_send_str(sn, web_path);
+    http_send_str(sn, tsuf);
     http_send_str(sn, "'>"
         "<input type='text' name='name' placeholder='New folder' size='16'> "
         "<button type='submit' class='b bs'>Create</button>"
@@ -336,38 +361,44 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
         }
 
         /* Stream each row directly — no HTML accumulation */
+        char esc_name[FM_NAME_MAX * 5]; /* worst case: every char escaped */
         for(uint16_t i = 0; i < entry_count; i++) {
+            html_escape(entries[i].name, esc_name, sizeof(esc_name));
             if(entries[i].is_dir) {
                 http_send_str(sn, "<tr><td><a href='/browse");
                 if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
                 http_send_str(sn, "/");
-                http_send_str(sn, entries[i].name);
+                http_send_str(sn, esc_name);
+                http_send_str(sn, tsuf);
                 http_send_str(sn, "' class='d'>");
-                http_send_str(sn, entries[i].name);
+                http_send_str(sn, esc_name);
                 http_send_str(sn, "/</a></td><td class='s'>-</td><td class='a'>"
                     "<a href='/delete");
                 if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
                 http_send_str(sn, "/");
-                http_send_str(sn, entries[i].name);
+                http_send_str(sn, esc_name);
+                http_send_str(sn, tsuf);
                 http_send_str(sn, "' onclick=\"return confirm('Delete?')\">"
                     "Del</a></td></tr>");
             } else {
                 char size_str[32];
                 format_size(entries[i].size, size_str, sizeof(size_str));
                 http_send_str(sn, "<tr><td>");
-                http_send_str(sn, entries[i].name);
+                http_send_str(sn, esc_name);
                 http_send_str(sn, "</td><td class='s'>");
                 http_send_str(sn, size_str);
                 http_send_str(sn, "</td><td class='a'>"
                     "<a href='/download");
                 if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
                 http_send_str(sn, "/");
-                http_send_str(sn, entries[i].name);
+                http_send_str(sn, esc_name);
+                http_send_str(sn, tsuf);
                 http_send_str(sn, "' class='b bs'>DL</a>"
                     "<a href='/delete");
                 if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
                 http_send_str(sn, "/");
-                http_send_str(sn, entries[i].name);
+                http_send_str(sn, esc_name);
+                http_send_str(sn, tsuf);
                 http_send_str(sn, "' onclick=\"return confirm('Delete?')\">"
                     "Del</a></td></tr>");
             }
@@ -422,6 +453,17 @@ static void handle_download(
 
     uint64_t file_size = storage_file_size(file);
 
+    /* Sanitize filename for Content-Disposition header */
+    char safe_name[49];
+    size_t si = 0;
+    for(size_t i = 0; filename[i] && si < sizeof(safe_name) - 1; i++) {
+        char c = filename[i];
+        if(c != '"' && c != '\\' && c != '\r' && c != '\n') {
+            safe_name[si++] = c;
+        }
+    }
+    safe_name[si] = '\0';
+
     /* Send response headers */
     char hdr[192];
     snprintf(
@@ -432,7 +474,7 @@ static void handle_download(
         "Content-Disposition: attachment; filename=\"%.48s\"\r\n"
         "Content-Length: %lu\r\n"
         "Connection: close\r\n\r\n",
-        filename,
+        safe_name,
         (unsigned long)file_size);
     http_send_str(sn, hdr);
 
@@ -552,6 +594,22 @@ static void handle_upload(
     if(fn_len >= sizeof(filename)) fn_len = sizeof(filename) - 1;
     memcpy(filename, fn_ptr, fn_len);
     filename[fn_len] = '\0';
+
+    /* Sanitize filename: strip path separators to prevent traversal */
+    char* slash;
+    while((slash = strrchr(filename, '/')) != NULL) {
+        memmove(filename, slash + 1, strlen(slash + 1) + 1);
+    }
+    while((slash = strrchr(filename, '\\')) != NULL) {
+        memmove(filename, slash + 1, strlen(slash + 1) + 1);
+    }
+    fn_len = strlen(filename);
+    if(fn_len == 0) {
+        http_send_str(sn, "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
+            "Content-Length: 12\r\n\r\nNo filename\n");
+        http_flush(sn);
+        return;
+    }
 
     /* Find start of file data (after \r\n\r\n in part headers) */
     char* data_start = strstr(fn_end, "\r\n\r\n");
@@ -701,8 +759,8 @@ static void handle_upload(
     state->bytes_received = total_written;
     FURI_LOG_I(TAG, "Uploaded: %s (%u bytes)", filename, (unsigned)total_written);
 
-    /* Redirect back to directory */
-    FuriString* loc = furi_string_alloc_printf("/browse%s", web_dir_path);
+    /* Redirect back to directory (with auth token) */
+    FuriString* loc = furi_string_alloc_printf("/browse%s?t=%s", web_dir_path, state->auth_token);
     http_send_str(sn, "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
         "Content-Length: 0\r\nLocation: ");
     http_send_str(sn, furi_string_get_cstr(loc));
@@ -718,7 +776,8 @@ static void handle_mkdir(
     const char* web_dir_path,
     uint8_t* buf,
     uint16_t buf_size,
-    int32_t body_pre_read) {
+    int32_t body_pre_read,
+    const char* token) {
     /* Body may already be in buf from handle_connection */
     int32_t total_read = body_pre_read;
     uint16_t chunk = buf_size;
@@ -769,7 +828,7 @@ static void handle_mkdir(
     }
 
     /* Redirect */
-    FuriString* loc = furi_string_alloc_printf("/browse%s", web_dir_path);
+    FuriString* loc = furi_string_alloc_printf("/browse%s?t=%s", web_dir_path, token);
     http_send_str(sn, "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
         "Content-Length: 0\r\nLocation: ");
     http_send_str(sn, furi_string_get_cstr(loc));
@@ -779,13 +838,13 @@ static void handle_mkdir(
 }
 
 /* Handle delete */
-static void handle_delete(uint8_t sn, const char* sd_path, const char* web_parent_path) {
+static void handle_delete(uint8_t sn, const char* sd_path, const char* web_parent_path, const char* token) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
     storage_simply_remove(storage, sd_path);
     furi_record_close(RECORD_STORAGE);
     FURI_LOG_I(TAG, "Deleted: %s", sd_path);
 
-    FuriString* loc = furi_string_alloc_printf("/browse%s", web_parent_path);
+    FuriString* loc = furi_string_alloc_printf("/browse%s?t=%s", web_parent_path, token);
     http_send_str(sn, "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
         "Content-Length: 0\r\nLocation: ");
     http_send_str(sn, furi_string_get_cstr(loc));
@@ -795,6 +854,17 @@ static void handle_delete(uint8_t sn, const char* sd_path, const char* web_paren
 }
 
 /* ==================== Main request router ==================== */
+
+/* Reject paths containing directory traversal */
+static bool path_is_safe(const char* path) {
+    /* Block ".." anywhere in the path */
+    const char* p = path;
+    while(*p) {
+        if(p[0] == '.' && p[1] == '.') return false;
+        p++;
+    }
+    return true;
+}
 
 static void web_to_sd_path(const char* web_path, char* sd_path, size_t sd_size) {
     if(web_path[0] == '\0' || strcmp(web_path, "/") == 0) {
@@ -821,14 +891,26 @@ static void handle_request(
     char uri[FILEMGR_PATH_MAX];
     url_decode(uri, raw_uri, sizeof(uri));
 
+    /* Reject path traversal attempts */
+    if(!path_is_safe(uri)) {
+        http_send_str(sn, "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n"
+            "Content-Length: 10\r\n\r\nForbidden\n");
+        http_flush(sn);
+        return;
+    }
+
     char sd_path[FILEMGR_PATH_MAX];
     char web_path[FILEMGR_PATH_MAX];
 
     state->requests_served++;
 
     if(strcmp(uri, "/") == 0 || strcmp(uri, "") == 0) {
+        char redir[32];
+        snprintf(redir, sizeof(redir), "/browse/?t=%s", state->auth_token);
         http_send_str(sn, "HTTP/1.1 303 See Other\r\nConnection: close\r\n"
-            "Content-Length: 0\r\nLocation: /browse/\r\n\r\n");
+            "Content-Length: 0\r\nLocation: ");
+        http_send_str(sn, redir);
+        http_send_str(sn, "\r\n\r\n");
         http_flush(sn);
         return;
     }
@@ -849,7 +931,7 @@ static void handle_request(
         furi_record_close(RECORD_STORAGE);
 
         if(is_dir) {
-            handle_list_dir(sn, sd_path, web_path);
+            handle_list_dir(sn, sd_path, web_path, state->auth_token);
         } else {
             http_send_str(sn, "HTTP/1.1 404 Not Found\r\nConnection: close\r\n"
                 "Content-Length: 10\r\n\r\nNot found\n");
@@ -875,7 +957,7 @@ static void handle_request(
 
         char parent[FILEMGR_PATH_MAX];
         get_parent_path(web_path, parent, sizeof(parent));
-        handle_delete(sn, sd_path, parent);
+        handle_delete(sn, sd_path, parent, state->auth_token);
         return;
     }
 
@@ -895,7 +977,7 @@ static void handle_request(
         strncpy(web_path, path, sizeof(web_path));
         web_path[sizeof(web_path) - 1] = '\0';
         web_to_sd_path(web_path, sd_path, sizeof(sd_path));
-        handle_mkdir(sn, sd_path, web_path, buf, buf_size, body_pre_read);
+        handle_mkdir(sn, sd_path, web_path, buf, buf_size, body_pre_read, state->auth_token);
         return;
     }
 
@@ -957,8 +1039,28 @@ static void handle_connection(
     memcpy(uri, uri_start, uri_len);
     uri[uri_len] = '\0';
 
+    /* Extract auth token from query string before stripping it */
     char* query = strchr(uri, '?');
-    if(query) *query = '\0';
+    bool token_ok = false;
+    if(query) {
+        char* t_param = strstr(query, "t=");
+        if(t_param) {
+            t_param += 2;
+            if(strncmp(t_param, state->auth_token, FILEMGR_TOKEN_LEN) == 0) {
+                token_ok = true;
+            }
+        }
+        *query = '\0'; /* Strip query from URI */
+    }
+
+    /* Validate auth token (required on all requests) */
+    if(!token_ok) {
+        http_send_str(sn, "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n"
+            "Content-Type: text/plain\r\nContent-Length: 42\r\n\r\n"
+            "Access denied. Use URL with ?t=<token>.\n");
+        http_flush(sn);
+        return;
+    }
 
     FURI_LOG_I(TAG, "%s %s", method, uri);
 
@@ -986,6 +1088,17 @@ bool file_manager_start(FileManagerState* state) {
     memset(state, 0, sizeof(FileManagerState));
     strncpy(state->current_path, "/ext", sizeof(state->current_path));
     state->running = true;
+
+    /* Generate random 4-char hex auth token */
+    static const char hex[] = "0123456789abcdef";
+    uint8_t rnd[2];
+    furi_hal_random_fill_buf(rnd, 2);
+    state->auth_token[0] = hex[(rnd[0] >> 4) & 0x0F];
+    state->auth_token[1] = hex[rnd[0] & 0x0F];
+    state->auth_token[2] = hex[(rnd[1] >> 4) & 0x0F];
+    state->auth_token[3] = hex[rnd[1] & 0x0F];
+    state->auth_token[4] = '\0';
+    FURI_LOG_I(TAG, "File Manager token: %s", state->auth_token);
 
     int8_t ret = socket(FILEMGR_HTTP_SOCKET, Sn_MR_TCP, FILEMGR_HTTP_PORT, 0);
     if(ret != FILEMGR_HTTP_SOCKET) {

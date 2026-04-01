@@ -80,9 +80,19 @@ static void dhcp_timer_callback(void* context) {
     DHCP_time_handler();
 }
 
-/* Default MAC address (WIZnet OUI range) */
-#define DEFAULT_MAC \
-    { 0x00, 0x08, 0xDC, 0x47, 0x47, 0x54 }
+/*
+ * Generate a default MAC from the device's unique hardware name/id.
+ * Uses WIZnet OUI (00:08:DC) + 3 bytes derived from furi_hal_random,
+ * seeded implicitly by hardware RNG. Generated once and saved to SD.
+ * If no saved MAC exists, a fresh one is created.
+ */
+static void eth_tester_generate_default_mac(uint8_t mac[6]) {
+    mac[0] = 0x00;
+    mac[1] = 0x08;
+    mac[2] = 0xDC;
+    /* Generate unique lower 3 bytes from hardware RNG */
+    furi_hal_random_fill_buf(mac + 3, 3);
+}
 
 /* Frame receive buffer size */
 #define FRAME_BUF_SIZE 1600
@@ -485,12 +495,47 @@ static void pxe_dhcp_toggle_callback(VariableItem* item) {
     }
 }
 
+/* Boot file selection cycling callback */
+static void pxe_boot_file_changed(VariableItem* item) {
+    if(!g_app) return;
+    uint8_t idx = variable_item_get_current_value_index(item);
+    EthTesterApp* app = g_app;
+    PxeServerState* scan = &app->pxe_scan;
+
+    if(idx < scan->boot_file_count) {
+        app->pxe_boot_file_idx = idx;
+        char info[96];
+        snprintf(info, sizeof(info), "%s (%luB)",
+            scan->boot_files[idx].filename,
+            (unsigned long)scan->boot_files[idx].file_size);
+        variable_item_set_current_value_text(item, info);
+    }
+}
+
 static void pxe_settings_enter_callback(void* context, uint32_t index) {
     EthTesterApp* app = context;
     furi_assert(app);
 
     switch(index) {
-    case 0: /* Server IP */
+    case 0: /* >>> Start PXE <<< */ {
+        /* Apply selected boot file to pxe_scan before starting */
+        uint8_t bi = app->pxe_boot_file_idx;
+        if(bi < app->pxe_scan.boot_file_count) {
+            strncpy(app->pxe_scan.boot_filename,
+                app->pxe_scan.boot_files[bi].filename,
+                sizeof(app->pxe_scan.boot_filename) - 1);
+            app->pxe_scan.boot_file_size = app->pxe_scan.boot_files[bi].file_size;
+        }
+        furi_string_set(app->pxe_text, "Starting PXE Server...\n");
+        text_box_set_text(app->text_box_pxe, furi_string_get_cstr(app->pxe_text));
+        eth_tester_worker_start(app, EthTesterMenuItemPxeServer, EthTesterViewPxeServer);
+        break;
+    }
+    case 1: /* DHCP Server toggle — handled by change_callback */
+        break;
+    case 2: /* Boot File — cycling handled by change_callback */
+        break;
+    case 3: /* Server IP */
         ip_keyboard_setup(
             app->ip_keyboard,
             "Server IP:",
@@ -503,7 +548,7 @@ static void pxe_settings_enter_callback(void* context, uint32_t index) {
             eth_tester_nav_back_pxe_settings);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
         break;
-    case 1: /* Client IP */
+    case 4: /* Client IP */
         ip_keyboard_setup(
             app->ip_keyboard,
             "Client IP:",
@@ -516,7 +561,7 @@ static void pxe_settings_enter_callback(void* context, uint32_t index) {
             eth_tester_nav_back_pxe_settings);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
         break;
-    case 2: /* Subnet Mask */
+    case 5: /* Subnet Mask */
         ip_keyboard_setup(
             app->ip_keyboard,
             "Subnet Mask:",
@@ -529,32 +574,75 @@ static void pxe_settings_enter_callback(void* context, uint32_t index) {
             eth_tester_nav_back_pxe_settings);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
         break;
-    case 3: /* DHCP Server toggle — handled by change_callback */
-        break;
-    case 4: /* Boot File — read-only */
-        break;
-    case 5: /* >>> Start PXE <<< */
-        furi_string_set(app->pxe_text, "Starting PXE Server...\n");
-        text_box_set_text(app->text_box_pxe, furi_string_get_cstr(app->pxe_text));
-        eth_tester_worker_start(app, EthTesterMenuItemPxeServer, EthTesterViewPxeServer);
-        break;
     case 6: /* ? Help */
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeHelp);
         break;
     }
 }
 
-/* Refresh boot file info in PXE settings list */
-static void pxe_settings_refresh_boot_file(EthTesterApp* app) {
-    PxeServerState tmp_state;
-    memset(&tmp_state, 0, sizeof(tmp_state));
-    bool found = pxe_detect_boot_file(&tmp_state);
-    if(found) {
+/* Refresh boot file list and DHCP defaults for PXE settings screen */
+static void pxe_settings_refresh(EthTesterApp* app) {
+    /* Scan for boot files */
+    memset(&app->pxe_scan, 0, sizeof(app->pxe_scan));
+    bool found = pxe_detect_boot_file(&app->pxe_scan);
+
+    if(found && app->pxe_scan.boot_file_count > 0) {
+        /* Set up cycling for boot file selection */
+        app->pxe_boot_file_idx = 0;
+        variable_item_set_values_count(app->pxe_item_boot, app->pxe_scan.boot_file_count);
+        variable_item_set_current_value_index(app->pxe_item_boot, 0);
         char info[96];
-        snprintf(info, sizeof(info), "%s (%luB)", tmp_state.boot_filename, tmp_state.boot_file_size);
+        snprintf(info, sizeof(info), "%s (%luB)",
+            app->pxe_scan.boot_files[0].filename,
+            (unsigned long)app->pxe_scan.boot_files[0].file_size);
         variable_item_set_current_value_text(app->pxe_item_boot, info);
     } else {
+        variable_item_set_values_count(app->pxe_item_boot, 0);
         variable_item_set_current_value_text(app->pxe_item_boot, "Not found!");
+    }
+
+    /* Probe external DHCP once per session to auto-populate IP fields.
+     * Requires W5500 initialized and link up. */
+    if(!app->pxe_dhcp_probed && app->w5500_initialized && w5500_hal_get_link_status()) {
+        app->pxe_dhcp_probed = true;
+
+        PxeExternalDhcp ext;
+        if(pxe_detect_external_dhcp(W5500_DHCP_SOCKET, app->mac_addr, &ext)) {
+            /* External DHCP found — disable own DHCP, populate from detected subnet */
+            app->pxe_dhcp_enabled = false;
+            variable_item_set_current_value_index(app->pxe_item_dhcp, 0);
+            variable_item_set_current_value_text(app->pxe_item_dhcp, "OFF");
+
+            /* Server IP: offered + 100 (stay in subnet, avoid conflicts) */
+            uint8_t sip[4];
+            memcpy(sip, ext.offered_ip, 4);
+            sip[3] = (uint8_t)(ext.offered_ip[3] + 100);
+            if(sip[3] < ext.offered_ip[3]) sip[3] = 250;
+
+            snprintf(app->pxe_server_ip_input, sizeof(app->pxe_server_ip_input),
+                "%d.%d.%d.%d", sip[0], sip[1], sip[2], sip[3]);
+            eth_tester_parse_ip(app->pxe_server_ip_input, app->pxe_server_ip);
+            variable_item_set_current_value_text(app->pxe_item_sip, app->pxe_server_ip_input);
+
+            /* Client IP: use offered IP */
+            snprintf(app->pxe_client_ip_input, sizeof(app->pxe_client_ip_input),
+                "%d.%d.%d.%d", ext.offered_ip[0], ext.offered_ip[1],
+                ext.offered_ip[2], ext.offered_ip[3]);
+            eth_tester_parse_ip(app->pxe_client_ip_input, app->pxe_client_ip);
+            variable_item_set_current_value_text(app->pxe_item_cip, app->pxe_client_ip_input);
+
+            /* Subnet from DHCP */
+            if(ext.subnet[0] | ext.subnet[1] | ext.subnet[2] | ext.subnet[3]) {
+                snprintf(app->pxe_subnet_input, sizeof(app->pxe_subnet_input),
+                    "%d.%d.%d.%d", ext.subnet[0], ext.subnet[1],
+                    ext.subnet[2], ext.subnet[3]);
+                eth_tester_parse_ip(app->pxe_subnet_input, app->pxe_subnet);
+                variable_item_set_current_value_text(app->pxe_item_sub, app->pxe_subnet_input);
+            }
+
+            FURI_LOG_I(TAG, "PXE: ext DHCP detected, defaults updated");
+        }
+        /* If no external DHCP, keep the hardcoded defaults (192.168.77.x) */
     }
 }
 
@@ -567,9 +655,8 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->frame_buf = malloc(FRAME_BUF_SIZE);
     furi_assert(app->frame_buf);
 
-    /* Set default MAC */
-    uint8_t default_mac[6] = DEFAULT_MAC;
-    memcpy(app->mac_addr, default_mac, 6);
+    /* Set default MAC (derived from device UID for uniqueness) */
+    eth_tester_generate_default_mac(app->mac_addr);
 
     /* DHCP timer: 1 second periodic, needed by WIZnet DHCP_run() */
     app->dhcp_timer = furi_timer_alloc(dhcp_timer_callback, FuriTimerTypePeriodic, NULL);
@@ -858,7 +945,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         EthTesterViewPxeHelp,
         text_box_get_view(app->text_box_pxe_help));
 
-    /* PXE Settings (VariableItemList) */
+    /* PXE Settings (VariableItemList) — reordered: Start first */
     app->pxe_settings_list = variable_item_list_alloc();
     view_set_previous_callback(
         variable_item_list_get_view(app->pxe_settings_list),
@@ -867,30 +954,37 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         app->view_dispatcher, EthTesterViewPxeSettings,
         variable_item_list_get_view(app->pxe_settings_list));
 
+    /* Index 0: Start PXE */
+    variable_item_list_add(
+        app->pxe_settings_list, ">>> Start PXE <<<", 0, NULL, app);
+
+    /* Index 1: DHCP Server toggle */
+    app->pxe_item_dhcp = variable_item_list_add(
+        app->pxe_settings_list, "DHCP Server", 2, pxe_dhcp_toggle_callback, app);
+    variable_item_set_current_value_index(app->pxe_item_dhcp, 1); /* ON by default */
+    variable_item_set_current_value_text(app->pxe_item_dhcp, "ON");
+
+    /* Index 2: Boot File (cycling if multiple files detected) */
+    app->pxe_item_boot = variable_item_list_add(
+        app->pxe_settings_list, "Boot File", 0, pxe_boot_file_changed, app);
+    variable_item_set_current_value_text(app->pxe_item_boot, "Detecting...");
+
+    /* Index 3: Server IP */
     app->pxe_item_sip = variable_item_list_add(
         app->pxe_settings_list, "Server IP", 0, NULL, app);
     variable_item_set_current_value_text(app->pxe_item_sip, app->pxe_server_ip_input);
 
+    /* Index 4: Client IP */
     app->pxe_item_cip = variable_item_list_add(
         app->pxe_settings_list, "Client IP", 0, NULL, app);
     variable_item_set_current_value_text(app->pxe_item_cip, app->pxe_client_ip_input);
 
+    /* Index 5: Subnet Mask */
     app->pxe_item_sub = variable_item_list_add(
         app->pxe_settings_list, "Subnet Mask", 0, NULL, app);
     variable_item_set_current_value_text(app->pxe_item_sub, app->pxe_subnet_input);
 
-    VariableItem* pxe_item_dhcp = variable_item_list_add(
-        app->pxe_settings_list, "DHCP Server", 2, pxe_dhcp_toggle_callback, app);
-    variable_item_set_current_value_index(pxe_item_dhcp, 1); /* ON by default */
-    variable_item_set_current_value_text(pxe_item_dhcp, "ON");
-
-    app->pxe_item_boot = variable_item_list_add(
-        app->pxe_settings_list, "Boot File", 0, NULL, app);
-    variable_item_set_current_value_text(app->pxe_item_boot, "Detecting...");
-
-    variable_item_list_add(
-        app->pxe_settings_list, ">>> Start PXE <<<", 0, NULL, app);
-
+    /* Index 6: Help */
     variable_item_list_add(
         app->pxe_settings_list, "? Help", 0, NULL, app);
 
@@ -957,7 +1051,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         "discover devices,\n"
         "analyze DHCP/LLDP/CDP,\n"
         "detect VLANs and STP.\n\n"
-        "v1.0a | by dok2d\n"
+        "v1.0 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(text_box_get_view(app->text_box_about), eth_tester_navigation_submenu_callback);
@@ -996,9 +1090,12 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     variable_item_set_current_value_index(item_sound, app->setting_sound ? 1 : 0);
     variable_item_set_current_value_text(item_sound, setting_onoff[app->setting_sound ? 1 : 0]);
 
-    /* Load saved MAC from SD card if available */
+    /* Load saved MAC from SD card if available, otherwise save the generated one */
     if(mac_changer_load(app->mac_addr)) {
         FURI_LOG_I(TAG, "Loaded custom MAC from SD");
+    } else {
+        mac_changer_save(app->mac_addr);
+        FURI_LOG_I(TAG, "Generated and saved new unique MAC");
     }
 
     return app;
@@ -1845,7 +1942,7 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemPxeServer:
-        pxe_settings_refresh_boot_file(app);
+        pxe_settings_refresh(app);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeSettings);
         break;
 
@@ -3619,16 +3716,11 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
         return;
     }
 
-    /* Step 3: Build config from user settings */
+    /* Step 3: Use boot file selected in settings (already scanned on entry) */
     PxeServerState state;
     memset(&state, 0, sizeof(state));
-    memcpy(state.config.server_ip, app->pxe_server_ip, 4);
-    memcpy(state.config.client_ip, app->pxe_client_ip, 4);
-    memcpy(state.config.subnet, app->pxe_subnet, 4);
-    state.config.dhcp_enabled = app->pxe_dhcp_enabled;
 
-    /* Step 4: Detect boot file */
-    if(!pxe_detect_boot_file(&state)) {
+    if(!app->pxe_scan.boot_file_found) {
         furi_string_printf(out,
             "[PXE] No boot file!\n"
             "Place .kpxe or .efi in:\n"
@@ -3639,6 +3731,17 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
         return;
     }
 
+    /* Copy selected boot file info */
+    strncpy(state.boot_filename, app->pxe_scan.boot_filename, sizeof(state.boot_filename) - 1);
+    state.boot_file_size = app->pxe_scan.boot_file_size;
+    state.boot_file_found = true;
+
+    /* Step 4: Build config from settings (IPs already populated from DHCP probe) */
+    state.config.dhcp_enabled = app->pxe_dhcp_enabled;
+    memcpy(state.config.server_ip, app->pxe_server_ip, 4);
+    memcpy(state.config.client_ip, app->pxe_client_ip, 4);
+    memcpy(state.config.subnet, app->pxe_subnet, 4);
+
     /* Step 5: Configure W5500 with server IP (static) */
     w5500_hal_set_net_info(
         state.config.server_ip, state.config.subnet,
@@ -3646,7 +3749,8 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
 
     /* Step 6: Open sockets */
     if(!pxe_server_start(&state)) {
-        furi_string_cat(out, "[PXE] Failed to open sockets!\n");
+        furi_string_cat(out, "\n[PXE] Failed to open sockets!\n");
+        eth_tester_update_view(app->text_box_pxe, out);
         return;
     }
 
@@ -3659,7 +3763,7 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
         "Waiting for client...\n",
         state.config.server_ip[0], state.config.server_ip[1],
         state.config.server_ip[2], state.config.server_ip[3],
-        state.config.dhcp_enabled ? "ON" : "OFF (TFTP only)",
+        state.config.dhcp_enabled ? "ON" : "OFF",
         state.boot_filename, state.boot_file_size);
     eth_tester_update_view(app->text_box_pxe, out);
 
@@ -3779,15 +3883,16 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
         return;
     }
 
-    /* Step 6: Show compact status (fits 128x64 screen without scrolling) */
+    /* Step 6: Show compact status with auth token */
     furi_string_printf(out,
         "[File Manager] Running\n"
-        "http://%d.%d.%d.%d/\n"
+        "http://%d.%d.%d.%d/?t=%s\n"
         "Req:0 Tx:0 Rx:0\n"
         "\n"
         "Press BACK to stop.",
         app->dhcp_ip[0], app->dhcp_ip[1],
-        app->dhcp_ip[2], app->dhcp_ip[3]);
+        app->dhcp_ip[2], app->dhcp_ip[3],
+        fm_state.auth_token);
     eth_tester_update_view(app->text_box_file_manager, out);
 
     /* Step 7: Main loop */
@@ -3800,12 +3905,13 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
             last_status = furi_get_tick();
             furi_string_printf(out,
                 "[File Manager] Running\n"
-                "http://%d.%d.%d.%d/\n"
+                "http://%d.%d.%d.%d/?t=%s\n"
                 "Req:%lu Tx:%lu Rx:%lu\n"
                 "%s\n"
                 "Press BACK to stop.",
                 app->dhcp_ip[0], app->dhcp_ip[1],
                 app->dhcp_ip[2], app->dhcp_ip[3],
+                fm_state.auth_token,
                 (unsigned long)fm_state.requests_served,
                 (unsigned long)fm_state.bytes_sent,
                 (unsigned long)fm_state.bytes_received,

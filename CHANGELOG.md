@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.0a] - 2025
+## [1.0] - 2025
 
 ### Added
 - **File Manager**: web-based file manager for Flipper's microSD card in Tools category
@@ -13,6 +13,22 @@
 ### Changed
 - **MAC Changer** moved from Tools to Settings
 - **Settings** now includes: Auto-save, Sound & vibro, Clear History, MAC Changer
+
+### Security
+- **File Manager**: path traversal protection — reject `..` in all URL paths
+- **File Manager**: XSS prevention — HTML-escape filenames in directory listings
+- **File Manager**: random auth token per session, displayed on Flipper screen, required for all HTTP requests
+- **File Manager**: upload filename sanitization — strip path separators from filenames
+- **TFTP Server**: reject path traversal (`..` and `/`) in TFTP filenames
+- **mDNS**: recursive DNS pointer following limited to depth 4 (prevents stack overflow)
+- **DNS**: validate response source IP matches expected DNS server
+- **MAC**: unique MAC address per device (random on first boot, persisted to SD)
+
+### Changed
+- **PXE Server**: auto-detect external DHCP when entering settings — if found, disable own DHCP and populate Server IP/Client IP/Subnet from detected network
+- **PXE Server**: boot file selector with cycling (left/right arrows) when multiple .kpxe/.efi/.pxe/.0 files found (up to 8)
+- **PXE Server**: settings UI reordered — Start PXE first, then DHCP toggle, Boot File, IPs, Help
+- **PXE Server**: IP fields auto-populated from external DHCP when available
 
 ### Fixed
 - Force-close HTTP socket on back/exit to prevent Flipper freeze (WIZnet send() has internal while(1) with no timeout)

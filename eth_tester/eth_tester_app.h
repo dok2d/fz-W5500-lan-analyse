@@ -12,6 +12,7 @@
 #include <notification/notification_messages.h>
 #include "protocols/ping_graph.h"
 #include "protocols/history.h"
+#include "protocols/pxe_server.h"
 #include "bridge/eth_bridge.h"
 #include "ip_keyboard.h"
 
@@ -204,6 +205,7 @@ struct EthTesterApp {
     TextBox* text_box_pxe_help;
     FuriString* pxe_text;
     VariableItemList* pxe_settings_list;
+    VariableItem* pxe_item_dhcp;
     VariableItem* pxe_item_sip;
     VariableItem* pxe_item_cip;
     VariableItem* pxe_item_sub;
@@ -217,6 +219,11 @@ struct EthTesterApp {
     uint8_t pxe_server_ip[4];          /* parsed */
     uint8_t pxe_client_ip[4];          /* parsed */
     uint8_t pxe_subnet[4];             /* parsed */
+
+    /* PXE boot file selection */
+    PxeServerState pxe_scan;           /* cached boot file scan results */
+    uint8_t pxe_boot_file_idx;         /* currently selected boot file */
+    bool pxe_dhcp_probed;              /* external DHCP already probed? */
 
     /* File Manager state */
     TextBox* text_box_file_manager;

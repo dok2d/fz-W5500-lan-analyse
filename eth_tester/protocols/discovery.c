@@ -67,8 +67,10 @@ static uint16_t dns_skip_name_disc(const uint8_t* buf, uint16_t len, uint16_t of
     return 0;
 }
 
-/* Extract a DNS name as readable string (simplified, no pointer following for names) */
-static uint16_t dns_read_name(const uint8_t* buf, uint16_t len, uint16_t offset, char* out, uint16_t out_size) {
+/* Extract a DNS name as readable string (with recursion depth limit) */
+static uint16_t dns_read_name_depth(const uint8_t* buf, uint16_t len, uint16_t offset, char* out, uint16_t out_size, uint8_t depth) {
+    if(depth > 4) return offset; /* prevent infinite recursion from circular pointers */
+
     uint16_t pos = offset;
     uint16_t out_pos = 0;
     bool first = true;
@@ -82,7 +84,7 @@ static uint16_t dns_read_name(const uint8_t* buf, uint16_t len, uint16_t offset,
         if((label_len & 0xC0) == 0xC0) {
             /* Pointer - follow it */
             uint16_t ptr = ((uint16_t)(label_len & 0x3F) << 8) | buf[pos + 1];
-            dns_read_name(buf, len, ptr, out + out_pos, out_size - out_pos);
+            dns_read_name_depth(buf, len, ptr, out + out_pos, out_size - out_pos, depth + 1);
             return offset + 2; /* Original position advances by 2 */
         }
         if(!first && out_pos < out_size - 1) {
@@ -98,6 +100,10 @@ static uint16_t dns_read_name(const uint8_t* buf, uint16_t len, uint16_t offset,
     }
     out[out_pos] = '\0';
     return pos;
+}
+
+static uint16_t dns_read_name(const uint8_t* buf, uint16_t len, uint16_t offset, char* out, uint16_t out_size) {
+    return dns_read_name_depth(buf, len, offset, out, out_size, 0);
 }
 
 bool mdns_parse_response(
