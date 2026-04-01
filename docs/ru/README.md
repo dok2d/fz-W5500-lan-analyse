@@ -84,14 +84,50 @@ ufbt install            # установка .fap на SD-карту Flipper
 ```
 lan_tester/
 ├── application.fam              # Манифест FAP
-├── lan_tester_app.c/h           # Точка входа, ViewDispatcher, логика
-├── hal/w5500_hal.c/h            # SPI, GPIO, управление MACRAW-сокетом
-├── usb_eth/                     # USB CDC-ECM сетевое устройство
-├── bridge/                      # L2-пересылка фреймов + PCAP-дамп
-├── protocols/                   # 16 модулей сетевых протоколов
-├── utils/                       # OUI-поиск, парсинг пакетов
-├── assets/icon.png              # Иконка FAP
-└── lib/ioLibrary_Driver/        # Драйвер WIZnet W5500 (вендорная копия)
+├── lan_tester_app.c             # Точка входа, ViewDispatcher, логика функций
+├── lan_tester_app.h             # Общие типы и состояние приложения
+│
+├── hal/
+│   ├── w5500_hal.c              # SPI, GPIO, управление MACRAW-сокетом
+│   └── w5500_hal.h
+│
+├── usb_eth/
+│   ├── usb_eth.c / .h           # USB CDC-ECM сетевое устройство (init/deinit/send/recv)
+│   └── usb_descriptors.c / .h   # USB-дескрипторы, обработчики endpoints
+│
+├── bridge/
+│   ├── eth_bridge.c             # Двунаправленная L2-пересылка фреймов
+│   ├── eth_bridge.h
+│   ├── pcap_dump.c              # PCAP-дамп трафика на SD (совместим с Wireshark)
+│   └── pcap_dump.h
+│
+├── protocols/
+│   ├── lldp.c / lldp.h         # Парсер IEEE 802.1AB LLDP
+│   ├── cdp.c / cdp.h           # Парсер Cisco CDP (LLC/SNAP)
+│   ├── arp_scan.c / arp_scan.h  # ARP-запросы и парсер ответов
+│   ├── dhcp_discover.c / .h     # DHCP Discover/Offer
+│   ├── icmp.c / icmp.h         # ICMP Echo (ping) через IPRAW
+│   ├── dns_lookup.c / .h       # DNS A-запросы через UDP
+│   ├── wol.c / .h              # Wake-on-LAN magic packet
+│   ├── port_scan.c / .h        # TCP connect сканер портов
+│   ├── traceroute.c / .h       # ICMP traceroute с TTL
+│   ├── ping_graph.c / .h       # Кольцевой буфер RTT для continuous ping
+│   ├── discovery.c / .h        # mDNS + SSDP обнаружение сервисов
+│   ├── stp_vlan.c / .h         # STP BPDU + 802.1Q VLAN
+│   ├── mac_changer.c / .h      # Смена MAC с сохранением на SD
+│   ├── pxe_server.c / .h       # PXE-сервер (DHCP + TFTP)
+│   ├── file_manager.c / .h     # Веб-менеджер файлов SD (HTTP-сервер)
+│   └── history.c / .h          # Хранение результатов на SD с метками времени
+│
+├── utils/
+│   ├── oui_lookup.c / .h       # MAC → Вендор (~120 OUI-префиксов)
+│   └── packet_utils.c / .h     # Байтовый порядок, контрольные суммы, форматирование
+│
+├── assets/
+│   └── icon.png                 # Иконка FAP 10×10
+│
+└── lib/
+    └── ioLibrary_Driver/        # Драйвер WIZnet W5500 (вендорная копия, не изменять)
 ```
 
 ### Распределение сокетов W5500

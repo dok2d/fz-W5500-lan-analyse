@@ -84,14 +84,50 @@ The compiled `.fap` file appears in `dist/`. You can also copy it manually to `/
 ```
 lan_tester/
 ├── application.fam              # FAP manifest
-├── lan_tester_app.c/h           # Entry point, ViewDispatcher, feature logic
-├── hal/w5500_hal.c/h            # SPI, GPIO, MACRAW socket management
-├── usb_eth/                     # USB CDC-ECM network device
-├── bridge/                      # L2 frame forwarding + PCAP dump
-├── protocols/                   # 16 network protocol modules
-├── utils/                       # OUI lookup, packet parsing
-├── assets/icon.png              # FAP icon
-└── lib/ioLibrary_Driver/        # WIZnet W5500 driver (vendored copy)
+├── lan_tester_app.c             # Entry point, ViewDispatcher, feature logic
+├── lan_tester_app.h             # Shared types and app state
+│
+├── hal/
+│   ├── w5500_hal.c              # SPI, GPIO, MACRAW socket management
+│   └── w5500_hal.h
+│
+├── usb_eth/
+│   ├── usb_eth.c / .h           # USB CDC-ECM network device (init/deinit/send/recv)
+│   └── usb_descriptors.c / .h   # USB device & config descriptors, endpoint callbacks
+│
+├── bridge/
+│   ├── eth_bridge.c             # Bidirectional L2 frame forwarding engine
+│   ├── eth_bridge.h
+│   ├── pcap_dump.c              # PCAP traffic dump to SD card (Wireshark-compatible)
+│   └── pcap_dump.h
+│
+├── protocols/
+│   ├── lldp.c / lldp.h         # IEEE 802.1AB LLDP parser
+│   ├── cdp.c / cdp.h           # Cisco CDP parser (LLC/SNAP)
+│   ├── arp_scan.c / arp_scan.h  # ARP request builder & reply parser
+│   ├── dhcp_discover.c / .h     # DHCP Discover builder & Offer parser
+│   ├── icmp.c / icmp.h         # ICMP Echo (ping) via IPRAW
+│   ├── dns_lookup.c / .h       # DNS A-record resolver via UDP
+│   ├── wol.c / .h              # Wake-on-LAN magic packet
+│   ├── port_scan.c / .h        # TCP connect port scanner
+│   ├── traceroute.c / .h       # ICMP traceroute with TTL
+│   ├── ping_graph.c / .h       # Ring buffer RTT graph for continuous ping
+│   ├── discovery.c / .h        # mDNS + SSDP service discovery
+│   ├── stp_vlan.c / .h         # STP BPDU parser + 802.1Q VLAN detection
+│   ├── mac_changer.c / .h      # Random/custom MAC with SD persistence
+│   ├── pxe_server.c / .h       # PXE boot server (DHCP + TFTP)
+│   ├── file_manager.c / .h     # Web-based SD card file manager (HTTP server)
+│   └── history.c / .h          # Timestamped result storage on SD card
+│
+├── utils/
+│   ├── oui_lookup.c / .h       # MAC → Vendor (top ~120 OUI prefixes)
+│   └── packet_utils.c / .h     # Endian helpers, checksums, formatters
+│
+├── assets/
+│   └── icon.png                 # 10×10 FAP icon
+│
+└── lib/
+    └── ioLibrary_Driver/        # WIZnet W5500 driver (vendored copy, do not modify)
 ```
 
 ### W5500 Socket Allocation
