@@ -1,9 +1,9 @@
-# [1.2.0]
+# 1.2.0
 
 ## Changed
 - **Renamed**: appid changed from `eth_tester` to `lan_tester`; SD card data path is now `/ext/apps_data/lan_tester/`
 
-# [1.1.0]
+# 1.1.0
 
 ## Added
 - **Custom DNS Server**: configurable DNS server in Settings (default: 8.8.8.8), overrides DHCP-provided DNS
@@ -22,7 +22,7 @@
 - **Settings**: added Custom DNS, DNS Server IP, Ping Count, Ping Timeout, Continuous Ping Interval items
 - **Traceroute**: replaced IP-only keyboard with TextInput supporting both IPs and hostnames
 
-# [1.0.0]
+# 1.0.0
 
 ## Added
 - **File Manager**: web-based file manager for Flipper's microSD card in Tools category
@@ -53,7 +53,7 @@
 ## Fixed
 - Force-close HTTP socket on back/exit to prevent Flipper freeze (WIZnet send() has internal while(1) with no timeout)
 
-# [0.11.0]
+# 0.11.0
 
 ## Added
 - **PXE Server**: minimal PXE boot server in Tools category
@@ -64,7 +64,7 @@
   - Real-time progress bar with block counters
   - Resets to idle after each transfer (multi-client sequential)
 
-# [0.10.0]
+# 0.10.0
 
 ## Added
 - **ETH Bridge**: new tool that turns Flipper Zero into a USB-to-Ethernet bridge
@@ -76,7 +76,7 @@
 - New `usb_eth/` module: USB CDC-ECM device implementation using Flipper's FuriHalUsbInterface
 - New `bridge/` module: bidirectional Ethernet frame forwarding engine
 
-# [0.9.0]
+# 0.9.0
 
 ## Added
 - **Continuous Ping**: real-time RTT graph with min/max/avg/loss stats, target IP displayed on screen
@@ -112,7 +112,7 @@
 - History file TextBox scroll (was broken by input callback override)
 - Version mismatch between application.fam and About screen
 
-# [0.1.0]
+# 0.1.0
 
 ## Added
 - **Link Info** view: PHY status, speed, duplex, MAC address, W5500 version check
