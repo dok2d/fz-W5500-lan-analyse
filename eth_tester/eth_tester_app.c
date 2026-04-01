@@ -970,6 +970,38 @@ static void eth_tester_dns_input_callback(void* context) {
     eth_tester_worker_start(app, EthTesterMenuItemDnsLookup, EthTesterViewDnsLookup);
 }
 
+/* ==================== MAC Changer input callback ==================== */
+
+static void eth_tester_mac_changer_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    /* Apply the MAC from byte input */
+    memcpy(app->mac_addr, app->mac_changer_input, 6);
+    if(app->w5500_initialized) {
+        w5500_hal_set_mac(app->mac_addr);
+    }
+    mac_changer_save(app->mac_addr);
+
+    /* Invalidate DHCP cache since MAC changed */
+    app->dhcp_valid = false;
+
+    char new_mac_str[18];
+    pkt_format_mac(app->mac_addr, new_mac_str);
+
+    furi_string_printf(
+        app->mac_changer_text,
+        "MAC changed to:\n"
+        "%s\n\n"
+        "Saved to SD card.\n"
+        "Full effect on next\n"
+        "DHCP/reconnect.\n",
+        new_mac_str);
+    text_box_set_text(app->text_box_mac_changer, furi_string_get_cstr(app->mac_changer_text));
+    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMacChanger);
+    notification_message(app->notifications, &sequence_success);
+}
+
 /* ==================== WoL MAC input callback ==================== */
 
 static void eth_tester_wol_input_callback(void* context) {
@@ -1105,8 +1137,17 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemMacChanger:
-        eth_tester_show_view(app, app->text_box_mac_changer, EthTesterViewMacChanger, app->mac_changer_text, "Loading...\n");
-        eth_tester_worker_start(app, EthTesterMenuItemMacChanger, EthTesterViewMacChanger);
+        /* Pre-fill with random MAC, user can edit before confirming */
+        mac_changer_generate_random(app->mac_changer_input);
+        byte_input_set_header_text(app->byte_input_mac_changer, "New MAC (edit or OK):");
+        byte_input_set_result_callback(
+            app->byte_input_mac_changer,
+            eth_tester_mac_changer_input_callback,
+            NULL,
+            app,
+            app->mac_changer_input,
+            6);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMacChangerInput);
         break;
 
     case EthTesterMenuItemPortScan:
@@ -1786,36 +1827,14 @@ static void eth_tester_do_mac_changer(EthTesterApp* app) {
     char mac_str[18];
     pkt_format_mac(current_mac, mac_str);
 
-    char default_str[18];
-    pkt_format_mac(default_mac, default_str);
-
-    /* Generate a random MAC for preview */
-    uint8_t random_mac[6];
-    mac_changer_generate_random(random_mac);
-
-    /* Apply random MAC immediately */
-    memcpy(app->mac_addr, random_mac, 6);
-    if(app->w5500_initialized) {
-        w5500_hal_set_mac(app->mac_addr);
-    }
-    mac_changer_save(app->mac_addr);
-
-    char new_mac_str[18];
-    pkt_format_mac(random_mac, new_mac_str);
-
     furi_string_printf(
         app->mac_changer_text,
-        "=== MAC Changer ===\n"
-        "Previous: %s\n"
-        "%s\n\n"
-        "New random MAC:\n"
-        "%s\n\n"
-        "Saved to SD card.\n"
-        "Full effect on next\n"
-        "DHCP/reconnect.\n",
+        "Current MAC:\n"
+        "%s %s\n\n"
+        "OK = Randomize MAC\n"
+        "Back = Cancel\n",
         mac_str,
-        is_default ? "(default)" : "(custom)",
-        new_mac_str);
+        is_default ? "(default)" : "(custom)");
 }
 
 /* ==================== Traceroute ==================== */
