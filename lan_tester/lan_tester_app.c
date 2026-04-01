@@ -1,4 +1,4 @@
-#include "eth_tester_app.h"
+#include "lan_tester_app.h"
 #include "hal/w5500_hal.h"
 #include "protocols/lldp.h"
 #include "protocols/cdp.h"
