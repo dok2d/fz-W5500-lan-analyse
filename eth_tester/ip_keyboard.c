@@ -11,7 +11,7 @@ typedef struct {
     uint8_t octets[4];
     uint8_t prefix;   /* CIDR prefix length 0-32 */
     bool cidr_mode;
-    uint8_t selected; /* 0-3 = octet, 4 = prefix (CIDR only) */
+    uint8_t cursor;   /* 0-11 = IP digit, 12-13 = prefix digit (CIDR) */
 
     const char* header;
 
@@ -39,7 +39,6 @@ static void ip_keyboard_parse(
         *prefix = 24;
         return;
     }
-    /* Try CIDR first */
     if(sscanf(str, "%u.%u.%u.%u/%u", &a, &b, &c, &d, &p) >= 4) {
         /* OK */
     } else {
@@ -53,16 +52,56 @@ static void ip_keyboard_parse(
     *prefix = (p > 32) ? 32 : (uint8_t)p;
 }
 
+/** Get the digit (0-9) at cursor position. */
+static uint8_t ip_kb_get_digit(const IpKeyboardModel* m, uint8_t cursor) {
+    if(cursor < 12) {
+        uint8_t val = m->octets[cursor / 3];
+        uint8_t pos = cursor % 3;
+        if(pos == 0) return val / 100;
+        if(pos == 1) return (val / 10) % 10;
+        return val % 10;
+    }
+    /* prefix digit */
+    if(cursor == 12) return m->prefix / 10;
+    return m->prefix % 10;
+}
+
+/** Set the digit at cursor position.  Clamps octet to 255, prefix to 32. */
+static void ip_kb_set_digit(IpKeyboardModel* m, uint8_t cursor, uint8_t digit) {
+    if(digit > 9) digit = 9;
+
+    if(cursor < 12) {
+        uint8_t idx = cursor / 3;
+        uint8_t pos = cursor % 3;
+        uint8_t val = m->octets[idx];
+        uint8_t h = val / 100;
+        uint8_t t = (val / 10) % 10;
+        uint8_t o = val % 10;
+        if(pos == 0) h = digit;
+        else if(pos == 1) t = digit;
+        else o = digit;
+        uint16_t nv = (uint16_t)h * 100 + t * 10 + o;
+        m->octets[idx] = (nv > 255) ? 255 : (uint8_t)nv;
+    } else {
+        uint8_t t = m->prefix / 10;
+        uint8_t o = m->prefix % 10;
+        if(cursor == 12) t = digit;
+        else o = digit;
+        uint8_t nv = t * 10 + o;
+        m->prefix = (nv > 32) ? 32 : nv;
+    }
+}
+
 /* ── Draw callback ── */
 
 /*
- * Screen layout (128 x 64):
+ * Digit-by-digit IP entry.
  *
- *  y= 2  Header text                     (FontSecondary)
- *  y=18  Up-arrow chevrons above selected (drawn as two lines)
- *  y=24..38  Octet boxes                  (FontPrimary, baseline 36)
- *  y=44  Down-arrow chevrons below selected
- *  y=62  Hint line                        (FontSecondary)
+ * Display (IP mode):   192 . 168 . 001 . 001
+ * Display (CIDR mode): 192.168.001.000 /24
+ *
+ * The cursor highlights a single digit.  Up/Down cycle 0-9.
+ * Left/Right move between digits.  OK confirms.
  */
 
 static void ip_keyboard_draw(Canvas* canvas, void* model) {
@@ -72,123 +111,118 @@ static void ip_keyboard_draw(Canvas* canvas, void* model) {
     /* ── Header ── */
     canvas_set_font(canvas, FontSecondary);
     canvas_draw_str_aligned(
-        canvas,
-        64,
-        2,
-        AlignCenter,
-        AlignTop,
+        canvas, 64, 2, AlignCenter, AlignTop,
         m->header ? m->header : "Enter IP address:");
 
-    /* ── Prepare font metrics ── */
+    /* ── Measure a single digit cell ── */
     canvas_set_font(canvas, FontPrimary);
+    uint8_t cell_w = canvas_string_width(canvas, "0") + 2; /* char + 1px pad each side */
+    uint8_t dot_w = canvas_string_width(canvas, ".") + 2;
+    uint8_t slash_w = canvas_string_width(canvas, "/") + 2;
 
-    /* Measure the widest possible octet string "255" to size boxes uniformly */
-    uint8_t octet_box_w = canvas_string_width(canvas, "255") + 6; /* 3px pad each side */
-    uint8_t dot_gap = 4; /* pixels between box edge and dot, and dot and next box */
-
-    /* Dot width */
-    uint8_t dot_w = canvas_string_width(canvas, ".");
-
-    /* Total width of the four octets + three dots */
-    uint16_t total_w = (uint16_t)(4 * octet_box_w + 3 * (dot_gap + dot_w + dot_gap));
-
-    uint8_t slash_w = 0;
-    uint8_t prefix_box_w = 0;
+    /* Total characters: 12 digits + 3 dots = 15 cells.  CIDR adds /+2 digits. */
+    uint16_t total_w = 12 * cell_w + 3 * dot_w;
     if(m->cidr_mode) {
-        slash_w = canvas_string_width(canvas, "/");
-        prefix_box_w = canvas_string_width(canvas, "32") + 6;
-        total_w += dot_gap + slash_w + 2 + prefix_box_w;
+        total_w += slash_w + 2 * cell_w;
     }
 
     uint8_t sx = (128 > total_w) ? (uint8_t)((128 - total_w) / 2) : 0;
     uint8_t y_base = 36; /* text baseline */
     uint8_t box_top = y_base - 12;
-    uint8_t box_h = 16;
+    uint8_t box_h = 15;
 
-    /* ── Draw each octet ── */
+    /* Build per-character x-positions and the character to draw */
+    /* Max chars: 12 digits + 3 dots + 1 slash + 2 prefix digits = 18 */
+    uint8_t char_x[18];
+    char char_ch[18];
+    int8_t char_cursor[18]; /* cursor index that selects this char, or -1 */
+    uint8_t n_chars = 0;
+
     uint8_t x = sx;
-    char buf[4];
+    char digit_buf[2] = {0, 0};
 
-    for(uint8_t i = 0; i < 4; i++) {
-        snprintf(buf, sizeof(buf), "%d", m->octets[i]);
-        uint8_t str_w = canvas_string_width(canvas, buf);
-        uint8_t text_x = x + (octet_box_w - str_w) / 2;
+    for(uint8_t oct = 0; oct < 4; oct++) {
+        uint8_t val = m->octets[oct];
+        uint8_t digits[3] = {val / 100, (val / 10) % 10, val % 10};
 
-        if(i == m->selected) {
-            /* Inverted rounded box */
-            canvas_draw_rbox(canvas, x, box_top, octet_box_w, box_h, 3);
-            canvas_set_color(canvas, ColorWhite);
-            canvas_draw_str(canvas, text_x, y_base, buf);
-            canvas_set_color(canvas, ColorBlack);
-
-            /* Up chevron */
-            uint8_t cx = x + octet_box_w / 2;
-            uint8_t arrow_y = box_top - 5;
-            canvas_draw_line(canvas, cx - 4, arrow_y + 4, cx, arrow_y);
-            canvas_draw_line(canvas, cx, arrow_y, cx + 4, arrow_y + 4);
-
-            /* Down chevron */
-            arrow_y = box_top + box_h + 2;
-            canvas_draw_line(canvas, cx - 4, arrow_y, cx, arrow_y + 4);
-            canvas_draw_line(canvas, cx, arrow_y + 4, cx + 4, arrow_y);
-        } else {
-            canvas_draw_rframe(canvas, x, box_top, octet_box_w, box_h, 3);
-            canvas_draw_str(canvas, text_x, y_base, buf);
+        for(uint8_t d = 0; d < 3; d++) {
+            char_x[n_chars] = x;
+            char_ch[n_chars] = '0' + digits[d];
+            char_cursor[n_chars] = (int8_t)(oct * 3 + d);
+            n_chars++;
+            x += cell_w;
         }
 
-        x += octet_box_w;
-
-        /* Dot separator (except after last octet) */
-        if(i < 3) {
-            x += dot_gap;
-            canvas_draw_str(canvas, x, y_base, ".");
-            x += dot_w + dot_gap;
+        if(oct < 3) {
+            char_x[n_chars] = x;
+            char_ch[n_chars] = '.';
+            char_cursor[n_chars] = -1;
+            n_chars++;
+            x += dot_w;
         }
     }
 
-    /* ── CIDR prefix ── */
     if(m->cidr_mode) {
-        x += dot_gap;
-        canvas_draw_str(canvas, x, y_base, "/");
-        x += slash_w + 2;
+        /* Slash */
+        char_x[n_chars] = x;
+        char_ch[n_chars] = '/';
+        char_cursor[n_chars] = -1;
+        n_chars++;
+        x += slash_w;
 
-        snprintf(buf, sizeof(buf), "%d", m->prefix);
-        uint8_t str_w = canvas_string_width(canvas, buf);
-        uint8_t text_x = x + (prefix_box_w - str_w) / 2;
+        /* Prefix digits (2) */
+        uint8_t pd[2] = {m->prefix / 10, m->prefix % 10};
+        for(uint8_t d = 0; d < 2; d++) {
+            char_x[n_chars] = x;
+            char_ch[n_chars] = '0' + pd[d];
+            char_cursor[n_chars] = (int8_t)(12 + d);
+            n_chars++;
+            x += cell_w;
+        }
+    }
 
-        if(m->selected == 4) {
-            canvas_draw_rbox(canvas, x, box_top, prefix_box_w, box_h, 3);
+    /* ── Render characters ── */
+    for(uint8_t i = 0; i < n_chars; i++) {
+        digit_buf[0] = char_ch[i];
+        uint8_t sw = canvas_string_width(canvas, digit_buf);
+        uint8_t tx = char_x[i] + (cell_w - sw) / 2;
+        if(char_ch[i] == '.' || char_ch[i] == '/') {
+            uint8_t sep_w = (char_ch[i] == '.') ? dot_w : slash_w;
+            tx = char_x[i] + (sep_w - sw) / 2;
+        }
+
+        if(char_cursor[i] >= 0 && (uint8_t)char_cursor[i] == m->cursor) {
+            /* Selected digit: inverted rounded box */
+            canvas_draw_rbox(canvas, char_x[i], box_top, cell_w, box_h, 2);
             canvas_set_color(canvas, ColorWhite);
-            canvas_draw_str(canvas, text_x, y_base, buf);
+            canvas_draw_str(canvas, tx, y_base, digit_buf);
             canvas_set_color(canvas, ColorBlack);
 
-            uint8_t cx = x + prefix_box_w / 2;
-            uint8_t arrow_y = box_top - 5;
-            canvas_draw_line(canvas, cx - 4, arrow_y + 4, cx, arrow_y);
-            canvas_draw_line(canvas, cx, arrow_y, cx + 4, arrow_y + 4);
+            /* Up chevron */
+            uint8_t cx = char_x[i] + cell_w / 2;
+            uint8_t ay = box_top - 5;
+            canvas_draw_line(canvas, cx - 3, ay + 3, cx, ay);
+            canvas_draw_line(canvas, cx, ay, cx + 3, ay + 3);
 
-            arrow_y = box_top + box_h + 2;
-            canvas_draw_line(canvas, cx - 4, arrow_y, cx, arrow_y + 4);
-            canvas_draw_line(canvas, cx, arrow_y + 4, cx + 4, arrow_y);
+            /* Down chevron */
+            ay = box_top + box_h + 2;
+            canvas_draw_line(canvas, cx - 3, ay, cx, ay + 3);
+            canvas_draw_line(canvas, cx, ay + 3, cx + 3, ay);
         } else {
-            canvas_draw_rframe(canvas, x, box_top, prefix_box_w, box_h, 3);
-            canvas_draw_str(canvas, text_x, y_base, buf);
+            canvas_draw_str(canvas, tx, y_base, digit_buf);
         }
     }
 
     /* ── Hint line ── */
     canvas_set_font(canvas, FontSecondary);
     canvas_draw_str_aligned(
-        canvas, 64, 62, AlignCenter, AlignBottom, "<> move  ^v edit  OK send");
+        canvas, 64, 62, AlignCenter, AlignBottom, "<> move  ^v 0-9  OK send");
 }
 
 /* ── Input callback ── */
 
 static bool ip_keyboard_input(InputEvent* event, void* context) {
     IpKeyboard* kb = context;
-
-    /* We handle Short, Long, and Repeat events for Up/Down/Left/Right/OK.
-     * Back is left unhandled so view_dispatcher uses previous_callback. */
 
     if(event->key == InputKeyBack) {
         return false; /* let view_dispatcher navigate back */
@@ -206,42 +240,33 @@ static bool ip_keyboard_input(InputEvent* event, void* context) {
         kb->view,
         IpKeyboardModel * m,
         {
-            /* Delta: +1 for short/repeat, +10 for long press */
-            int delta = (event->type == InputTypeLong) ? 10 : 1;
-            uint8_t max_sel = m->cidr_mode ? 4 : 3;
+            uint8_t max_cursor = m->cidr_mode ? 13 : 11;
 
             switch(event->key) {
-            case InputKeyUp:
-                if(m->selected < 4) {
-                    m->octets[m->selected] =
-                        (uint8_t)((m->octets[m->selected] + delta) & 0xFF);
-                } else {
-                    int v = m->prefix + delta;
-                    m->prefix = (v > 32) ? 32 : (uint8_t)v;
-                }
+            case InputKeyUp: {
+                uint8_t d = ip_kb_get_digit(m, m->cursor);
+                d = (d + 1) % 10;
+                ip_kb_set_digit(m, m->cursor, d);
                 break;
+            }
 
-            case InputKeyDown:
-                if(m->selected < 4) {
-                    m->octets[m->selected] =
-                        (uint8_t)((m->octets[m->selected] - delta + 256) & 0xFF);
-                } else {
-                    int v = (int)m->prefix - delta;
-                    m->prefix = (v < 0) ? 0 : (uint8_t)v;
-                }
+            case InputKeyDown: {
+                uint8_t d = ip_kb_get_digit(m, m->cursor);
+                d = (d + 9) % 10; /* -1 mod 10 */
+                ip_kb_set_digit(m, m->cursor, d);
                 break;
+            }
 
             case InputKeyLeft:
-                if(m->selected > 0) m->selected--;
+                if(m->cursor > 0) m->cursor--;
                 break;
 
             case InputKeyRight:
-                if(m->selected < max_sel) m->selected++;
+                if(m->cursor < max_cursor) m->cursor++;
                 break;
 
             case InputKeyOk:
                 if(event->type == InputTypeShort) {
-                    /* Format result string */
                     if(m->result_str && m->result_str_size > 0) {
                         if(m->cidr_mode) {
                             snprintf(
@@ -275,7 +300,6 @@ static bool ip_keyboard_input(InputEvent* event, void* context) {
         },
         true);
 
-    /* Fire the callback outside the model lock */
     if(callback) {
         callback(cb_context);
     }
@@ -294,7 +318,6 @@ IpKeyboard* ip_keyboard_alloc(void) {
     view_set_input_callback(kb->view, ip_keyboard_input);
     view_set_context(kb->view, kb);
 
-    /* Sensible defaults */
     with_view_model(
         kb->view,
         IpKeyboardModel * m,
@@ -305,7 +328,7 @@ IpKeyboard* ip_keyboard_alloc(void) {
             m->octets[3] = 1;
             m->prefix = 24;
             m->cidr_mode = false;
-            m->selected = 0;
+            m->cursor = 0;
             m->header = "Enter IP address:";
             m->result_str = NULL;
             m->result_str_size = 0;
@@ -351,7 +374,7 @@ void ip_keyboard_setup(
             memcpy(m->octets, octets, 4);
             m->prefix = prefix;
             m->cidr_mode = cidr_mode;
-            m->selected = 0;
+            m->cursor = 0;
             m->header = header;
             m->result_str = result_buffer;
             m->result_str_size = result_size;
