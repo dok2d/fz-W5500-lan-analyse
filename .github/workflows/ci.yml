@@ -24,11 +24,11 @@ jobs:
         id: build
         with:
           task: build
-          app-dir: eth_tester
+          app-dir: lan_tester
 
       - name: Lint
         uses: flipperdevices/flipperzero-ufbt-action@v0.1
         with:
           task: lint
-          app-dir: eth_tester
+          app-dir: lan_tester
           skip-setup: true
