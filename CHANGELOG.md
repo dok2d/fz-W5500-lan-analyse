@@ -1,7 +1,7 @@
 # 1.2.0
 
 ## Changed
-- **Renamed**: appid changed from `eth_tester` to `lan_tester`; SD card data path is now `/ext/apps_data/lan_tester/`
+- **Renamed**: appid changed from eth_tester to lan_tester; SD card data path is now /ext/apps_data/lan_tester/
 
 # 1.1.0
 
@@ -41,11 +41,11 @@
 - **PXE Server**: IP fields auto-populated from external DHCP when available
 
 ## Security
-- **File Manager**: path traversal protection — reject `..` in all URL paths
+- **File Manager**: path traversal protection — reject ".." in all URL paths
 - **File Manager**: XSS prevention — HTML-escape filenames in directory listings
 - **File Manager**: random auth token per session, displayed on Flipper screen, required for all HTTP requests
 - **File Manager**: upload filename sanitization — strip path separators from filenames
-- **TFTP Server**: reject path traversal (`..` and `/`) in TFTP filenames
+- **TFTP Server**: reject path traversal (".." and "/") in TFTP filenames
 - **mDNS**: recursive DNS pointer following limited to depth 4 (prevents stack overflow)
 - **DNS**: validate response source IP matches expected DNS server
 - **MAC**: unique MAC address per device (random on first boot, persisted to SD)
@@ -59,7 +59,7 @@
 - **PXE Server**: minimal PXE boot server in Tools category
   - Configurable Server IP, Client IP, Subnet via IP Keyboard before start
   - Optional DHCP server (toggle ON/OFF; OFF = TFTP-only mode)
-  - TFTP server reads boot files from SD (`/ext/apps_data/eth_tester/pxe/`)
+  - TFTP server reads boot files from SD (/ext/apps_data/eth_tester/pxe/)
   - Auto-detects boot file: .kpxe, .efi, .pxe, .0
   - Real-time progress bar with block counters
   - Resets to idle after each transfer (multi-client sequential)
@@ -73,8 +73,8 @@
   - Live status screen showing USB connection state, LAN link info, frame counters (USB->LAN, LAN->USB), and error count
   - Automatic USB profile save/restore: switches to CDC-ECM on start, restores original USB (CDC Serial) on exit
   - Compatible with Linux, macOS, and Android (native CDC-ECM support)
-- New `usb_eth/` module: USB CDC-ECM device implementation using Flipper's FuriHalUsbInterface
-- New `bridge/` module: bidirectional Ethernet frame forwarding engine
+- New usb_eth/ module: USB CDC-ECM device implementation using Flipper's FuriHalUsbInterface
+- New bridge/ module: bidirectional Ethernet frame forwarding engine
 
 # 0.9.0
 
@@ -94,13 +94,13 @@
 - **Link status header**: main menu shows live link state (UP/DOWN, speed, duplex)
 - **LED/vibro notifications**: green blink + vibro on scan completion, red on errors (optional)
 - **Countdown timers**: LLDP/CDP (60s), STP/VLAN (30s), Statistics (10s) show remaining time
-- **ASCII progress bars**: visual `[####........] 45%` for Ping Sweep and Port Scan
+- **ASCII progress bars**: visual progress indicator for Ping Sweep and Port Scan
 - **Smart IP defaults**: ping/traceroute inputs pre-populated with DHCP gateway
 
 ## Changed
 - **DHCP caching**: single DHCP negotiation shared across all operations (was: repeated per scan)
 - **Compact output**: ARP scan shows 2 lines per host (was: 3), Statistics uses single-screen layout
-- **Compact headers**: `[Xxx]` instead of `=== Xxx ===` — saves one line per screen
+- **Compact headers**: shorter section markers — saves one line per screen
 - **Menu reordered**: most-used tools (Ping, ARP, DHCP) at the top
 - **MAC Changer**: requires user confirmation via ByteInput before applying (was: auto-randomize)
 - **Back navigation**: returns to parent category submenu, not always to main menu
@@ -122,8 +122,8 @@
 - **DHCP Analyzer**: Discover-only mode with option fingerprinting (no IP lease taken)
 - **ICMP Ping**: Echo request/reply to gateway with RTT measurement
 - **Packet Statistics**: frame counters by destination type and EtherType
-- **SD Card Export**: all results saved to `/ext/apps_data/eth_tester/`
+- **SD Card Export**: all results saved to /ext/apps_data/eth_tester/
 - W5500 HAL with SPI init, hardware reset, PHYCFGR register read, MACRAW socket management
 - OUI lookup table covering ~120 common network equipment vendors
-- Modular architecture: `hal/`, `protocols/`, `utils/`
+- Modular architecture: hal/, protocols/, utils/
 - ViewDispatcher-based UI with Submenu and TextBox views
