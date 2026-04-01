@@ -774,6 +774,76 @@ static bool eth_tester_ensure_w5500(EthTesterApp* app) {
     return true;
 }
 
+/* ==================== Shared DHCP helper ==================== */
+
+/**
+ * Ensure we have a valid DHCP lease. Returns true if dhcp_valid.
+ * Uses cached result if available; only runs DHCP once per session
+ * (or after link state change).
+ */
+static bool eth_tester_ensure_dhcp(EthTesterApp* app) {
+    if(!eth_tester_ensure_w5500(app)) return false;
+
+    if(!w5500_hal_get_link_status()) return false;
+
+    /* Use cached DHCP if available */
+    if(app->dhcp_valid) {
+        /* Re-apply cached network config to W5500 */
+        wiz_NetInfo net_info;
+        wizchip_getnetinfo(&net_info);
+        memcpy(net_info.ip, app->dhcp_ip, 4);
+        memcpy(net_info.sn, app->dhcp_mask, 4);
+        memcpy(net_info.gw, app->dhcp_gw, 4);
+        memcpy(net_info.dns, app->dhcp_dns, 4);
+        net_info.dhcp = NETINFO_DHCP;
+        wizchip_setnetinfo(&net_info);
+        return true;
+    }
+
+    /* Run DHCP */
+    uint8_t* dhcp_buffer = malloc(1024);
+    if(!dhcp_buffer) return false;
+
+    wiz_NetInfo net_info;
+    wizchip_getnetinfo(&net_info);
+    net_info.dhcp = NETINFO_DHCP;
+    memset(net_info.ip, 0, 4);
+    memset(net_info.sn, 0, 4);
+    memset(net_info.gw, 0, 4);
+    wizchip_setnetinfo(&net_info);
+
+    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
+
+    bool got_ip = false;
+    uint32_t dhcp_start = furi_get_tick();
+    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
+        uint8_t dhcp_ret = DHCP_run();
+        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN ||
+           dhcp_ret == DHCP_IP_CHANGED) {
+            getIPfromDHCP(net_info.ip);
+            getSNfromDHCP(net_info.sn);
+            getGWfromDHCP(net_info.gw);
+            getDNSfromDHCP(net_info.dns);
+            net_info.dhcp = NETINFO_DHCP;
+            wizchip_setnetinfo(&net_info);
+            got_ip = true;
+
+            memcpy(app->dhcp_ip, net_info.ip, 4);
+            memcpy(app->dhcp_mask, net_info.sn, 4);
+            memcpy(app->dhcp_gw, net_info.gw, 4);
+            memcpy(app->dhcp_dns, net_info.dns, 4);
+            app->dhcp_valid = true;
+            break;
+        }
+        if(dhcp_ret == DHCP_FAILED) break;
+        furi_delay_ms(10);
+    }
+    DHCP_stop();
+    free(dhcp_buffer);
+
+    return got_ip;
+}
+
 /* ==================== View update helpers ==================== */
 
 static void eth_tester_show_view(EthTesterApp* app, TextBox* tb, EthTesterView view, FuriString* text, const char* initial) {
@@ -1203,66 +1273,19 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
 static void eth_tester_do_arp_scan(EthTesterApp* app) {
     furi_string_reset(app->arp_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
-        furi_string_set(app->arp_text, "W5500 Not Found!\n");
-        return;
-    }
-
-    if(!w5500_hal_get_link_status()) {
-        furi_string_set(app->arp_text, "No Link!\nConnect cable.\n");
-        return;
-    }
-
     furi_string_set(app->arp_text, "Getting IP via DHCP...\n");
     eth_tester_update_view(app->text_box_arp, app->arp_text);
 
-    /*
-     * First, get our IP via the W5500's built-in DHCP.
-     * Use Socket 1 for DHCP.
-     * Allocate on heap to avoid stack overflow (app stack is only 4 KB).
-     */
-    uint8_t* dhcp_buffer = malloc(1024);
-    if(!dhcp_buffer) {
-        furi_string_set(app->arp_text, "Memory alloc failed!\n");
+    if(!eth_tester_ensure_dhcp(app)) {
+        furi_string_set(app->arp_text,
+            !app->w5500_initialized ? "W5500 Not Found!\n" :
+            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
+            "DHCP failed.\nCannot determine\nsubnet for ARP scan.\n");
         return;
     }
+
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
-    net_info.dhcp = NETINFO_DHCP;
-    memset(net_info.ip, 0, 4);
-    memset(net_info.sn, 0, 4);
-    memset(net_info.gw, 0, 4);
-    wizchip_setnetinfo(&net_info);
-
-    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
-
-    bool got_ip = false;
-    uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) { /* 15 sec timeout */
-        uint8_t dhcp_ret = DHCP_run();
-        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
-            getIPfromDHCP(net_info.ip);
-            getSNfromDHCP(net_info.sn);
-            getGWfromDHCP(net_info.gw);
-            getDNSfromDHCP(net_info.dns);
-            net_info.dhcp = NETINFO_DHCP;
-            wizchip_setnetinfo(&net_info);
-            got_ip = true;
-            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
-            break;
-        }
-        if(dhcp_ret == DHCP_FAILED) {
-            break;
-        }
-        furi_delay_ms(10);
-    }
-    DHCP_stop();
-    free(dhcp_buffer);
-
-    if(!got_ip) {
-        furi_string_set(app->arp_text, "DHCP failed.\nCannot determine\nsubnet for ARP scan.\n");
-        return;
-    }
 
     FURI_LOG_I(TAG, "Got IP: %d.%d.%d.%d", net_info.ip[0], net_info.ip[1], net_info.ip[2], net_info.ip[3]);
 
@@ -1553,60 +1576,19 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
 static void eth_tester_do_ping(EthTesterApp* app) {
     furi_string_reset(app->ping_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
-        furi_string_set(app->ping_text, "W5500 Not Found!\n");
-        return;
-    }
-
-    if(!w5500_hal_get_link_status()) {
-        furi_string_set(app->ping_text, "No Link!\nConnect cable.\n");
-        return;
-    }
-
-    /* First get IP via DHCP */
     furi_string_set(app->ping_text, "Getting IP via DHCP...\n");
     eth_tester_update_view(app->text_box_ping, app->ping_text);
 
-    uint8_t* dhcp_buffer = malloc(1024);
-    if(!dhcp_buffer) {
-        furi_string_set(app->ping_text, "Memory alloc failed!\n");
+    if(!eth_tester_ensure_dhcp(app)) {
+        furi_string_set(app->ping_text,
+            !app->w5500_initialized ? "W5500 Not Found!\n" :
+            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
+            "DHCP failed.\nCannot ping.\n");
         return;
     }
+
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
-    net_info.dhcp = NETINFO_DHCP;
-    memset(net_info.ip, 0, 4);
-    memset(net_info.sn, 0, 4);
-    memset(net_info.gw, 0, 4);
-    wizchip_setnetinfo(&net_info);
-
-    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
-
-    bool got_ip = false;
-    uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
-        uint8_t dhcp_ret = DHCP_run();
-        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
-            getIPfromDHCP(net_info.ip);
-            getSNfromDHCP(net_info.sn);
-            getGWfromDHCP(net_info.gw);
-            getDNSfromDHCP(net_info.dns);
-            net_info.dhcp = NETINFO_DHCP;
-            wizchip_setnetinfo(&net_info);
-            got_ip = true;
-            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
-            break;
-        }
-        if(dhcp_ret == DHCP_FAILED) break;
-        furi_delay_ms(10);
-    }
-    DHCP_stop();
-    free(dhcp_buffer);
-
-    if(!got_ip) {
-        furi_string_set(app->ping_text, "DHCP failed.\nCannot ping.\n");
-        return;
-    }
 
     /* Use custom IP if set, otherwise ping the gateway */
     uint8_t target_ip[4];
@@ -1650,60 +1632,19 @@ static void eth_tester_do_ping(EthTesterApp* app) {
 static void eth_tester_do_dns_lookup(EthTesterApp* app) {
     furi_string_reset(app->dns_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
-        furi_string_set(app->dns_text, "W5500 Not Found!\n");
-        return;
-    }
-
-    if(!w5500_hal_get_link_status()) {
-        furi_string_set(app->dns_text, "No Link!\nConnect cable.\n");
-        return;
-    }
-
-    /* Get IP and DNS server via DHCP */
     furi_string_set(app->dns_text, "Getting IP via DHCP...\n");
     eth_tester_update_view(app->text_box_dns, app->dns_text);
 
-    uint8_t* dhcp_buffer = malloc(1024);
-    if(!dhcp_buffer) {
-        furi_string_set(app->dns_text, "Memory alloc failed!\n");
+    if(!eth_tester_ensure_dhcp(app)) {
+        furi_string_set(app->dns_text,
+            !app->w5500_initialized ? "W5500 Not Found!\n" :
+            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
+            "DHCP failed.\nCannot resolve DNS.\n");
         return;
     }
+
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
-    net_info.dhcp = NETINFO_DHCP;
-    memset(net_info.ip, 0, 4);
-    memset(net_info.sn, 0, 4);
-    memset(net_info.gw, 0, 4);
-    wizchip_setnetinfo(&net_info);
-
-    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
-
-    bool got_ip = false;
-    uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
-        uint8_t dhcp_ret = DHCP_run();
-        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
-            getIPfromDHCP(net_info.ip);
-            getSNfromDHCP(net_info.sn);
-            getGWfromDHCP(net_info.gw);
-            getDNSfromDHCP(net_info.dns);
-            net_info.dhcp = NETINFO_DHCP;
-            wizchip_setnetinfo(&net_info);
-            got_ip = true;
-            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
-            break;
-        }
-        if(dhcp_ret == DHCP_FAILED) break;
-        furi_delay_ms(10);
-    }
-    DHCP_stop();
-    free(dhcp_buffer);
-
-    if(!got_ip) {
-        furi_string_set(app->dns_text, "DHCP failed.\nCannot resolve DNS.\n");
-        return;
-    }
 
     /* Check DNS server is valid */
     if(net_info.dns[0] == 0 && net_info.dns[1] == 0 &&
@@ -1760,60 +1701,19 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
 static void eth_tester_do_wol(EthTesterApp* app) {
     furi_string_reset(app->wol_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
-        furi_string_set(app->wol_text, "W5500 Not Found!\n");
-        return;
-    }
-
-    if(!w5500_hal_get_link_status()) {
-        furi_string_set(app->wol_text, "No Link!\nConnect cable.\n");
-        return;
-    }
-
-    /* Need a valid IP for sending UDP - get via DHCP */
     furi_string_set(app->wol_text, "Getting IP via DHCP...\n");
     eth_tester_update_view(app->text_box_wol, app->wol_text);
 
-    uint8_t* dhcp_buffer = malloc(1024);
-    if(!dhcp_buffer) {
-        furi_string_set(app->wol_text, "Memory alloc failed!\n");
+    if(!eth_tester_ensure_dhcp(app)) {
+        furi_string_set(app->wol_text,
+            !app->w5500_initialized ? "W5500 Not Found!\n" :
+            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
+            "DHCP failed.\nCannot send WoL.\n");
         return;
     }
+
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
-    net_info.dhcp = NETINFO_DHCP;
-    memset(net_info.ip, 0, 4);
-    memset(net_info.sn, 0, 4);
-    memset(net_info.gw, 0, 4);
-    wizchip_setnetinfo(&net_info);
-
-    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
-
-    bool got_ip = false;
-    uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
-        uint8_t dhcp_ret = DHCP_run();
-        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
-            getIPfromDHCP(net_info.ip);
-            getSNfromDHCP(net_info.sn);
-            getGWfromDHCP(net_info.gw);
-            getDNSfromDHCP(net_info.dns);
-            net_info.dhcp = NETINFO_DHCP;
-            wizchip_setnetinfo(&net_info);
-            got_ip = true;
-            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
-            break;
-        }
-        if(dhcp_ret == DHCP_FAILED) break;
-        furi_delay_ms(10);
-    }
-    DHCP_stop();
-    free(dhcp_buffer);
-
-    if(!got_ip) {
-        furi_string_set(app->wol_text, "DHCP failed.\nCannot send WoL.\n");
-        return;
-    }
 
     char mac_str[18];
     pkt_format_mac(app->wol_mac_input, mac_str);
@@ -1900,60 +1800,19 @@ static void eth_tester_do_mac_changer(EthTesterApp* app) {
 static void eth_tester_do_traceroute(EthTesterApp* app) {
     furi_string_reset(app->traceroute_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
-        furi_string_set(app->traceroute_text, "W5500 Not Found!\n");
-        return;
-    }
-
-    if(!w5500_hal_get_link_status()) {
-        furi_string_set(app->traceroute_text, "No Link!\nConnect cable.\n");
-        return;
-    }
-
-    /* Get IP via DHCP */
     furi_string_set(app->traceroute_text, "Getting IP via DHCP...\n");
     eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
 
-    uint8_t* dhcp_buffer = malloc(1024);
-    if(!dhcp_buffer) {
-        furi_string_set(app->traceroute_text, "Memory alloc failed!\n");
+    if(!eth_tester_ensure_dhcp(app)) {
+        furi_string_set(app->traceroute_text,
+            !app->w5500_initialized ? "W5500 Not Found!\n" :
+            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
+            "DHCP failed.\n");
         return;
     }
+
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
-    net_info.dhcp = NETINFO_DHCP;
-    memset(net_info.ip, 0, 4);
-    memset(net_info.sn, 0, 4);
-    memset(net_info.gw, 0, 4);
-    wizchip_setnetinfo(&net_info);
-
-    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
-
-    bool got_ip = false;
-    uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
-        uint8_t dhcp_ret = DHCP_run();
-        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
-            getIPfromDHCP(net_info.ip);
-            getSNfromDHCP(net_info.sn);
-            getGWfromDHCP(net_info.gw);
-            getDNSfromDHCP(net_info.dns);
-            net_info.dhcp = NETINFO_DHCP;
-            wizchip_setnetinfo(&net_info);
-            got_ip = true;
-            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
-            break;
-        }
-        if(dhcp_ret == DHCP_FAILED) break;
-        furi_delay_ms(10);
-    }
-    DHCP_stop();
-    free(dhcp_buffer);
-
-    if(!got_ip) {
-        furi_string_set(app->traceroute_text, "DHCP failed.\n");
-        return;
-    }
 
     char target_str[16];
     pkt_format_ip(app->traceroute_target, target_str);
@@ -2020,68 +1879,20 @@ static bool parse_cidr(const char* str, uint8_t base_ip[4], uint8_t* prefix) {
 static void eth_tester_do_ping_sweep_detect(EthTesterApp* app) {
     furi_string_reset(app->ping_sweep_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
-        furi_string_set(app->ping_sweep_text, "W5500 Not Found!\n");
-        eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
-        return;
-    }
-
-    if(!w5500_hal_get_link_status()) {
-        furi_string_set(app->ping_sweep_text, "No Link!\nConnect cable.\n");
-        eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
-        return;
-    }
-
     furi_string_set(app->ping_sweep_text, "Getting IP via DHCP...\n");
     eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
 
-    uint8_t* dhcp_buffer = malloc(1024);
-    if(!dhcp_buffer) {
-        furi_string_set(app->ping_sweep_text, "Memory alloc failed!\n");
+    if(!eth_tester_ensure_dhcp(app)) {
+        furi_string_set(app->ping_sweep_text,
+            !app->w5500_initialized ? "W5500 Not Found!\n" :
+            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
+            "DHCP failed.\n");
         eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
         return;
     }
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
-    net_info.dhcp = NETINFO_DHCP;
-    memset(net_info.ip, 0, 4);
-    memset(net_info.sn, 0, 4);
-    memset(net_info.gw, 0, 4);
-    wizchip_setnetinfo(&net_info);
-
-    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
-
-    bool got_ip = false;
-    uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
-        uint8_t dhcp_ret = DHCP_run();
-        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
-            getIPfromDHCP(net_info.ip);
-            getSNfromDHCP(net_info.sn);
-            getGWfromDHCP(net_info.gw);
-            getDNSfromDHCP(net_info.dns);
-            net_info.dhcp = NETINFO_DHCP;
-            wizchip_setnetinfo(&net_info);
-            got_ip = true;
-            memcpy(app->dhcp_ip, net_info.ip, 4);
-            memcpy(app->dhcp_mask, net_info.sn, 4);
-            memcpy(app->dhcp_gw, net_info.gw, 4);
-            memcpy(app->dhcp_dns, net_info.dns, 4);
-            app->dhcp_valid = true;
-            break;
-        }
-        if(dhcp_ret == DHCP_FAILED) break;
-        furi_delay_ms(10);
-    }
-    DHCP_stop();
-    free(dhcp_buffer);
-
-    if(!got_ip || !app->worker_running) {
-        furi_string_set(app->ping_sweep_text, "DHCP failed.\n");
-        eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
-        return;
-    }
 
     /* Populate CIDR from detected network */
     uint8_t net[4];
@@ -2098,60 +1909,19 @@ static void eth_tester_do_ping_sweep_detect(EthTesterApp* app) {
 static void eth_tester_do_ping_sweep(EthTesterApp* app) {
     furi_string_reset(app->ping_sweep_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
-        furi_string_set(app->ping_sweep_text, "W5500 Not Found!\n");
-        return;
-    }
-
-    if(!w5500_hal_get_link_status()) {
-        furi_string_set(app->ping_sweep_text, "No Link!\nConnect cable.\n");
-        return;
-    }
-
-    /* Get IP via DHCP first (needed for network access + auto-detect) */
     furi_string_set(app->ping_sweep_text, "Getting IP via DHCP...\n");
     eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
 
-    uint8_t* dhcp_buffer = malloc(1024);
-    if(!dhcp_buffer) {
-        furi_string_set(app->ping_sweep_text, "Memory alloc failed!\n");
+    if(!eth_tester_ensure_dhcp(app)) {
+        furi_string_set(app->ping_sweep_text,
+            !app->w5500_initialized ? "W5500 Not Found!\n" :
+            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
+            "DHCP failed.\n");
         return;
     }
+
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
-    net_info.dhcp = NETINFO_DHCP;
-    memset(net_info.ip, 0, 4);
-    memset(net_info.sn, 0, 4);
-    memset(net_info.gw, 0, 4);
-    wizchip_setnetinfo(&net_info);
-
-    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
-
-    bool got_ip = false;
-    uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
-        uint8_t dhcp_ret = DHCP_run();
-        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
-            getIPfromDHCP(net_info.ip);
-            getSNfromDHCP(net_info.sn);
-            getGWfromDHCP(net_info.gw);
-            getDNSfromDHCP(net_info.dns);
-            net_info.dhcp = NETINFO_DHCP;
-            wizchip_setnetinfo(&net_info);
-            got_ip = true;
-            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
-            break;
-        }
-        if(dhcp_ret == DHCP_FAILED) break;
-        furi_delay_ms(10);
-    }
-    DHCP_stop();
-    free(dhcp_buffer);
-
-    if(!got_ip) {
-        furi_string_set(app->ping_sweep_text, "DHCP failed.\n");
-        return;
-    }
 
     /* Parse CIDR input; if invalid, auto-detect from DHCP network */
     uint8_t base_ip[4];
@@ -2265,60 +2035,19 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
 static void eth_tester_do_discovery(EthTesterApp* app) {
     furi_string_reset(app->discovery_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
-        furi_string_set(app->discovery_text, "W5500 Not Found!\n");
-        return;
-    }
-
-    if(!w5500_hal_get_link_status()) {
-        furi_string_set(app->discovery_text, "No Link!\nConnect cable.\n");
-        return;
-    }
-
-    /* Get IP via DHCP */
     furi_string_set(app->discovery_text, "Getting IP via DHCP...\n");
     eth_tester_update_view(app->text_box_discovery, app->discovery_text);
 
-    uint8_t* dhcp_buffer = malloc(1024);
-    if(!dhcp_buffer) {
-        furi_string_set(app->discovery_text, "Memory alloc failed!\n");
+    if(!eth_tester_ensure_dhcp(app)) {
+        furi_string_set(app->discovery_text,
+            !app->w5500_initialized ? "W5500 Not Found!\n" :
+            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
+            "DHCP failed.\n");
         return;
     }
+
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
-    net_info.dhcp = NETINFO_DHCP;
-    memset(net_info.ip, 0, 4);
-    memset(net_info.sn, 0, 4);
-    memset(net_info.gw, 0, 4);
-    wizchip_setnetinfo(&net_info);
-
-    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
-
-    bool got_ip = false;
-    uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
-        uint8_t dhcp_ret = DHCP_run();
-        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
-            getIPfromDHCP(net_info.ip);
-            getSNfromDHCP(net_info.sn);
-            getGWfromDHCP(net_info.gw);
-            getDNSfromDHCP(net_info.dns);
-            net_info.dhcp = NETINFO_DHCP;
-            wizchip_setnetinfo(&net_info);
-            got_ip = true;
-            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
-            break;
-        }
-        if(dhcp_ret == DHCP_FAILED) break;
-        furi_delay_ms(10);
-    }
-    DHCP_stop();
-    free(dhcp_buffer);
-
-    if(!got_ip) {
-        furi_string_set(app->discovery_text, "DHCP failed.\n");
-        return;
-    }
 
     furi_string_set(app->discovery_text, "Sending mDNS + SSDP...\n");
     eth_tester_update_view(app->text_box_discovery, app->discovery_text);
@@ -2635,60 +2364,19 @@ static void eth_tester_history_file_callback(void* context, uint32_t index) {
 static void eth_tester_do_port_scan(EthTesterApp* app) {
     furi_string_reset(app->port_scan_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
-        furi_string_set(app->port_scan_text, "W5500 Not Found!\n");
-        return;
-    }
-
-    if(!w5500_hal_get_link_status()) {
-        furi_string_set(app->port_scan_text, "No Link!\nConnect cable.\n");
-        return;
-    }
-
-    /* Get IP via DHCP */
     furi_string_set(app->port_scan_text, "Getting IP via DHCP...\n");
     eth_tester_update_view(app->text_box_port_scan, app->port_scan_text);
 
-    uint8_t* dhcp_buffer = malloc(1024);
-    if(!dhcp_buffer) {
-        furi_string_set(app->port_scan_text, "Memory alloc failed!\n");
+    if(!eth_tester_ensure_dhcp(app)) {
+        furi_string_set(app->port_scan_text,
+            !app->w5500_initialized ? "W5500 Not Found!\n" :
+            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
+            "DHCP failed.\nCannot scan.\n");
         return;
     }
+
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
-    net_info.dhcp = NETINFO_DHCP;
-    memset(net_info.ip, 0, 4);
-    memset(net_info.sn, 0, 4);
-    memset(net_info.gw, 0, 4);
-    wizchip_setnetinfo(&net_info);
-
-    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
-
-    bool got_ip = false;
-    uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
-        uint8_t dhcp_ret = DHCP_run();
-        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
-            getIPfromDHCP(net_info.ip);
-            getSNfromDHCP(net_info.sn);
-            getGWfromDHCP(net_info.gw);
-            getDNSfromDHCP(net_info.dns);
-            net_info.dhcp = NETINFO_DHCP;
-            wizchip_setnetinfo(&net_info);
-            got_ip = true;
-            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
-            break;
-        }
-        if(dhcp_ret == DHCP_FAILED) break;
-        furi_delay_ms(10);
-    }
-    DHCP_stop();
-    free(dhcp_buffer);
-
-    if(!got_ip) {
-        furi_string_set(app->port_scan_text, "DHCP failed.\nCannot scan.\n");
-        return;
-    }
 
     char target_str[16];
     pkt_format_ip(app->port_scan_target, target_str);
@@ -2788,45 +2476,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
 /* ==================== Continuous Ping ==================== */
 
 static void eth_tester_do_cont_ping(EthTesterApp* app) {
-    if(!eth_tester_ensure_w5500(app)) return;
-    if(!w5500_hal_get_link_status()) return;
-
-    /* Get IP via DHCP */
-    uint8_t* dhcp_buffer = malloc(1024);
-    if(!dhcp_buffer) return;
-
-    wiz_NetInfo net_info;
-    wizchip_getnetinfo(&net_info);
-    net_info.dhcp = NETINFO_DHCP;
-    memset(net_info.ip, 0, 4);
-    memset(net_info.sn, 0, 4);
-    memset(net_info.gw, 0, 4);
-    wizchip_setnetinfo(&net_info);
-
-    DHCP_init(W5500_DHCP_SOCKET, dhcp_buffer);
-
-    bool got_ip = false;
-    uint32_t dhcp_start = furi_get_tick();
-    while(furi_get_tick() - dhcp_start < 15000 && app->worker_running) {
-        uint8_t dhcp_ret = DHCP_run();
-        if(dhcp_ret == DHCP_IP_LEASED || dhcp_ret == DHCP_IP_ASSIGN || dhcp_ret == DHCP_IP_CHANGED) {
-            getIPfromDHCP(net_info.ip);
-            getSNfromDHCP(net_info.sn);
-            getGWfromDHCP(net_info.gw);
-            getDNSfromDHCP(net_info.dns);
-            net_info.dhcp = NETINFO_DHCP;
-            wizchip_setnetinfo(&net_info);
-            got_ip = true;
-            memcpy(app->dhcp_ip, net_info.ip, 4); memcpy(app->dhcp_mask, net_info.sn, 4); memcpy(app->dhcp_gw, net_info.gw, 4); memcpy(app->dhcp_dns, net_info.dns, 4); app->dhcp_valid = true;
-            break;
-        }
-        if(dhcp_ret == DHCP_FAILED) break;
-        furi_delay_ms(10);
-    }
-    DHCP_stop();
-    free(dhcp_buffer);
-
-    if(!got_ip) return;
+    if(!eth_tester_ensure_dhcp(app)) return;
 
     /* Allocate ping graph state */
     PingGraphState* pg = malloc(sizeof(PingGraphState));
