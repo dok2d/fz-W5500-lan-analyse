@@ -202,9 +202,7 @@ static const char css[] =
     "input[type=text]{background:#1a1a2e;color:#e0e0e0;border:1px solid #555;"
     "padding:4px 8px;font-family:monospace;font-size:13px}"
     "input[type=file]{color:#e0e0e0;font-size:12px}"
-    ".ft{margin-top:16px;color:#555;font-size:11px}"
-    ".inf{color:#888;font-size:12px;margin-bottom:10px}"
-    ".inf span{color:#e0e0e0;margin-right:16px}"
+    ".ft{margin-top:16px;color:#888;font-size:11px}"
     "</style>";
 
 /* Format file size human-readable */
@@ -269,35 +267,6 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
 
     /* Title */
     http_send_str(sn, "<h1>Flipper File Manager</h1>");
-
-    /* Device info bar */
-    {
-        const char* dev_name = furi_hal_version_get_name_ptr();
-        uint8_t battery_pct = furi_hal_power_get_pct();
-
-        Storage* st = furi_record_open(RECORD_STORAGE);
-        uint64_t sd_total = 0, sd_free = 0;
-        storage_common_fs_info(st, "/ext", &sd_total, &sd_free);
-        furi_record_close(RECORD_STORAGE);
-
-        char info[192];
-        snprintf(info, sizeof(info),
-            "<div class='inf'>"
-            "<span>%s</span>"
-            "<span>Battery: %u%%</span>"
-            "<span>SD: ",
-            dev_name ? dev_name : "Flipper",
-            battery_pct);
-        http_send_str(sn, info);
-
-        /* Format SD free/total in MB */
-        char sd_str[64];
-        snprintf(sd_str, sizeof(sd_str),
-            "%lu / %lu MB free</span></div>",
-            (unsigned long)(sd_free / (1024 * 1024)),
-            (unsigned long)(sd_total / (1024 * 1024)));
-        http_send_str(sn, sd_str);
-    }
 
     /* Current path */
     http_send_str(sn, "<div class='p'>");
@@ -410,10 +379,24 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
     if(entries) free(entries);
     furi_record_close(RECORD_STORAGE);
 
-    /* Footer */
-    http_send_str(sn, "</table>"
-        "<div class='ft'>Flipper Zero W5500 File Manager</div>"
-        "</body></html>");
+    /* Footer with device info */
+    http_send_str(sn, "</table><div class='ft'>");
+    {
+        const char* dev_name = furi_hal_version_get_name_ptr();
+        uint8_t batt = furi_hal_power_get_pct();
+        Storage* fst = furi_record_open(RECORD_STORAGE);
+        uint64_t st_total = 0, st_free = 0;
+        storage_common_fs_info(fst, "/ext", &st_total, &st_free);
+        furi_record_close(RECORD_STORAGE);
+        char ft[128];
+        snprintf(ft, sizeof(ft), "%s | Bat: %u%% | SD: %lu/%lu MB free",
+            dev_name ? dev_name : "Flipper",
+            batt,
+            (unsigned long)(st_free / (1024 * 1024)),
+            (unsigned long)(st_total / (1024 * 1024)));
+        http_send_str(sn, ft);
+    }
+    http_send_str(sn, "</div></body></html>");
     http_flush(sn);
 }
 
@@ -496,25 +479,33 @@ static void handle_upload(
     const char* web_dir_path,
     uint8_t* buf,
     uint16_t buf_size,
+    int32_t body_pre_read,
     FileManagerState* state) {
 
-    /* Step 1: Read initial data to parse multipart headers */
-    int32_t total_read = 0;
+    /* Step 1: We already have body_pre_read bytes in buf (from handle_connection).
+     * Continue reading until we have multipart headers (boundary + filename). */
+    int32_t total_read = body_pre_read;
     uint16_t max_hdr = buf_size;
     if(max_hdr > 512) max_hdr = 512;
 
-    uint32_t start = furi_get_tick();
-    while(furi_get_tick() - start < 5000 && state->running) {
-        int32_t len = recv(sn, buf + total_read, max_hdr - total_read);
-        if(len > 0) {
-            total_read += len;
-            /* Look for end of part headers (\r\n\r\n after boundary+disposition) */
-            buf[total_read] = '\0';
-            if(strstr((char*)buf, "\r\n\r\n") && total_read > 60) break;
-            if(total_read >= (int32_t)max_hdr) break;
-            start = furi_get_tick();
-        } else {
-            furi_delay_ms(5);
+    /* Check if we already have enough in pre-read data */
+    buf[total_read] = '\0';
+    bool have_headers = (strstr((char*)buf, "\r\n\r\n") && total_read > 60);
+
+    if(!have_headers) {
+        uint32_t start = furi_get_tick();
+        while(furi_get_tick() - start < 5000 && state->running) {
+            int32_t space = (int32_t)max_hdr - total_read;
+            if(space <= 0) break;
+            int32_t len = recv(sn, buf + total_read, space);
+            if(len > 0) {
+                total_read += len;
+                buf[total_read] = '\0';
+                if(strstr((char*)buf, "\r\n\r\n") && total_read > 60) break;
+                start = furi_get_tick();
+            } else {
+                furi_delay_ms(5);
+            }
         }
     }
 
@@ -726,21 +717,25 @@ static void handle_mkdir(
     const char* sd_dir_path,
     const char* web_dir_path,
     uint8_t* buf,
-    uint16_t buf_size) {
-    int32_t total_read = 0;
+    uint16_t buf_size,
+    int32_t body_pre_read) {
+    /* Body may already be in buf from handle_connection */
+    int32_t total_read = body_pre_read;
     uint16_t chunk = buf_size;
     if(chunk > 512) chunk = 512;
 
-    uint32_t start = furi_get_tick();
-    while(furi_get_tick() - start < 3000) {
-        int32_t len = recv(sn, buf + total_read, chunk - total_read);
-        if(len > 0) {
-            total_read += len;
-            if(total_read >= (int32_t)chunk) break;
-            if(total_read > 5) break;
-            start = furi_get_tick();
-        } else {
-            furi_delay_ms(10);
+    if(total_read <= 0) {
+        uint32_t start = furi_get_tick();
+        while(furi_get_tick() - start < 3000) {
+            int32_t len = recv(sn, buf + total_read, chunk - total_read);
+            if(len > 0) {
+                total_read += len;
+                if(total_read >= (int32_t)chunk) break;
+                if(total_read > 5) break;
+                start = furi_get_tick();
+            } else {
+                furi_delay_ms(10);
+            }
         }
     }
 
@@ -821,6 +816,7 @@ static void handle_request(
     const char* raw_uri,
     uint8_t* buf,
     uint16_t buf_size,
+    int32_t body_pre_read,
     FileManagerState* state) {
     char uri[FILEMGR_PATH_MAX];
     url_decode(uri, raw_uri, sizeof(uri));
@@ -889,7 +885,7 @@ static void handle_request(
         strncpy(web_path, path, sizeof(web_path));
         web_path[sizeof(web_path) - 1] = '\0';
         web_to_sd_path(web_path, sd_path, sizeof(sd_path));
-        handle_upload(sn, sd_path, web_path, buf, buf_size, state);
+        handle_upload(sn, sd_path, web_path, buf, buf_size, body_pre_read, state);
         return;
     }
 
@@ -899,7 +895,7 @@ static void handle_request(
         strncpy(web_path, path, sizeof(web_path));
         web_path[sizeof(web_path) - 1] = '\0';
         web_to_sd_path(web_path, sd_path, sizeof(sd_path));
-        handle_mkdir(sn, sd_path, web_path, buf, buf_size);
+        handle_mkdir(sn, sd_path, web_path, buf, buf_size, body_pre_read);
         return;
     }
 
@@ -966,19 +962,22 @@ static void handle_connection(
 
     FURI_LOG_I(TAG, "%s %s", method, uri);
 
-    /* For POST: shift body data to start of buf */
+    /* For POST: shift body data to start of buf and track how much we have */
+    int32_t body_pre_read = 0;
     if(strcmp(method, "POST") == 0) {
         char* body = strstr((char*)buf, "\r\n\r\n");
         if(body) {
             body += 4;
-            int32_t body_already = total_read - (body - (char*)buf);
-            if(body_already > 0) {
-                memmove(buf, body, body_already);
+            body_pre_read = total_read - (int32_t)(body - (char*)buf);
+            if(body_pre_read > 0) {
+                memmove(buf, body, body_pre_read);
+            } else {
+                body_pre_read = 0;
             }
         }
     }
 
-    handle_request(sn, method, uri, buf, buf_size, state);
+    handle_request(sn, method, uri, buf, buf_size, body_pre_read, state);
 }
 
 /* ==================== Public API ==================== */
