@@ -218,6 +218,7 @@ static void lan_tester_submenu_callback(void* context, uint32_t index);
 static uint32_t lan_tester_navigation_exit_callback(void* context);
 static uint32_t lan_tester_navigation_submenu_callback(void* context);
 static uint32_t lan_tester_navigation_history_callback(void* context);
+static uint32_t lan_tester_nav_back_autotest(void* context);
 static uint32_t lan_tester_nav_back_portinfo(void* context);
 static uint32_t lan_tester_nav_back_scan(void* context);
 static uint32_t lan_tester_nav_back_ping_sweep(void* context);
