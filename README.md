@@ -8,7 +8,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Build](https://img.shields.io/badge/build-ufbt-yellow)
-![Version](https://img.shields.io/badge/version-0.9-brightgreen)
+![Version](https://img.shields.io/badge/version-0.10-brightgreen)
 
 ---
 
@@ -31,6 +31,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | **Statistics** | Frame counters by type (unicast/broadcast/multicast) and EtherType |
 | **Wake-on-LAN** | Send magic packets to any MAC address |
 | **MAC Changer** | Randomize or set custom MAC, persisted to SD card |
+| **ETH Bridge** | USB-to-Ethernet bridge: phone/PC gets LAN access via Flipper (CDC-ECM) |
 | **History** | All scan results auto-saved with timestamps, browsable and deletable |
 | **Settings** | Toggle auto-save and sound/vibro notifications, clear history |
 
@@ -95,6 +96,14 @@ eth_tester/
 │   ├── w5500_hal.c              # SPI, GPIO, MACRAW socket management
 │   └── w5500_hal.h
 │
+├── usb_eth/
+│   ├── usb_eth.c / .h           # USB CDC-ECM network device (init/deinit/send/recv)
+│   └── usb_descriptors.c / .h   # USB device & config descriptors, endpoint callbacks
+│
+├── bridge/
+│   ├── eth_bridge.c             # Bidirectional L2 frame forwarding engine
+│   └── eth_bridge.h
+│
 ├── protocols/
 │   ├── lldp.c / lldp.h         # IEEE 802.1AB LLDP parser
 │   ├── cdp.c / cdp.h           # Cisco CDP parser (LLC/SNAP)
@@ -152,6 +161,7 @@ eth_tester/
 ### Tools
 - **Wake-on-LAN** — send magic packet to wake a device by MAC address.
 - **MAC Changer** — generate random MAC or enter custom, saved to SD.
+- **ETH Bridge** — turns Flipper into a USB-to-Ethernet bridge. Phone/PC connects via USB (CDC-ECM), traffic is bridged to LAN via W5500 at Layer 2. The host gets an IP from the LAN's DHCP server transparently. Live stats show frame counts and link status. Press Back to stop and restore USB.
 
 ### Settings
 - **Auto-save results** — ON/OFF, controls automatic history saving.
@@ -213,6 +223,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 | **Статистика** | Счётчики фреймов по типу и EtherType |
 | **Wake-on-LAN** | Отправка magic-пакетов на любой MAC-адрес |
 | **MAC Changer** | Рандомизация или ручной ввод MAC, сохранение на SD |
+| **ETH Bridge** | USB-Ethernet мост: телефон/ПК получает доступ в LAN через Flipper (CDC-ECM) |
 | **История** | Все результаты автосохраняются с метками времени, просмотр и удаление |
 | **Настройки** | Переключение автосохранения и звука/вибрации, очистка истории |
 
@@ -277,6 +288,14 @@ eth_tester/
 │   ├── w5500_hal.c              # SPI, GPIO, управление MACRAW-сокетом
 │   └── w5500_hal.h
 │
+├── usb_eth/                     # USB CDC-ECM сетевое устройство
+│   ├── usb_eth.c / .h           # Инициализация/деинит/отправка/приём
+│   └── usb_descriptors.c / .h   # USB-дескрипторы, обработчики endpoints
+│
+├── bridge/                      # Движок Ethernet-моста
+│   ├── eth_bridge.c             # Двунаправленная L2-пересылка фреймов
+│   └── eth_bridge.h
+│
 ├── protocols/                   # Парсеры и генераторы протоколов
 │   ├── lldp.c / lldp.h         # Парсер IEEE 802.1AB LLDP
 │   ├── cdp.c / cdp.h           # Парсер Cisco CDP (LLC/SNAP)
@@ -334,6 +353,7 @@ eth_tester/
 ### Tools
 - **Wake-on-LAN** — отправка magic-пакета для пробуждения устройства по MAC.
 - **MAC Changer** — рандомный или пользовательский MAC, сохраняется на SD.
+- **ETH Bridge** — превращает Flipper в USB-Ethernet мост. Телефон/ПК подключается по USB (CDC-ECM), трафик прозрачно передаётся в LAN через W5500 на уровне L2. Хост получает IP от DHCP-сервера сети. На экране отображаются счётчики фреймов и статус соединений. Нажмите Back для остановки и восстановления USB.
 
 ### Settings
 - **Auto-save results** — вкл/выкл автосохранение результатов в историю.

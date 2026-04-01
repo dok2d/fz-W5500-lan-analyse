@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0] - 2025
+
+### Added
+- **ETH Bridge**: new tool that turns Flipper Zero into a USB-to-Ethernet bridge
+  - Phone/PC connects via USB CDC-ECM, Flipper bridges traffic to LAN via W5500 MACRAW at Layer 2
+  - Host transparently gets an IP from the LAN's DHCP server
+  - Live status screen showing USB connection state, LAN link info, frame counters (USB->LAN, LAN->USB), and error count
+  - Automatic USB profile save/restore: switches to CDC-ECM on start, restores original USB (CDC Serial) on exit
+  - Compatible with Linux, macOS, and Android (native CDC-ECM support)
+- New `usb_eth/` module: USB CDC-ECM device implementation using Flipper's FuriHalUsbInterface
+- New `bridge/` module: bidirectional Ethernet frame forwarding engine
+
 ## [0.9.0] - 2025
 
 ### Added

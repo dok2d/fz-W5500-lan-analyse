@@ -197,9 +197,8 @@ struct EthTesterApp {
     char ping_sweep_ip_input[20]; /* "192.168.1.0/24" */
 
     /* ETH Bridge state */
-    TextBox* text_box_bridge;
+    View* view_bridge;
     EthBridgeState* bridge_state;
-    FuriString* bridge_text;
 
     /* Text buffers for views */
     FuriString* link_info_text;

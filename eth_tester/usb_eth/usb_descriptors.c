@@ -299,18 +299,20 @@ static void ecm_tx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
     if(event == usbd_evt_eptx) {
         /* Previous TX completed */
         if(usb_tx_data && usb_tx_pos < usb_tx_len) {
+            /* More data to send */
             uint16_t chunk = usb_tx_len - usb_tx_pos;
             if(chunk > CDC_ECM_EP_DATA_SIZE) chunk = CDC_ECM_EP_DATA_SIZE;
             usbd_ep_write(dev, CDC_ECM_EP_IN, usb_tx_data + usb_tx_pos, chunk);
             usb_tx_pos += chunk;
-        } else {
-            /* If the last chunk was exactly EP_DATA_SIZE, send ZLP */
-            if(usb_tx_data && (usb_tx_len % CDC_ECM_EP_DATA_SIZE) == 0) {
-                usbd_ep_write(dev, CDC_ECM_EP_IN, NULL, 0);
-                usb_tx_data = NULL;
-            }
-            usb_tx_busy = false;
+        } else if(usb_tx_data && usb_tx_pos == usb_tx_len &&
+                  (usb_tx_len % CDC_ECM_EP_DATA_SIZE) == 0) {
+            /* Last chunk was exactly EP size — send ZLP to terminate */
             usb_tx_data = NULL;
+            usbd_ep_write(dev, CDC_ECM_EP_IN, NULL, 0);
+        } else {
+            /* Transfer complete */
+            usb_tx_data = NULL;
+            usb_tx_busy = false;
         }
     }
 }
@@ -462,12 +464,17 @@ bool usb_eth_send_frame_internal(const uint8_t* frame, uint16_t len) {
     }
 
     /* Wait for previous TX to complete (with timeout) */
-    uint32_t timeout = 50; /* ~50ms */
+    uint32_t timeout = 20; /* ~20ms */
     while(usb_tx_busy && timeout > 0) {
         furi_delay_ms(1);
         timeout--;
     }
-    if(usb_tx_busy) return false;
+    if(usb_tx_busy) {
+        /* TX stuck — force reset so bridge doesn't deadlock */
+        usb_tx_busy = false;
+        usb_tx_data = NULL;
+        return false;
+    }
 
     usb_tx_busy = true;
     usb_tx_data = frame;
