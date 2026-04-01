@@ -62,11 +62,13 @@ typedef enum {
     LanTesterViewPacketCapture,
     LanTesterViewHostList,
     LanTesterViewHostActions,
+    LanTesterViewAutoTest,
     LanTesterViewCount,
 } LanTesterView;
 
 /* Main menu item indices */
 typedef enum {
+    LanTesterMenuItemAutoTest,
     LanTesterMenuItemLinkInfo,
     LanTesterMenuItemLldpCdp,
     LanTesterMenuItemArpScan,
@@ -278,6 +280,22 @@ struct LanTesterApp {
     /* File Manager state */
     TextBox* text_box_file_manager;
     FuriString* file_manager_text;
+
+    /* Auto Test UI */
+    TextBox* text_box_autotest;
+    FuriString* autotest_text;
+
+    /* Auto Test runtime */
+    volatile bool autotest_running;
+    FuriThread* autotest_lldp_thread;
+    FuriString* autotest_lldp_result;
+    FuriMutex* autotest_lldp_mutex;
+    volatile bool autotest_lldp_done;
+
+    /* Auto Test settings */
+    char autotest_dns_host[64];
+    uint8_t autotest_lldp_wait_s;
+    bool autotest_arp_enabled;
 
     /* Text buffers for views */
     FuriString* link_info_text;

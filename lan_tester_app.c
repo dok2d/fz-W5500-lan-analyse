@@ -239,6 +239,7 @@ static void lan_tester_do_eth_bridge(LanTesterApp* app);
 static void lan_tester_do_pxe_server(LanTesterApp* app);
 static void lan_tester_do_file_manager(LanTesterApp* app);
 static void lan_tester_do_packet_capture(LanTesterApp* app);
+static void lan_tester_do_autotest(LanTesterApp* app);
 static void lan_tester_history_populate(LanTesterApp* app);
 static void lan_tester_history_file_callback(void* context, uint32_t index);
 static void lan_tester_history_delete_callback(void* context, uint32_t index);
@@ -1137,6 +1138,12 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* Main menu (Submenu view) */
     app->submenu = submenu_alloc();
     /* Main menu: grouped categories */
+    submenu_add_item(
+        app->submenu,
+        "Auto Test",
+        LanTesterMenuItemAutoTest,
+        lan_tester_submenu_callback,
+        app);
     submenu_add_item(app->submenu, "Port Info", 100, lan_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Scan", 101, lan_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Diagnostics", 102, lan_tester_submenu_callback, app);
@@ -1676,6 +1683,27 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewDiscovery, text_box_get_view(app->text_box_discovery));
 
+    /* Auto Test view */
+    app->autotest_text = furi_string_alloc();
+    app->autotest_lldp_result = furi_string_alloc();
+    app->autotest_lldp_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
+    app->text_box_autotest = text_box_alloc();
+    text_box_set_font(app->text_box_autotest, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_autotest), lan_tester_nav_back_autotest);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        LanTesterViewAutoTest,
+        text_box_get_view(app->text_box_autotest));
+
+    /* Auto Test defaults */
+    strncpy(app->autotest_dns_host, "google.com", sizeof(app->autotest_dns_host));
+    app->autotest_lldp_wait_s = 30;
+    app->autotest_arp_enabled = true;
+    app->autotest_running = false;
+    app->autotest_lldp_thread = NULL;
+    app->autotest_lldp_done = false;
+
     /* History views */
     app->submenu_history = submenu_alloc();
     view_set_previous_callback(
@@ -1862,6 +1890,7 @@ static void lan_tester_app_free(LanTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPacketCapture);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHostList);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHostActions);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewAutoTest);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_portinfo);
@@ -1905,6 +1934,7 @@ static void lan_tester_app_free(LanTesterApp* app) {
     text_box_free(app->text_box_history_file);
     if(app->history_state) free(app->history_state);
     text_box_free(app->text_box_about);
+    text_box_free(app->text_box_autotest);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -1927,6 +1957,9 @@ static void lan_tester_app_free(LanTesterApp* app) {
     furi_string_free(app->history_file_text);
     furi_string_free(app->pxe_text);
     furi_string_free(app->file_manager_text);
+    furi_string_free(app->autotest_text);
+    furi_string_free(app->autotest_lldp_result);
+    furi_mutex_free(app->autotest_lldp_mutex);
 
     /* Stop and free DHCP timer */
     furi_timer_stop(app->dhcp_timer);
@@ -1994,6 +2027,16 @@ static void lan_tester_stop_worker_on_back(void) {
 
 static uint32_t lan_tester_navigation_submenu_callback(void* context) {
     UNUSED(context);
+    lan_tester_stop_worker_on_back();
+    return LanTesterViewMainMenu;
+}
+
+static uint32_t lan_tester_nav_back_autotest(void* context) {
+    UNUSED(context);
+    if(g_app) {
+        g_app->autotest_running = false;
+        /* worker_running is NOT touched here — worker loop checks autotest_running */
+    }
     lan_tester_stop_worker_on_back();
     return LanTesterViewMainMenu;
 }
@@ -2124,6 +2167,9 @@ static int32_t lan_tester_worker_fn(void* context) {
 
     /* Dispatch to the appropriate operation */
     switch(app->worker_op) {
+    case LanTesterMenuItemAutoTest:
+        lan_tester_do_autotest(app);
+        break;
     case LanTesterMenuItemLinkInfo:
         lan_tester_do_link_info(app);
         lan_tester_update_view(app->text_box_link, app->link_info_text);
@@ -2633,6 +2679,14 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
     furi_assert(app);
 
     switch(index) {
+    case LanTesterMenuItemAutoTest:
+        app->autotest_running = true;
+        furi_string_set(app->autotest_text, "Waiting for link...\n");
+        text_box_set_text(
+            app->text_box_autotest, furi_string_get_cstr(app->autotest_text));
+        lan_tester_worker_start(app, LanTesterMenuItemAutoTest, LanTesterViewAutoTest);
+        break;
+
     case LanTesterMenuItemLinkInfo:
         lan_tester_show_view(
             app,
@@ -4962,6 +5016,20 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
         state.tftp_blocks_sent,
         state.tftp_errors);
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
+}
+
+/* ==================== Packet Capture ==================== */
+
+/* ==================== Auto Test ==================== */
+
+static void lan_tester_do_autotest(LanTesterApp* app) {
+    furi_string_set(app->autotest_text, "Waiting for link...\n");
+    lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+
+    /* Main loop: IDLE → TESTING → DONE → wait for link loss → IDLE */
+    while(app->autotest_running && app->worker_running) {
+        furi_delay_ms(200);
+    }
 }
 
 /* ==================== Packet Capture ==================== */
