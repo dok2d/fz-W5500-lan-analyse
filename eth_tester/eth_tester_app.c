@@ -166,6 +166,77 @@ static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint
 static bool eth_tester_save_results(const char* filename, const char* content);
 static void eth_tester_save_and_notify(EthTesterApp* app, const char* type, FuriString* text);
 
+/* ==================== ETH Bridge view model & callbacks ==================== */
+
+typedef struct {
+    EthTesterApp* app;
+    bool active;          /* bridge is running */
+    bool usb_connected;
+    bool lan_link_up;
+    uint8_t lan_speed;    /* 0=10M, 1=100M */
+    uint8_t lan_duplex;   /* 0=half, 1=full */
+    uint32_t frames_to_eth;
+    uint32_t frames_to_usb;
+    uint32_t errors;
+    const char* status_line; /* "Starting...", "Running", "Stopped" */
+} BridgeViewModel;
+
+static void bridge_draw_callback(Canvas* canvas, void* model) {
+    BridgeViewModel* vm = model;
+    canvas_clear(canvas);
+
+    /* Title */
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str_aligned(canvas, 64, 2, AlignCenter, AlignTop, "ETH Bridge");
+
+    canvas_set_font(canvas, FontSecondary);
+    char buf[40];
+
+    if(!vm->active) {
+        /* Show status message when not active (init/error/stopped) */
+        canvas_draw_str(canvas, 2, 24, vm->status_line ? vm->status_line : "");
+        return;
+    }
+
+    /* USB status */
+    snprintf(buf, sizeof(buf), "USB: %s", vm->usb_connected ? "Connected" : "Waiting...");
+    canvas_draw_str(canvas, 2, 16, buf);
+
+    /* LAN status */
+    snprintf(buf, sizeof(buf), "LAN: %s %s/%s",
+        vm->lan_link_up ? "Up" : "Down",
+        vm->lan_speed ? "100M" : "10M",
+        vm->lan_duplex ? "FD" : "HD");
+    canvas_draw_str(canvas, 2, 26, buf);
+
+    /* Frame counters */
+    snprintf(buf, sizeof(buf), "> LAN: %lu", (unsigned long)vm->frames_to_eth);
+    canvas_draw_str(canvas, 2, 38, buf);
+
+    snprintf(buf, sizeof(buf), "< LAN: %lu", (unsigned long)vm->frames_to_usb);
+    canvas_draw_str(canvas, 2, 48, buf);
+
+    if(vm->errors > 0) {
+        snprintf(buf, sizeof(buf), "Err: %lu", (unsigned long)vm->errors);
+        canvas_draw_str(canvas, 80, 48, buf);
+    }
+
+    /* Footer */
+    canvas_draw_str_aligned(canvas, 64, 62, AlignCenter, AlignBottom, "[Back] Stop");
+}
+
+static bool bridge_input_callback(InputEvent* event, void* context) {
+    EthTesterApp* app = context;
+    if(event->type == InputTypeShort && event->key == InputKeyBack) {
+        if(app->bridge_state) {
+            app->bridge_state->running = false;
+        }
+        app->worker_running = false;
+        return true;
+    }
+    return false;
+}
+
 /* ==================== Continuous Ping view model & callbacks ==================== */
 
 typedef struct {
@@ -525,13 +596,23 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(byte_input_get_view(app->byte_input_mac_changer), eth_tester_nav_back_tools);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMacChangerInput, byte_input_get_view(app->byte_input_mac_changer));
 
-    /* ETH Bridge view */
-    app->text_box_bridge = text_box_alloc();
-    text_box_set_font(app->text_box_bridge, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_bridge), eth_tester_nav_back_tools);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewEthBridge, text_box_get_view(app->text_box_bridge));
+    /* ETH Bridge view (custom View with draw_callback, no TextBox) */
+    app->view_bridge = view_alloc();
+    view_allocate_model(app->view_bridge, ViewModelTypeLocking, sizeof(BridgeViewModel));
+    view_set_draw_callback(app->view_bridge, bridge_draw_callback);
+    view_set_input_callback(app->view_bridge, bridge_input_callback);
+    view_set_context(app->view_bridge, app);
+    view_set_previous_callback(app->view_bridge, eth_tester_nav_back_tools);
+    with_view_model(
+        app->view_bridge,
+        BridgeViewModel* vm,
+        {
+            vm->app = app;
+            vm->status_line = "Starting...";
+        },
+        false);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewEthBridge, app->view_bridge);
     app->bridge_state = malloc(sizeof(EthBridgeState));
-    app->bridge_text = furi_string_alloc();
 
     /* Traceroute views */
     app->text_box_traceroute = text_box_alloc();
@@ -700,7 +781,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_input_free(app->text_input_port_scan);
     text_box_free(app->text_box_mac_changer);
     byte_input_free(app->byte_input_mac_changer);
-    text_box_free(app->text_box_bridge);
+    view_free(app->view_bridge);
     if(app->bridge_state) free(app->bridge_state);
     text_box_free(app->text_box_traceroute);
     text_input_free(app->text_input_traceroute);
@@ -730,7 +811,6 @@ static void eth_tester_app_free(EthTesterApp* app) {
     furi_string_free(app->ping_sweep_text);
     furi_string_free(app->discovery_text);
     furi_string_free(app->stp_vlan_text);
-    furi_string_free(app->bridge_text);
     /* history_text removed — history now uses submenu */
     furi_string_free(app->history_file_text);
 
@@ -923,8 +1003,7 @@ static int32_t eth_tester_worker_fn(void* context) {
         break;
     case EthTesterMenuItemEthBridge:
         eth_tester_do_eth_bridge(app);
-        eth_tester_update_view(app->text_box_bridge, app->bridge_text);
-        break;
+        break; /* Uses custom view, not TextBox */
     case EthTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
     case WORKER_OP_PING_SWEEP_DETECT:
@@ -1449,7 +1528,14 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemEthBridge:
-        eth_tester_show_view(app, app->text_box_bridge, EthTesterViewEthBridge, app->bridge_text, "Starting ETH Bridge...\n");
+        with_view_model(
+            app->view_bridge,
+            BridgeViewModel* vm,
+            {
+                vm->active = false;
+                vm->status_line = "Starting ETH Bridge...";
+            },
+            true);
         eth_tester_worker_start(app, EthTesterMenuItemEthBridge, EthTesterViewEthBridge);
         break;
 
@@ -3083,59 +3169,64 @@ static void eth_tester_save_and_notify(EthTesterApp* app, const char* type, Furi
 /* ==================== ETH Bridge ==================== */
 
 static void eth_tester_do_eth_bridge(EthTesterApp* app) {
-    furi_string_reset(app->bridge_text);
+    /* Helper macro for status updates */
+    #define BRIDGE_SET_STATUS(msg) \
+        with_view_model(app->view_bridge, BridgeViewModel* vm, \
+            { vm->active = false; vm->status_line = (msg); }, true)
 
     /* Step 1: Initialize W5500 */
     if(!eth_tester_ensure_w5500(app)) {
-        furi_string_set(app->bridge_text, "W5500 Not Found!\nCheck SPI wiring.\n");
+        BRIDGE_SET_STATUS("W5500 Not Found!\nCheck SPI wiring.");
         if(app->setting_sound) notification_message(app->notifications, &sequence_error);
         return;
     }
 
     /* Step 2: Check link */
     if(!w5500_hal_get_link_status()) {
-        furi_string_set(app->bridge_text, "No LAN link!\nConnect Ethernet cable.\n");
+        BRIDGE_SET_STATUS("No LAN link!\nConnect Ethernet cable.");
         if(app->setting_sound) notification_message(app->notifications, &sequence_error);
         return;
     }
 
-    /* Read PHY info for display */
+    /* Read PHY info */
     bool link_up = false;
     uint8_t speed = 0, duplex = 0;
     w5500_hal_get_phy_info(&link_up, &speed, &duplex);
 
-    /* Step 3: Open MACRAW socket (promiscuous mode) */
+    /* Step 3: Open MACRAW socket */
     if(!w5500_hal_open_macraw()) {
-        furi_string_set(app->bridge_text, "Failed to open MACRAW!\n");
+        BRIDGE_SET_STATUS("Failed to open MACRAW!");
         if(app->setting_sound) notification_message(app->notifications, &sequence_error);
         return;
     }
 
     /* Step 4: Initialize USB CDC-ECM */
-    furi_string_set(app->bridge_text, "Starting USB Network...\n");
-    eth_tester_update_view(app->text_box_bridge, app->bridge_text);
+    BRIDGE_SET_STATUS("Starting USB Network...");
 
     if(!usb_eth_init()) {
-        furi_string_set(app->bridge_text, "USB init failed!\n");
+        BRIDGE_SET_STATUS("USB init failed!");
         w5500_hal_close_macraw();
         if(app->setting_sound) notification_message(app->notifications, &sequence_error);
         return;
     }
 
-    /* Step 5: Initialize bridge state */
+    /* Step 5: Initialize bridge state and activate the view */
     eth_bridge_init(app->bridge_state);
 
-    furi_string_printf(app->bridge_text,
-        "=== ETH Bridge ===\n\n"
-        "USB:  Waiting...\n"
-        "LAN:  Link Up %s/%s\n\n"
-        "-> LAN: 0 frames\n"
-        "<- LAN: 0 frames\n"
-        "Errors: 0\n\n"
-        "Press Back to stop\n",
-        speed ? "100M" : "10M",
-        duplex ? "Full" : "Half");
-    eth_tester_update_view(app->text_box_bridge, app->bridge_text);
+    with_view_model(
+        app->view_bridge,
+        BridgeViewModel* vm,
+        {
+            vm->active = true;
+            vm->usb_connected = false;
+            vm->lan_link_up = link_up;
+            vm->lan_speed = speed;
+            vm->lan_duplex = duplex;
+            vm->frames_to_eth = 0;
+            vm->frames_to_usb = 0;
+            vm->errors = 0;
+        },
+        true);
 
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 
@@ -3144,33 +3235,23 @@ static void eth_tester_do_eth_bridge(EthTesterApp* app) {
     while(app->worker_running) {
         eth_bridge_poll(app->bridge_state, app->frame_buf, 1518);
 
-        /* Update display every ~500ms */
+        /* Update display every ~500ms (256 * 100us ≈ 25ms, so use 0x1FFF ≈ 800ms) */
         update_tick++;
-        if((update_tick & 0xFF) == 0) {
+        if((update_tick & 0x1FFF) == 0) {
             EthBridgeState* bs = app->bridge_state;
-
-            const char* usb_status = bs->usb_connected ? "Connected" : "Waiting...";
-            const char* lan_status = bs->lan_link_up ? "Link Up" : "Link Down";
-
-            furi_string_printf(app->bridge_text,
-                "=== ETH Bridge ===\n\n"
-                "USB:  %s\n"
-                "LAN:  %s %s/%s\n\n"
-                "-> LAN: %lu frames\n"
-                "<- LAN: %lu frames\n"
-                "Errors: %lu\n\n"
-                "Press Back to stop\n",
-                usb_status,
-                lan_status,
-                speed ? "100M" : "10M",
-                duplex ? "Full" : "Half",
-                bs->frames_usb_to_eth,
-                bs->frames_eth_to_usb,
-                bs->errors);
-            eth_tester_update_view(app->text_box_bridge, app->bridge_text);
+            with_view_model(
+                app->view_bridge,
+                BridgeViewModel* vm,
+                {
+                    vm->usb_connected = bs->usb_connected;
+                    vm->lan_link_up = bs->lan_link_up;
+                    vm->frames_to_eth = bs->frames_usb_to_eth;
+                    vm->frames_to_usb = bs->frames_eth_to_usb;
+                    vm->errors = bs->errors;
+                },
+                true);
         }
 
-        /* Small delay to prevent busy-looping but keep throughput */
         furi_delay_us(100);
     }
 
@@ -3179,18 +3260,20 @@ static void eth_tester_do_eth_bridge(EthTesterApp* app) {
     w5500_hal_close_macraw();
 
     EthBridgeState* bs = app->bridge_state;
-    furi_string_printf(app->bridge_text,
-        "=== Bridge Stopped ===\n\n"
-        "-> LAN: %lu frames\n"
-        "<- LAN: %lu frames\n"
-        "Errors: %lu\n\n"
-        "USB restored.\n",
-        bs->frames_usb_to_eth,
-        bs->frames_eth_to_usb,
-        bs->errors);
-
     FURI_LOG_I(TAG, "ETH Bridge stopped: USB->ETH=%lu ETH->USB=%lu err=%lu",
         bs->frames_usb_to_eth, bs->frames_eth_to_usb, bs->errors);
+
+    /* Show final stats */
+    with_view_model(
+        app->view_bridge,
+        BridgeViewModel* vm,
+        {
+            vm->active = false;
+            vm->status_line = "Bridge stopped. USB restored.";
+        },
+        true);
+
+    #undef BRIDGE_SET_STATUS
 }
 
 /* ==================== Entry point ==================== */
