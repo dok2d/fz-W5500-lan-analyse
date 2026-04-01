@@ -222,6 +222,8 @@ bool dns_lookup(
         if(rx_size > 0) {
             int32_t received = recvfrom(socket_num, dns_buf, DNS_BUF_SIZE, from_ip, &from_port);
             if(received > 0) {
+                /* Verify response is from the expected DNS server */
+                if(memcmp(from_ip, dns_server, 4) != 0) continue;
                 if(dns_parse_response(dns_buf, (uint16_t)received, tx_id, result)) {
                     FURI_LOG_I(
                         TAG,

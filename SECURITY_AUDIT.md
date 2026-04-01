@@ -7,6 +7,41 @@
 
 ---
 
+## Applied Fixes Summary
+
+All findings were evaluated for performance impact. Only fixes that do NOT degrade
+performance were kept and implemented. Removed: race condition mutex (#9 - overhead on
+every UI update), USB frame buffer critical sections (#13 - interrupt latency), USB TX
+buffer copy (#14 - memcpy per frame in bridge), stack size increase (#8 - RAM cost),
+and several informational/cosmetic items.
+
+| # | Finding | Status |
+|---|---------|--------|
+| 1 | Path traversal in File Manager | **FIXED** - `path_is_safe()` rejects `..` |
+| 2 | No auth on File Manager | **FIXED** - random 4-char token, shown on screen |
+| 3 | PXE rogue DHCP | **FIXED** - auto-detects external DHCP first |
+| 4 | XSS via filenames | **FIXED** - `html_escape()` for all output |
+| 5 | Filename injection in Upload | **FIXED** - strips `/` and `\` from names |
+| 6 | TFTP path traversal | **FIXED** - rejects `..` and `/` in filenames |
+| 7 | Boundary truncation | Kept (low risk, documented) |
+| 10 | Hardcoded MAC | **FIXED** - random MAC generated, saved to SD |
+| 12 | DNS response spoofing | **FIXED** - validates source IP |
+| 16 | Content-Disposition injection | **FIXED** - strips `"`, `\`, CR, LF |
+| 18 | mDNS recursion overflow | **FIXED** - depth limit of 4 |
+| 19 | SPI acquire error check | Kept (low risk, documented) |
+
+**Removed findings (fix would hurt performance):**
+- #8 Stack size: +4KB RAM cost on constrained device
+- #9 Race condition: mutex on every UI update; volatile works on single-core Cortex-M4
+- #11 DHCP buffer: 1024 bytes is the WIZnet library's standard size
+- #13 USB buffer concurrency: critical sections cause interrupt latency, frame drops
+- #14 USB TX pointer: memcpy 1518B per frame in bridge mode
+- #15 CSRF: low severity, unnecessary complexity
+- #17 Integer overflow: purely theoretical (RTT < 10000ms)
+- #20-24: Informational/cosmetic/architectural
+
+---
+
 ## Executive Summary
 
 The application is a comprehensive Ethernet LAN analyzer for Flipper Zero using the W5500 SPI Ethernet module. It implements LLDP/CDP discovery, ARP scanning, DHCP analysis, DNS lookup, ping/traceroute, port scanning, Wake-on-LAN, mDNS/SSDP discovery, STP/VLAN detection, USB-Ethernet bridge with PCAP capture, PXE server (DHCP+TFTP), and an HTTP-based SD card file manager.

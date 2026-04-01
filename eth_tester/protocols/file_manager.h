@@ -13,6 +13,9 @@
 #define FILEMGR_PATH_MAX      256
 #define FILEMGR_CHUNK_SIZE    512  /* must fit in socket TX buffer (2KB) */
 
+/* Auth token length (4 hex chars = 16 bits) */
+#define FILEMGR_TOKEN_LEN 4
+
 /* File manager state */
 typedef struct {
     volatile bool running;
@@ -21,6 +24,7 @@ typedef struct {
     uint32_t bytes_received;
     uint32_t errors;
     char current_path[FILEMGR_PATH_MAX]; /* path being browsed */
+    char auth_token[FILEMGR_TOKEN_LEN + 1]; /* random access token */
 } FileManagerState;
 
 /**

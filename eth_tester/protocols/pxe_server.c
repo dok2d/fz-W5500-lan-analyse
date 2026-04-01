@@ -1,6 +1,7 @@
 #include "pxe_server.h"
 
 #include <furi.h>
+#include <furi_hal_random.h>
 #include <storage/storage.h>
 #include <socket.h>
 #include <wizchip_conf.h>
@@ -9,6 +10,9 @@
 #include <stdio.h>
 
 #define TAG "PXE"
+
+/* Timeout for external DHCP detection (ms) */
+#define PXE_DHCP_DETECT_TIMEOUT_MS 5000
 
 /* ==================== Helpers ==================== */
 
@@ -301,6 +305,19 @@ static void pxe_tftp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
                 /* New read request */
                 state->tftp_requests++;
                 char* filename = (char*)(buf + 2);
+                /* Reject path traversal attempts */
+                bool safe = true;
+                for(const char* p = filename; *p; p++) {
+                    if(p[0] == '.' && p[1] == '.') { safe = false; break; }
+                    if(p[0] == '/') { safe = false; break; }
+                }
+                if(!safe) {
+                    uint16_t err_len = pxe_build_tftp_error(buf, TFTP_ERR_ACCESS, "Access denied");
+                    sendto(PXE_TFTP_SOCKET, buf, err_len, req_ip, req_port);
+                    state->tftp_errors++;
+                    FURI_LOG_W(TAG, "TFTP path traversal rejected: %s", filename);
+                    break; /* exit the if(len >= 4) block */
+                }
                 FURI_LOG_I(TAG, "TFTP RRQ: %s from %d.%d.%d.%d:%d",
                     filename, req_ip[0], req_ip[1], req_ip[2], req_ip[3], req_port);
 
@@ -506,6 +523,124 @@ bool pxe_detect_boot_file(PxeServerState* state) {
     state->boot_file_found = false;
     FURI_LOG_I(TAG, "No boot file found in %s", PXE_BOOT_DIR);
     return false;
+}
+
+/* ==================== External DHCP detection ==================== */
+
+bool pxe_detect_external_dhcp(
+    uint8_t socket_num,
+    const uint8_t mac[6],
+    PxeExternalDhcp* result) {
+
+    memset(result, 0, sizeof(PxeExternalDhcp));
+
+    /* Build a minimal DHCP Discover packet */
+    uint8_t* pkt = malloc(548);
+    if(!pkt) return false;
+    memset(pkt, 0, 548);
+
+    uint32_t xid;
+    furi_hal_random_fill_buf((uint8_t*)&xid, sizeof(xid));
+
+    /* BOOTP header */
+    pkt[0] = 1;   /* op: BOOTREQUEST */
+    pkt[1] = 1;   /* htype: Ethernet */
+    pkt[2] = 6;   /* hlen */
+    pkt[4] = (xid >> 24) & 0xFF;
+    pkt[5] = (xid >> 16) & 0xFF;
+    pkt[6] = (xid >> 8) & 0xFF;
+    pkt[7] = xid & 0xFF;
+    pkt[10] = 0x80; /* flags: broadcast */
+    memcpy(pkt + 28, mac, 6); /* chaddr */
+
+    /* Magic cookie */
+    pkt[236] = 0x63; pkt[237] = 0x82;
+    pkt[238] = 0x53; pkt[239] = 0x63;
+
+    /* Option 53: DHCP Discover */
+    pkt[240] = 53; pkt[241] = 1; pkt[242] = 1;
+    /* Option 255: End */
+    pkt[243] = 255;
+
+    /* Open UDP socket on port 68 */
+    close(socket_num);
+    int8_t ret = socket(socket_num, Sn_MR_UDP, DHCP_CLIENT_PORT, 0);
+    if(ret != socket_num) {
+        free(pkt);
+        return false;
+    }
+
+    /* Send to broadcast */
+    uint8_t bcast[4] = {255, 255, 255, 255};
+    int32_t sent = sendto(socket_num, pkt, 300, bcast, DHCP_SERVER_PORT);
+    if(sent <= 0) {
+        close(socket_num);
+        free(pkt);
+        return false;
+    }
+
+    FURI_LOG_I(TAG, "DHCP Discover sent for network detection (xid=0x%08lX)", (unsigned long)xid);
+
+    /* Wait for Offer */
+    uint32_t start = furi_get_tick();
+    bool found = false;
+
+    while(furi_get_tick() - start < PXE_DHCP_DETECT_TIMEOUT_MS) {
+        uint16_t rx_size = getSn_RX_RSR(socket_num);
+        if(rx_size > 0) {
+            uint8_t from_ip[4];
+            uint16_t from_port;
+            int32_t received = recvfrom(socket_num, pkt, 548, from_ip, &from_port);
+            if(received >= 240) {
+                /* Check op=BOOTREPLY, magic cookie, and xid */
+                if(pkt[0] == 2 &&
+                   pkt[236] == 0x63 && pkt[237] == 0x82 &&
+                   pkt[238] == 0x53 && pkt[239] == 0x63) {
+
+                    uint32_t recv_xid = ((uint32_t)pkt[4] << 24) |
+                                        ((uint32_t)pkt[5] << 16) |
+                                        ((uint32_t)pkt[6] << 8) | pkt[7];
+                    if(recv_xid == xid) {
+                        /* Parse offered IP, server IP, subnet, gateway */
+                        memcpy(result->offered_ip, pkt + 16, 4); /* yiaddr */
+                        memcpy(result->server_ip, from_ip, 4);
+
+                        /* Parse options for subnet and router */
+                        uint16_t opt_off = 240;
+                        while(opt_off < (uint16_t)received && pkt[opt_off] != 255) {
+                            uint8_t opt = pkt[opt_off++];
+                            if(opt == 0) continue;
+                            if(opt_off >= (uint16_t)received) break;
+                            uint8_t opt_len = pkt[opt_off++];
+                            if(opt == 1 && opt_len >= 4) { /* Subnet Mask */
+                                memcpy(result->subnet, pkt + opt_off, 4);
+                            } else if(opt == 3 && opt_len >= 4) { /* Router */
+                                memcpy(result->gateway, pkt + opt_off, 4);
+                            }
+                            opt_off += opt_len;
+                        }
+
+                        result->found = true;
+                        found = true;
+                        FURI_LOG_I(TAG, "External DHCP detected: server %d.%d.%d.%d, offered %d.%d.%d.%d",
+                            from_ip[0], from_ip[1], from_ip[2], from_ip[3],
+                            result->offered_ip[0], result->offered_ip[1],
+                            result->offered_ip[2], result->offered_ip[3]);
+                        break;
+                    }
+                }
+            }
+        }
+        furi_delay_ms(50);
+    }
+
+    close(socket_num);
+    free(pkt);
+
+    if(!found) {
+        FURI_LOG_I(TAG, "No external DHCP detected within %d ms", PXE_DHCP_DETECT_TIMEOUT_MS);
+    }
+    return found;
 }
 
 /* ==================== Public API ==================== */

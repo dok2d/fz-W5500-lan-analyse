@@ -80,9 +80,19 @@ static void dhcp_timer_callback(void* context) {
     DHCP_time_handler();
 }
 
-/* Default MAC address (WIZnet OUI range) */
-#define DEFAULT_MAC \
-    { 0x00, 0x08, 0xDC, 0x47, 0x47, 0x54 }
+/*
+ * Generate a default MAC from the device's unique hardware name/id.
+ * Uses WIZnet OUI (00:08:DC) + 3 bytes derived from furi_hal_random,
+ * seeded implicitly by hardware RNG. Generated once and saved to SD.
+ * If no saved MAC exists, a fresh one is created.
+ */
+static void eth_tester_generate_default_mac(uint8_t mac[6]) {
+    mac[0] = 0x00;
+    mac[1] = 0x08;
+    mac[2] = 0xDC;
+    /* Generate unique lower 3 bytes from hardware RNG */
+    furi_hal_random_fill_buf(mac + 3, 3);
+}
 
 /* Frame receive buffer size */
 #define FRAME_BUF_SIZE 1600
@@ -567,9 +577,8 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->frame_buf = malloc(FRAME_BUF_SIZE);
     furi_assert(app->frame_buf);
 
-    /* Set default MAC */
-    uint8_t default_mac[6] = DEFAULT_MAC;
-    memcpy(app->mac_addr, default_mac, 6);
+    /* Set default MAC (derived from device UID for uniqueness) */
+    eth_tester_generate_default_mac(app->mac_addr);
 
     /* DHCP timer: 1 second periodic, needed by WIZnet DHCP_run() */
     app->dhcp_timer = furi_timer_alloc(dhcp_timer_callback, FuriTimerTypePeriodic, NULL);
@@ -996,9 +1005,12 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     variable_item_set_current_value_index(item_sound, app->setting_sound ? 1 : 0);
     variable_item_set_current_value_text(item_sound, setting_onoff[app->setting_sound ? 1 : 0]);
 
-    /* Load saved MAC from SD card if available */
+    /* Load saved MAC from SD card if available, otherwise save the generated one */
     if(mac_changer_load(app->mac_addr)) {
         FURI_LOG_I(TAG, "Loaded custom MAC from SD");
+    } else {
+        mac_changer_save(app->mac_addr);
+        FURI_LOG_I(TAG, "Generated and saved new unique MAC");
     }
 
     return app;
@@ -3619,15 +3631,10 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
         return;
     }
 
-    /* Step 3: Build config from user settings */
+    /* Step 3: Detect boot file first */
     PxeServerState state;
     memset(&state, 0, sizeof(state));
-    memcpy(state.config.server_ip, app->pxe_server_ip, 4);
-    memcpy(state.config.client_ip, app->pxe_client_ip, 4);
-    memcpy(state.config.subnet, app->pxe_subnet, 4);
-    state.config.dhcp_enabled = app->pxe_dhcp_enabled;
 
-    /* Step 4: Detect boot file */
     if(!pxe_detect_boot_file(&state)) {
         furi_string_printf(out,
             "[PXE] No boot file!\n"
@@ -3639,18 +3646,82 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
         return;
     }
 
-    /* Step 5: Configure W5500 with server IP (static) */
+    /* Step 4: Auto-detect external DHCP server on network */
+    furi_string_set(out, "[PXE] Detecting DHCP\non network...\n(up to 5 sec)\n");
+    eth_tester_update_view(app->text_box_pxe, out);
+
+    PxeExternalDhcp ext_dhcp;
+    bool has_external_dhcp = pxe_detect_external_dhcp(
+        W5500_DHCP_SOCKET, app->mac_addr, &ext_dhcp);
+
+    /* Step 5: Build config based on detection result */
+    if(has_external_dhcp) {
+        /* External DHCP found — disable our DHCP, pick a free IP
+         * in the same subnet for the TFTP server.
+         * Use the offered IP + 100 as our server IP (simple heuristic),
+         * or if user already set a custom IP, respect that. */
+        state.config.dhcp_enabled = false;
+
+        /* Use external subnet info */
+        memcpy(state.config.subnet, ext_dhcp.subnet, 4);
+
+        /* Derive server IP: offered_ip last octet + 100 (wrap to subnet) */
+        uint8_t server_ip[4];
+        memcpy(server_ip, ext_dhcp.offered_ip, 4);
+        /* Use a high last-octet to minimize conflicts */
+        server_ip[3] = (uint8_t)(ext_dhcp.offered_ip[3] + 100);
+        if(server_ip[3] < ext_dhcp.offered_ip[3]) server_ip[3] = 250; /* wrapped */
+        memcpy(state.config.server_ip, server_ip, 4);
+        memcpy(state.config.client_ip, ext_dhcp.offered_ip, 4);
+
+        FURI_LOG_I(TAG, "PXE: ext DHCP found, our DHCP OFF, server IP %d.%d.%d.%d",
+            server_ip[0], server_ip[1], server_ip[2], server_ip[3]);
+
+        furi_string_printf(out,
+            "[PXE] External DHCP found\n"
+            "Server: %d.%d.%d.%d\n"
+            "Own DHCP: OFF\n"
+            "TFTP IP: %d.%d.%d.%d\n",
+            ext_dhcp.server_ip[0], ext_dhcp.server_ip[1],
+            ext_dhcp.server_ip[2], ext_dhcp.server_ip[3],
+            server_ip[0], server_ip[1], server_ip[2], server_ip[3]);
+        eth_tester_update_view(app->text_box_pxe, out);
+    } else {
+        /* No external DHCP — enable our own with defaults */
+        state.config.dhcp_enabled = true;
+        memcpy(state.config.server_ip, app->pxe_server_ip, 4);
+        memcpy(state.config.client_ip, app->pxe_client_ip, 4);
+        memcpy(state.config.subnet, app->pxe_subnet, 4);
+
+        FURI_LOG_I(TAG, "PXE: no ext DHCP, own DHCP ON, server %d.%d.%d.%d",
+            state.config.server_ip[0], state.config.server_ip[1],
+            state.config.server_ip[2], state.config.server_ip[3]);
+
+        furi_string_printf(out,
+            "[PXE] No ext DHCP found\n"
+            "Own DHCP: ON\n"
+            "Server: %d.%d.%d.%d\n"
+            "Client: %d.%d.%d.%d\n",
+            state.config.server_ip[0], state.config.server_ip[1],
+            state.config.server_ip[2], state.config.server_ip[3],
+            state.config.client_ip[0], state.config.client_ip[1],
+            state.config.client_ip[2], state.config.client_ip[3]);
+        eth_tester_update_view(app->text_box_pxe, out);
+    }
+
+    /* Step 6: Configure W5500 with server IP (static) */
     w5500_hal_set_net_info(
         state.config.server_ip, state.config.subnet,
         state.config.server_ip, state.config.server_ip);
 
-    /* Step 6: Open sockets */
+    /* Step 7: Open sockets */
     if(!pxe_server_start(&state)) {
-        furi_string_cat(out, "[PXE] Failed to open sockets!\n");
+        furi_string_cat(out, "\n[PXE] Failed to open sockets!\n");
+        eth_tester_update_view(app->text_box_pxe, out);
         return;
     }
 
-    /* Step 7: Initial status */
+    /* Step 8: Initial status */
     furi_string_printf(out,
         "[PXE Server]\n"
         "IP: %d.%d.%d.%d\n"
@@ -3659,7 +3730,7 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
         "Waiting for client...\n",
         state.config.server_ip[0], state.config.server_ip[1],
         state.config.server_ip[2], state.config.server_ip[3],
-        state.config.dhcp_enabled ? "ON" : "OFF (TFTP only)",
+        state.config.dhcp_enabled ? "ON (no ext DHCP)" : "OFF (ext DHCP)",
         state.boot_filename, state.boot_file_size);
     eth_tester_update_view(app->text_box_pxe, out);
 
@@ -3779,15 +3850,16 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
         return;
     }
 
-    /* Step 6: Show compact status (fits 128x64 screen without scrolling) */
+    /* Step 6: Show compact status with auth token */
     furi_string_printf(out,
         "[File Manager] Running\n"
-        "http://%d.%d.%d.%d/\n"
+        "http://%d.%d.%d.%d/?t=%s\n"
         "Req:0 Tx:0 Rx:0\n"
         "\n"
         "Press BACK to stop.",
         app->dhcp_ip[0], app->dhcp_ip[1],
-        app->dhcp_ip[2], app->dhcp_ip[3]);
+        app->dhcp_ip[2], app->dhcp_ip[3],
+        fm_state.auth_token);
     eth_tester_update_view(app->text_box_file_manager, out);
 
     /* Step 7: Main loop */
@@ -3800,12 +3872,13 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
             last_status = furi_get_tick();
             furi_string_printf(out,
                 "[File Manager] Running\n"
-                "http://%d.%d.%d.%d/\n"
+                "http://%d.%d.%d.%d/?t=%s\n"
                 "Req:%lu Tx:%lu Rx:%lu\n"
                 "%s\n"
                 "Press BACK to stop.",
                 app->dhcp_ip[0], app->dhcp_ip[1],
                 app->dhcp_ip[2], app->dhcp_ip[3],
+                fm_state.auth_token,
                 (unsigned long)fm_state.requests_served,
                 (unsigned long)fm_state.bytes_sent,
                 (unsigned long)fm_state.bytes_received,

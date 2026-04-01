@@ -103,6 +103,26 @@ typedef struct {
     bool client_seen;
 } PxeServerState;
 
+/* Result of external DHCP detection */
+typedef struct {
+    bool found;              /* true if external DHCP responded */
+    uint8_t offered_ip[4];   /* IP offered to us */
+    uint8_t server_ip[4];    /* DHCP server IP */
+    uint8_t subnet[4];       /* Subnet from DHCP */
+    uint8_t gateway[4];      /* Gateway from DHCP */
+} PxeExternalDhcp;
+
+/**
+ * Probe the network for an existing DHCP server.
+ * Sends a DHCP Discover and waits up to 5 seconds for an Offer.
+ * If found, populates result with the external DHCP info.
+ * Returns true if an external DHCP server was detected.
+ */
+bool pxe_detect_external_dhcp(
+    uint8_t socket_num,
+    const uint8_t mac[6],
+    PxeExternalDhcp* result);
+
 /**
  * Detect boot file on SD card.
  * Populates state->boot_filename and state->boot_file_size.
