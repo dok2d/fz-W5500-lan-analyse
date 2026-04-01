@@ -626,6 +626,10 @@ static uint32_t eth_tester_navigation_submenu_callback(void* context) {
     UNUSED(context);
     /* Signal worker to stop immediately so it doesn't block next action */
     if(g_app) {
+        if(g_app->worker_thread &&
+           furi_thread_get_state(g_app->worker_thread) != FuriThreadStateStopped) {
+            submenu_set_header(g_app->submenu, "Stopping...");
+        }
         g_app->worker_running = false;
         eth_tester_update_menu_header(g_app);
     }
