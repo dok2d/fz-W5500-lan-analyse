@@ -47,6 +47,7 @@
 #define CUSTOM_EVENT_PING_SWEEP_READY 1
 #define CUSTOM_EVENT_HISTORY_DELETE 2
 #define CUSTOM_EVENT_CONT_PING_BACK 3
+#define CUSTOM_EVENT_SHOW_HOST_LIST 4
 
 /* Global app pointer for navigation callbacks (single-instance app) */
 static EthTesterApp* g_app = NULL;
@@ -197,6 +198,8 @@ static uint32_t eth_tester_nav_back_arp_scan(void* context);
 static uint32_t eth_tester_nav_back_diag(void* context);
 static uint32_t eth_tester_nav_back_tools(void* context);
 static uint32_t eth_tester_nav_back_settings(void* context);
+static uint32_t eth_tester_nav_back_host_list(void* context);
+static uint32_t eth_tester_nav_back_host_actions(void* context);
 static bool eth_tester_nav_event_cb(void* context);
 static bool eth_tester_custom_event_cb(void* context, uint32_t event);
 static void eth_tester_worker_stop(EthTesterApp* app);
@@ -344,6 +347,135 @@ static bool bridge_input_callback(InputEvent* event, void* context) {
         return true;
     }
     return false;
+}
+
+/* ==================== Host List / Host Actions callbacks ==================== */
+
+/* Host action menu item indices */
+#define HOST_ACTION_PING         0
+#define HOST_ACTION_CONT_PING    1
+#define HOST_ACTION_TRACEROUTE   2
+#define HOST_ACTION_PORT_SCAN_20 3
+#define HOST_ACTION_PORT_SCAN_100 4
+#define HOST_ACTION_WOL          5
+
+static uint32_t eth_tester_nav_back_host_list(void* context) {
+    UNUSED(context);
+    return EthTesterViewCatDiscovery;
+}
+
+static uint32_t eth_tester_nav_back_host_actions(void* context) {
+    UNUSED(context);
+    return EthTesterViewHostList;
+}
+
+static void eth_tester_host_action_callback(void* context, uint32_t index) {
+    EthTesterApp* app = context;
+    if(app->selected_host_idx >= app->discovered_host_count) return;
+
+    DiscoveredHost* host = &app->discovered_hosts[app->selected_host_idx];
+    char ip_str[16];
+    snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d",
+        host->ip[0], host->ip[1], host->ip[2], host->ip[3]);
+
+    switch(index) {
+    case HOST_ACTION_PING:
+        memcpy(app->ping_ip_custom, host->ip, 4);
+        strncpy(app->ping_ip_input, ip_str, sizeof(app->ping_ip_input));
+        eth_tester_show_view(app, app->text_box_ping, EthTesterViewPing, app->ping_text, "Initializing...\n");
+        eth_tester_worker_start(app, EthTesterMenuItemPing, EthTesterViewPing);
+        break;
+    case HOST_ACTION_CONT_PING:
+        memcpy(app->cont_ping_target, host->ip, 4);
+        strncpy(app->cont_ping_ip_input, ip_str, sizeof(app->cont_ping_ip_input));
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewContPing);
+        eth_tester_worker_start(app, EthTesterMenuItemContPing, EthTesterViewContPing);
+        break;
+    case HOST_ACTION_TRACEROUTE:
+        memcpy(app->traceroute_target, host->ip, 4);
+        strncpy(app->traceroute_host_input, ip_str, sizeof(app->traceroute_host_input));
+        app->traceroute_is_hostname = false;
+        furi_string_set(app->traceroute_text, "Initializing...\n");
+        text_box_set_text(app->text_box_traceroute, furi_string_get_cstr(app->traceroute_text));
+        eth_tester_worker_start(app, EthTesterMenuItemTraceroute, EthTesterViewTraceroute);
+        break;
+    case HOST_ACTION_PORT_SCAN_20:
+        memcpy(app->port_scan_target, host->ip, 4);
+        strncpy(app->port_scan_ip_input, ip_str, sizeof(app->port_scan_ip_input));
+        app->port_scan_top100 = false;
+        app->port_scan_custom = false;
+        furi_string_set(app->port_scan_text, "Initializing...\n");
+        text_box_set_text(app->text_box_port_scan, furi_string_get_cstr(app->port_scan_text));
+        eth_tester_worker_start(app, EthTesterMenuItemPortScan, EthTesterViewPortScan);
+        break;
+    case HOST_ACTION_PORT_SCAN_100:
+        memcpy(app->port_scan_target, host->ip, 4);
+        strncpy(app->port_scan_ip_input, ip_str, sizeof(app->port_scan_ip_input));
+        app->port_scan_top100 = true;
+        app->port_scan_custom = false;
+        furi_string_set(app->port_scan_text, "Initializing...\n");
+        text_box_set_text(app->text_box_port_scan, furi_string_get_cstr(app->port_scan_text));
+        eth_tester_worker_start(app, EthTesterMenuItemPortScan, EthTesterViewPortScan);
+        break;
+    case HOST_ACTION_WOL:
+        if(host->has_mac) {
+            memcpy(app->wol_mac_input, host->mac, 6);
+            furi_string_set(app->wol_text, "Sending WOL...\n");
+            text_box_set_text(app->text_box_wol, furi_string_get_cstr(app->wol_text));
+            eth_tester_worker_start(app, EthTesterMenuItemWol, EthTesterViewWol);
+        }
+        break;
+    }
+}
+
+static void eth_tester_host_list_callback(void* context, uint32_t index) {
+    EthTesterApp* app = context;
+    if(index >= app->discovered_host_count) return;
+
+    app->selected_host_idx = (uint16_t)index;
+    DiscoveredHost* host = &app->discovered_hosts[index];
+
+    /* Populate host actions submenu */
+    submenu_reset(app->submenu_host_actions);
+
+    char ip_str[16];
+    snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d",
+        host->ip[0], host->ip[1], host->ip[2], host->ip[3]);
+    submenu_set_header(app->submenu_host_actions, ip_str);
+
+    submenu_add_item(app->submenu_host_actions, "Ping", HOST_ACTION_PING, eth_tester_host_action_callback, app);
+    submenu_add_item(app->submenu_host_actions, "Continuous Ping", HOST_ACTION_CONT_PING, eth_tester_host_action_callback, app);
+    submenu_add_item(app->submenu_host_actions, "Traceroute", HOST_ACTION_TRACEROUTE, eth_tester_host_action_callback, app);
+    submenu_add_item(app->submenu_host_actions, "Port Scan (Top 20)", HOST_ACTION_PORT_SCAN_20, eth_tester_host_action_callback, app);
+    submenu_add_item(app->submenu_host_actions, "Port Scan (Top 100)", HOST_ACTION_PORT_SCAN_100, eth_tester_host_action_callback, app);
+
+    if(host->has_mac) {
+        submenu_add_item(app->submenu_host_actions, "Wake-on-LAN", HOST_ACTION_WOL, eth_tester_host_action_callback, app);
+    }
+
+    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewHostActions);
+}
+
+/* Populate host list submenu from discovered_hosts array */
+static void eth_tester_populate_host_list(EthTesterApp* app) {
+    submenu_reset(app->submenu_host_list);
+    submenu_set_header(app->submenu_host_list, "Discovered Hosts");
+
+    for(uint16_t i = 0; i < app->discovered_host_count; i++) {
+        DiscoveredHost* h = &app->discovered_hosts[i];
+        /* Use a static buffer — submenu copies the string */
+        char label[40];
+        if(h->has_mac) {
+            const char* vendor = oui_lookup(h->mac);
+            snprintf(label, sizeof(label), "%d.%d.%d.%d (%s)",
+                h->ip[0], h->ip[1], h->ip[2], h->ip[3],
+                vendor);
+        } else {
+            snprintf(label, sizeof(label), "%d.%d.%d.%d",
+                h->ip[0], h->ip[1], h->ip[2], h->ip[3]);
+        }
+        submenu_add_item(app->submenu_host_list, label, i, eth_tester_host_list_callback, app);
+    }
 }
 
 /* ==================== Packet Capture view model & callbacks ==================== */
@@ -1228,6 +1360,17 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPacketCapture, app->view_packet_capture);
     memset(&app->pcap_state, 0, sizeof(app->pcap_state));
 
+    /* Host List / Host Actions submenus */
+    app->submenu_host_list = submenu_alloc();
+    view_set_previous_callback(submenu_get_view(app->submenu_host_list), eth_tester_nav_back_host_list);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHostList, submenu_get_view(app->submenu_host_list));
+
+    app->submenu_host_actions = submenu_alloc();
+    view_set_previous_callback(submenu_get_view(app->submenu_host_actions), eth_tester_nav_back_host_actions);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHostActions, submenu_get_view(app->submenu_host_actions));
+
+    app->discovered_host_count = 0;
+
     /* Traceroute views */
     app->text_box_traceroute = text_box_alloc();
     text_box_set_font(app->text_box_traceroute, TextBoxFontText);
@@ -1426,6 +1569,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeHelp);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewFileManager);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPacketCapture);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHostList);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHostActions);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_netinfo);
@@ -1450,6 +1595,8 @@ static void eth_tester_app_free(EthTesterApp* app) {
     byte_input_free(app->byte_input_mac_changer);
     view_free(app->view_bridge);
     view_free(app->view_packet_capture);
+    submenu_free(app->submenu_host_list);
+    submenu_free(app->submenu_host_actions);
     if(app->bridge_state) free(app->bridge_state);
     text_box_free(app->text_box_pxe);
     text_box_free(app->text_box_pxe_help);
@@ -1630,6 +1777,14 @@ static void eth_tester_ping_sweep_input_callback(void* context);
 
 static bool eth_tester_custom_event_cb(void* context, uint32_t event) {
     EthTesterApp* app = context;
+
+    if(event == CUSTOM_EVENT_SHOW_HOST_LIST) {
+        if(app->discovered_host_count > 0) {
+            eth_tester_populate_host_list(app);
+            view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewHostList);
+        }
+        return true;
+    }
 
     if(event == CUSTOM_EVENT_CONT_PING_BACK) {
         /* Worker is stopping (worker_running = false). Wait for it to finish,
@@ -2718,11 +2873,26 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
         furi_string_cat_str(app->arp_text, "No hosts found.\n");
     }
 
+    /* Populate discovered hosts for interactive list */
+    app->discovered_host_count = 0;
+    for(uint16_t i = 0; i < scan->count && i < MAX_DISCOVERED_HOSTS; i++) {
+        DiscoveredHost* dh = &app->discovered_hosts[i];
+        memcpy(dh->ip, scan->hosts[i].ip, 4);
+        memcpy(dh->mac, scan->hosts[i].mac, 6);
+        dh->has_mac = true;
+        app->discovered_host_count++;
+    }
+
     free(scan->hosts);
     free(scan);
 
     /* Save results to SD card */
     eth_tester_save_and_notify(app, "arp_scan.txt", app->arp_text);
+
+    /* Show interactive host list if hosts were found */
+    if(app->discovered_host_count > 0 && app->worker_running) {
+        view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_SHOW_HOST_LIST);
+    }
 }
 
 static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
@@ -3261,6 +3431,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
     uint32_t last = pkt_read_u32_be(end_ip);
     uint16_t scanned = 0;
     uint16_t alive = 0;
+    app->discovered_host_count = 0;
     FuriString* results = furi_string_alloc();
 
     while(current <= last && scanned < num_hosts && app->worker_running) {
@@ -3276,6 +3447,15 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
             pkt_format_ip(target, ip_str);
             furi_string_cat_printf(results, "  %s: %lu ms\n", ip_str, (unsigned long)result.rtt_ms);
             alive++;
+
+            /* Store for interactive host list */
+            if(app->discovered_host_count < MAX_DISCOVERED_HOSTS) {
+                DiscoveredHost* dh = &app->discovered_hosts[app->discovered_host_count];
+                memcpy(dh->ip, target, 4);
+                memset(dh->mac, 0, 6);
+                dh->has_mac = false;
+                app->discovered_host_count++;
+            }
         }
 
         /* Update progress every 5 hosts */
@@ -3316,6 +3496,11 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
 
     furi_string_free(results);
     eth_tester_save_and_notify(app, "ping_sweep.txt", app->ping_sweep_text);
+
+    /* Show interactive host list if hosts were found */
+    if(app->discovered_host_count > 0 && app->worker_running) {
+        view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_SHOW_HOST_LIST);
+    }
 }
 
 /* ==================== mDNS / SSDP Discovery ==================== */

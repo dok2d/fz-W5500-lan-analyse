@@ -58,6 +58,8 @@ typedef enum {
     EthTesterViewPxeHelp,
     EthTesterViewFileManager,
     EthTesterViewPacketCapture,
+    EthTesterViewHostList,
+    EthTesterViewHostActions,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -101,6 +103,15 @@ typedef struct {
     uint32_t cdp_frames;
     uint32_t unknown_frames;
 } PacketStats;
+
+/* Discovered host from scan results */
+typedef struct {
+    uint8_t ip[4];
+    uint8_t mac[6];
+    bool has_mac;
+} DiscoveredHost;
+
+#define MAX_DISCOVERED_HOSTS 64
 
 /* Application state */
 struct EthTesterApp {
@@ -247,6 +258,13 @@ struct EthTesterApp {
     PxeServerState pxe_scan;           /* cached boot file scan results */
     uint8_t pxe_boot_file_idx;         /* currently selected boot file */
     bool pxe_dhcp_probed;              /* external DHCP already probed? */
+
+    /* Discovered hosts from scans */
+    Submenu* submenu_host_list;
+    Submenu* submenu_host_actions;
+    DiscoveredHost discovered_hosts[MAX_DISCOVERED_HOSTS];
+    uint16_t discovered_host_count;
+    uint16_t selected_host_idx;
 
     /* Packet Capture state */
     View* view_packet_capture;
