@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.0] - 2026
+
+### Changed
+- **Renamed**: appid changed from `eth_tester` to `lan_tester`; SD card data path is now `/ext/apps_data/lan_tester/`
+
 ## [1.1.0] - 2026
 
 ### Added

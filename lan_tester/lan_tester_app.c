@@ -1,4 +1,4 @@
-#include "eth_tester_app.h"
+#include "lan_tester_app.h"
 #include "hal/w5500_hal.h"
 #include "protocols/lldp.h"
 #include "protocols/cdp.h"
@@ -40,7 +40,7 @@
 
 #define TAG "ETH"
 
-/* Internal worker operations (beyond EthTesterMenuItem range) */
+/* Internal worker operations (beyond LanTesterMenuItem range) */
 #define WORKER_OP_PING_SWEEP_DETECT 100
 
 /* Custom events sent from worker to main thread */
@@ -50,7 +50,7 @@
 #define CUSTOM_EVENT_SHOW_HOST_LIST   4
 
 /* Global app pointer for navigation callbacks (single-instance app) */
-static EthTesterApp* g_app = NULL;
+static LanTesterApp* g_app = NULL;
 
 /* ==================== WIZnet library compatibility stubs ==================== */
 
@@ -88,7 +88,7 @@ static void dhcp_timer_callback(void* context) {
  * seeded implicitly by hardware RNG. Generated once and saved to SD.
  * If no saved MAC exists, a fresh one is created.
  */
-static void eth_tester_generate_default_mac(uint8_t mac[6]) {
+static void lan_tester_generate_default_mac(uint8_t mac[6]) {
     mac[0] = 0x00;
     mac[1] = 0x08;
     mac[2] = 0xDC;
@@ -104,9 +104,9 @@ static void eth_tester_generate_default_mac(uint8_t mac[6]) {
 
 /* ==================== Settings persistence ==================== */
 
-static bool eth_tester_parse_ip(const char* str, uint8_t ip[4]);
+static bool lan_tester_parse_ip(const char* str, uint8_t ip[4]);
 
-static void eth_tester_settings_load(EthTesterApp* app) {
+static void lan_tester_settings_load(LanTesterApp* app) {
     /* Defaults */
     app->setting_autosave = true;
     app->setting_sound = true;
@@ -140,7 +140,7 @@ static void eth_tester_settings_load(EthTesterApp* app) {
                 j++;
             }
             ip_buf[j] = '\0';
-            if(eth_tester_parse_ip(ip_buf, app->dns_custom_server)) {
+            if(lan_tester_parse_ip(ip_buf, app->dns_custom_server)) {
                 strncpy(app->dns_custom_ip_input, ip_buf, sizeof(app->dns_custom_ip_input));
             }
         }
@@ -164,7 +164,7 @@ static void eth_tester_settings_load(EthTesterApp* app) {
     furi_record_close(RECORD_STORAGE);
 }
 
-static void eth_tester_settings_save(EthTesterApp* app) {
+static void lan_tester_settings_save(LanTesterApp* app) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
     storage_simply_mkdir(storage, APP_DATA_PATH(""));
     File* file = storage_file_alloc(storage);
@@ -191,65 +191,65 @@ static void eth_tester_settings_save(EthTesterApp* app) {
 
 /* ==================== Forward declarations ==================== */
 
-static void eth_tester_submenu_callback(void* context, uint32_t index);
-static uint32_t eth_tester_navigation_exit_callback(void* context);
-static uint32_t eth_tester_navigation_submenu_callback(void* context);
-static uint32_t eth_tester_navigation_history_callback(void* context);
-static uint32_t eth_tester_nav_back_netinfo(void* context);
-static uint32_t eth_tester_nav_back_discovery(void* context);
-static uint32_t eth_tester_nav_back_ping_sweep(void* context);
-static uint32_t eth_tester_nav_back_arp_scan(void* context);
-static uint32_t eth_tester_nav_back_diag(void* context);
-static uint32_t eth_tester_nav_back_tools(void* context);
-static uint32_t eth_tester_nav_back_settings(void* context);
-static uint32_t eth_tester_nav_back_host_list(void* context);
-static uint32_t eth_tester_nav_back_host_actions(void* context);
-static bool eth_tester_nav_event_cb(void* context);
-static bool eth_tester_custom_event_cb(void* context, uint32_t event);
-static void eth_tester_worker_stop(EthTesterApp* app);
-static void eth_tester_worker_start(EthTesterApp* app, uint32_t op, EthTesterView result_view);
-static void eth_tester_update_view(TextBox* tb, FuriString* text);
-static void eth_tester_show_view(
-    EthTesterApp* app,
+static void lan_tester_submenu_callback(void* context, uint32_t index);
+static uint32_t lan_tester_navigation_exit_callback(void* context);
+static uint32_t lan_tester_navigation_submenu_callback(void* context);
+static uint32_t lan_tester_navigation_history_callback(void* context);
+static uint32_t lan_tester_nav_back_netinfo(void* context);
+static uint32_t lan_tester_nav_back_discovery(void* context);
+static uint32_t lan_tester_nav_back_ping_sweep(void* context);
+static uint32_t lan_tester_nav_back_arp_scan(void* context);
+static uint32_t lan_tester_nav_back_diag(void* context);
+static uint32_t lan_tester_nav_back_tools(void* context);
+static uint32_t lan_tester_nav_back_settings(void* context);
+static uint32_t lan_tester_nav_back_host_list(void* context);
+static uint32_t lan_tester_nav_back_host_actions(void* context);
+static bool lan_tester_nav_event_cb(void* context);
+static bool lan_tester_custom_event_cb(void* context, uint32_t event);
+static void lan_tester_worker_stop(LanTesterApp* app);
+static void lan_tester_worker_start(LanTesterApp* app, uint32_t op, LanTesterView result_view);
+static void lan_tester_update_view(TextBox* tb, FuriString* text);
+static void lan_tester_show_view(
+    LanTesterApp* app,
     TextBox* tb,
-    EthTesterView view,
+    LanTesterView view,
     FuriString* text,
     const char* initial);
-static bool eth_tester_ensure_w5500(EthTesterApp* app);
+static bool lan_tester_ensure_w5500(LanTesterApp* app);
 
-static void eth_tester_do_link_info(EthTesterApp* app);
-static void eth_tester_do_lldp_cdp(EthTesterApp* app);
-static void eth_tester_do_arp_scan(EthTesterApp* app);
-static void eth_tester_do_dhcp_analyze(EthTesterApp* app);
-static void eth_tester_do_ping(EthTesterApp* app);
-static void eth_tester_do_stats(EthTesterApp* app);
-static void eth_tester_do_dns_lookup(EthTesterApp* app);
-static void eth_tester_do_wol(EthTesterApp* app);
-static void eth_tester_do_cont_ping(EthTesterApp* app);
-static void eth_tester_do_port_scan(EthTesterApp* app);
-static void eth_tester_do_mac_changer(EthTesterApp* app);
-static void eth_tester_do_traceroute(EthTesterApp* app);
-static void eth_tester_do_discovery(EthTesterApp* app);
-static void eth_tester_do_ping_sweep(EthTesterApp* app);
-static void eth_tester_do_ping_sweep_detect(EthTesterApp* app);
-static void eth_tester_do_stp_vlan(EthTesterApp* app);
-static void eth_tester_do_eth_bridge(EthTesterApp* app);
-static void eth_tester_do_pxe_server(EthTesterApp* app);
-static void eth_tester_do_file_manager(EthTesterApp* app);
-static void eth_tester_do_packet_capture(EthTesterApp* app);
-static void eth_tester_history_populate(EthTesterApp* app);
-static void eth_tester_history_file_callback(void* context, uint32_t index);
-static void eth_tester_history_delete_callback(void* context, uint32_t index);
-static void eth_tester_mac_changer_input_callback(void* context);
-static void eth_tester_stop_worker_on_back(void);
-static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
-static bool eth_tester_save_results(const char* filename, const char* content);
-static void eth_tester_save_and_notify(EthTesterApp* app, const char* type, FuriString* text);
+static void lan_tester_do_link_info(LanTesterApp* app);
+static void lan_tester_do_lldp_cdp(LanTesterApp* app);
+static void lan_tester_do_arp_scan(LanTesterApp* app);
+static void lan_tester_do_dhcp_analyze(LanTesterApp* app);
+static void lan_tester_do_ping(LanTesterApp* app);
+static void lan_tester_do_stats(LanTesterApp* app);
+static void lan_tester_do_dns_lookup(LanTesterApp* app);
+static void lan_tester_do_wol(LanTesterApp* app);
+static void lan_tester_do_cont_ping(LanTesterApp* app);
+static void lan_tester_do_port_scan(LanTesterApp* app);
+static void lan_tester_do_mac_changer(LanTesterApp* app);
+static void lan_tester_do_traceroute(LanTesterApp* app);
+static void lan_tester_do_discovery(LanTesterApp* app);
+static void lan_tester_do_ping_sweep(LanTesterApp* app);
+static void lan_tester_do_ping_sweep_detect(LanTesterApp* app);
+static void lan_tester_do_stp_vlan(LanTesterApp* app);
+static void lan_tester_do_eth_bridge(LanTesterApp* app);
+static void lan_tester_do_pxe_server(LanTesterApp* app);
+static void lan_tester_do_file_manager(LanTesterApp* app);
+static void lan_tester_do_packet_capture(LanTesterApp* app);
+static void lan_tester_history_populate(LanTesterApp* app);
+static void lan_tester_history_file_callback(void* context, uint32_t index);
+static void lan_tester_history_delete_callback(void* context, uint32_t index);
+static void lan_tester_mac_changer_input_callback(void* context);
+static void lan_tester_stop_worker_on_back(void);
+static void lan_tester_count_frame(LanTesterApp* app, const uint8_t* frame, uint16_t len);
+static bool lan_tester_save_results(const char* filename, const char* content);
+static void lan_tester_save_and_notify(LanTesterApp* app, const char* type, FuriString* text);
 
 /* ==================== ETH Bridge view model & callbacks ==================== */
 
 typedef struct {
-    EthTesterApp* app;
+    LanTesterApp* app;
     bool active; /* bridge is running */
     bool usb_connected;
     bool lan_link_up;
@@ -319,7 +319,7 @@ static void bridge_draw_callback(Canvas* canvas, void* model) {
 }
 
 static bool bridge_input_callback(InputEvent* event, void* context) {
-    EthTesterApp* app = context;
+    LanTesterApp* app = context;
     if(event->type == InputTypeShort && event->key == InputKeyBack) {
         if(app->worker_running) {
             /* Bridge is active — signal it to stop */
@@ -369,18 +369,18 @@ static bool bridge_input_callback(InputEvent* event, void* context) {
 #define HOST_ACTION_PORT_SCAN_100 4
 #define HOST_ACTION_WOL           5
 
-static uint32_t eth_tester_nav_back_host_list(void* context) {
+static uint32_t lan_tester_nav_back_host_list(void* context) {
     UNUSED(context);
-    return EthTesterViewCatDiscovery;
+    return LanTesterViewCatDiscovery;
 }
 
-static uint32_t eth_tester_nav_back_host_actions(void* context) {
+static uint32_t lan_tester_nav_back_host_actions(void* context) {
     UNUSED(context);
-    return EthTesterViewHostList;
+    return LanTesterViewHostList;
 }
 
-static void eth_tester_host_action_callback(void* context, uint32_t index) {
-    EthTesterApp* app = context;
+static void lan_tester_host_action_callback(void* context, uint32_t index) {
+    LanTesterApp* app = context;
     if(app->selected_host_idx >= app->discovered_host_count) return;
 
     DiscoveredHost* host = &app->discovered_hosts[app->selected_host_idx];
@@ -392,15 +392,15 @@ static void eth_tester_host_action_callback(void* context, uint32_t index) {
     case HOST_ACTION_PING:
         memcpy(app->ping_ip_custom, host->ip, 4);
         strncpy(app->ping_ip_input, ip_str, sizeof(app->ping_ip_input));
-        eth_tester_show_view(
-            app, app->text_box_ping, EthTesterViewPing, app->ping_text, "Initializing...\n");
-        eth_tester_worker_start(app, EthTesterMenuItemPing, EthTesterViewPing);
+        lan_tester_show_view(
+            app, app->text_box_ping, LanTesterViewPing, app->ping_text, "Initializing...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemPing, LanTesterViewPing);
         break;
     case HOST_ACTION_CONT_PING:
         memcpy(app->cont_ping_target, host->ip, 4);
         strncpy(app->cont_ping_ip_input, ip_str, sizeof(app->cont_ping_ip_input));
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewContPing);
-        eth_tester_worker_start(app, EthTesterMenuItemContPing, EthTesterViewContPing);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewContPing);
+        lan_tester_worker_start(app, LanTesterMenuItemContPing, LanTesterViewContPing);
         break;
     case HOST_ACTION_TRACEROUTE:
         memcpy(app->traceroute_target, host->ip, 4);
@@ -408,7 +408,7 @@ static void eth_tester_host_action_callback(void* context, uint32_t index) {
         app->traceroute_is_hostname = false;
         furi_string_set(app->traceroute_text, "Initializing...\n");
         text_box_set_text(app->text_box_traceroute, furi_string_get_cstr(app->traceroute_text));
-        eth_tester_worker_start(app, EthTesterMenuItemTraceroute, EthTesterViewTraceroute);
+        lan_tester_worker_start(app, LanTesterMenuItemTraceroute, LanTesterViewTraceroute);
         break;
     case HOST_ACTION_PORT_SCAN_20:
         memcpy(app->port_scan_target, host->ip, 4);
@@ -417,7 +417,7 @@ static void eth_tester_host_action_callback(void* context, uint32_t index) {
         app->port_scan_custom = false;
         furi_string_set(app->port_scan_text, "Initializing...\n");
         text_box_set_text(app->text_box_port_scan, furi_string_get_cstr(app->port_scan_text));
-        eth_tester_worker_start(app, EthTesterMenuItemPortScan, EthTesterViewPortScan);
+        lan_tester_worker_start(app, LanTesterMenuItemPortScan, LanTesterViewPortScan);
         break;
     case HOST_ACTION_PORT_SCAN_100:
         memcpy(app->port_scan_target, host->ip, 4);
@@ -426,21 +426,21 @@ static void eth_tester_host_action_callback(void* context, uint32_t index) {
         app->port_scan_custom = false;
         furi_string_set(app->port_scan_text, "Initializing...\n");
         text_box_set_text(app->text_box_port_scan, furi_string_get_cstr(app->port_scan_text));
-        eth_tester_worker_start(app, EthTesterMenuItemPortScan, EthTesterViewPortScan);
+        lan_tester_worker_start(app, LanTesterMenuItemPortScan, LanTesterViewPortScan);
         break;
     case HOST_ACTION_WOL:
         if(host->has_mac) {
             memcpy(app->wol_mac_input, host->mac, 6);
             furi_string_set(app->wol_text, "Sending WOL...\n");
             text_box_set_text(app->text_box_wol, furi_string_get_cstr(app->wol_text));
-            eth_tester_worker_start(app, EthTesterMenuItemWol, EthTesterViewWol);
+            lan_tester_worker_start(app, LanTesterMenuItemWol, LanTesterViewWol);
         }
         break;
     }
 }
 
-static void eth_tester_host_list_callback(void* context, uint32_t index) {
-    EthTesterApp* app = context;
+static void lan_tester_host_list_callback(void* context, uint32_t index) {
+    LanTesterApp* app = context;
     if(index >= app->discovered_host_count) return;
 
     app->selected_host_idx = (uint16_t)index;
@@ -455,30 +455,30 @@ static void eth_tester_host_list_callback(void* context, uint32_t index) {
     submenu_set_header(app->submenu_host_actions, ip_str);
 
     submenu_add_item(
-        app->submenu_host_actions, "Ping", HOST_ACTION_PING, eth_tester_host_action_callback, app);
+        app->submenu_host_actions, "Ping", HOST_ACTION_PING, lan_tester_host_action_callback, app);
     submenu_add_item(
         app->submenu_host_actions,
         "Continuous Ping",
         HOST_ACTION_CONT_PING,
-        eth_tester_host_action_callback,
+        lan_tester_host_action_callback,
         app);
     submenu_add_item(
         app->submenu_host_actions,
         "Traceroute",
         HOST_ACTION_TRACEROUTE,
-        eth_tester_host_action_callback,
+        lan_tester_host_action_callback,
         app);
     submenu_add_item(
         app->submenu_host_actions,
         "Port Scan (Top 20)",
         HOST_ACTION_PORT_SCAN_20,
-        eth_tester_host_action_callback,
+        lan_tester_host_action_callback,
         app);
     submenu_add_item(
         app->submenu_host_actions,
         "Port Scan (Top 100)",
         HOST_ACTION_PORT_SCAN_100,
-        eth_tester_host_action_callback,
+        lan_tester_host_action_callback,
         app);
 
     if(host->has_mac) {
@@ -486,15 +486,15 @@ static void eth_tester_host_list_callback(void* context, uint32_t index) {
             app->submenu_host_actions,
             "Wake-on-LAN",
             HOST_ACTION_WOL,
-            eth_tester_host_action_callback,
+            lan_tester_host_action_callback,
             app);
     }
 
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewHostActions);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewHostActions);
 }
 
 /* Populate host list submenu from discovered_hosts array */
-static void eth_tester_populate_host_list(EthTesterApp* app) {
+static void lan_tester_populate_host_list(LanTesterApp* app) {
     submenu_reset(app->submenu_host_list);
     submenu_set_header(app->submenu_host_list, "Discovered Hosts");
 
@@ -516,19 +516,19 @@ static void eth_tester_populate_host_list(EthTesterApp* app) {
         } else {
             snprintf(label, sizeof(label), "%d.%d.%d.%d", h->ip[0], h->ip[1], h->ip[2], h->ip[3]);
         }
-        submenu_add_item(app->submenu_host_list, label, i, eth_tester_host_list_callback, app);
+        submenu_add_item(app->submenu_host_list, label, i, lan_tester_host_list_callback, app);
     }
 }
 
 /* ==================== Packet Capture view model & callbacks ==================== */
 
 typedef struct {
-    EthTesterApp* app;
+    LanTesterApp* app;
 } PacketCaptureViewModel;
 
 static void packet_capture_draw_callback(Canvas* canvas, void* model) {
     PacketCaptureViewModel* vm = model;
-    EthTesterApp* app = vm->app;
+    LanTesterApp* app = vm->app;
 
     canvas_clear(canvas);
     canvas_set_font(canvas, FontPrimary);
@@ -572,15 +572,15 @@ static void packet_capture_draw_callback(Canvas* canvas, void* model) {
 }
 
 static bool packet_capture_input_callback(InputEvent* event, void* context) {
-    EthTesterApp* app = context;
+    LanTesterApp* app = context;
 
     if(event->type == InputTypeShort && event->key == InputKeyOk) {
         if(!app->pcap_state.active) {
             /* Start capture */
             memset(&app->pcap_state, 0, sizeof(app->pcap_state));
             app->pcap_start_tick = furi_get_tick();
-            eth_tester_worker_start(
-                app, EthTesterMenuItemPacketCapture, EthTesterViewPacketCapture);
+            lan_tester_worker_start(
+                app, LanTesterMenuItemPacketCapture, LanTesterViewPacketCapture);
         } else {
             /* Stop capture */
             app->worker_running = false;
@@ -602,12 +602,12 @@ static bool packet_capture_input_callback(InputEvent* event, void* context) {
 /* ==================== Continuous Ping view model & callbacks ==================== */
 
 typedef struct {
-    EthTesterApp* app;
+    LanTesterApp* app;
 } ContPingViewModel;
 
 static void cont_ping_draw_callback(Canvas* canvas, void* model) {
     ContPingViewModel* vm = model;
-    EthTesterApp* app = vm->app;
+    LanTesterApp* app = vm->app;
     PingGraphState* pg = app->ping_graph;
 
     canvas_clear(canvas);
@@ -696,7 +696,7 @@ static void cont_ping_draw_callback(Canvas* canvas, void* model) {
 }
 
 static bool cont_ping_input_callback(InputEvent* event, void* context) {
-    EthTesterApp* app = context;
+    LanTesterApp* app = context;
 
     if(event->type == InputTypeShort && event->key == InputKeyBack) {
         if(app->ping_graph) {
@@ -721,7 +721,7 @@ static void settings_autosave_changed(VariableItem* item) {
     variable_item_set_current_value_text(item, setting_onoff[idx]);
     if(g_app) {
         g_app->setting_autosave = (idx == 1);
-        eth_tester_settings_save(g_app);
+        lan_tester_settings_save(g_app);
     }
 }
 
@@ -730,7 +730,7 @@ static void settings_sound_changed(VariableItem* item) {
     variable_item_set_current_value_text(item, setting_onoff[idx]);
     if(g_app) {
         g_app->setting_sound = (idx == 1);
-        eth_tester_settings_save(g_app);
+        lan_tester_settings_save(g_app);
     }
 }
 
@@ -739,7 +739,7 @@ static void settings_dns_custom_changed(VariableItem* item) {
     variable_item_set_current_value_text(item, setting_onoff[idx]);
     if(g_app) {
         g_app->dns_custom_enabled = (idx == 1);
-        eth_tester_settings_save(g_app);
+        lan_tester_settings_save(g_app);
     }
 }
 
@@ -751,7 +751,7 @@ static void settings_ping_count_changed(VariableItem* item) {
     variable_item_set_current_value_text(item, buf);
     if(g_app) {
         g_app->ping_count = count;
-        eth_tester_settings_save(g_app);
+        lan_tester_settings_save(g_app);
     }
 }
 
@@ -763,7 +763,7 @@ static void settings_ping_timeout_changed(VariableItem* item) {
     variable_item_set_current_value_text(item, buf);
     if(g_app) {
         g_app->ping_timeout_ms = timeout;
-        eth_tester_settings_save(g_app);
+        lan_tester_settings_save(g_app);
     }
 }
 
@@ -775,20 +775,20 @@ static void settings_ping_interval_changed(VariableItem* item) {
     variable_item_set_current_value_text(item, buf);
     if(g_app) {
         g_app->ping_interval_ms = interval;
-        eth_tester_settings_save(g_app);
+        lan_tester_settings_save(g_app);
     }
 }
 
 static void dns_custom_ip_input_callback(void* context) {
-    EthTesterApp* app = context;
+    LanTesterApp* app = context;
     furi_assert(app);
-    eth_tester_parse_ip(app->dns_custom_ip_input, app->dns_custom_server);
-    eth_tester_settings_save(app);
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewSettings);
+    lan_tester_parse_ip(app->dns_custom_ip_input, app->dns_custom_server);
+    lan_tester_settings_save(app);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewSettings);
 }
 
 /* Helper: get active DNS server (custom if enabled, else DHCP) */
-static void eth_tester_get_dns_server(EthTesterApp* app, uint8_t out_ip[4]) {
+static void lan_tester_get_dns_server(LanTesterApp* app, uint8_t out_ip[4]) {
     if(app->dns_custom_enabled) {
         memcpy(out_ip, app->dns_custom_server, 4);
     } else {
@@ -797,7 +797,7 @@ static void eth_tester_get_dns_server(EthTesterApp* app, uint8_t out_ip[4]) {
 }
 
 static void settings_enter_callback(void* context, uint32_t index) {
-    EthTesterApp* app = context;
+    LanTesterApp* app = context;
     if(index == 3) { /* "DNS Server" IP input */
         ip_keyboard_setup(
             app->ip_keyboard,
@@ -808,8 +808,8 @@ static void settings_enter_callback(void* context, uint32_t index) {
             app,
             app->dns_custom_ip_input,
             sizeof(app->dns_custom_ip_input),
-            eth_tester_nav_back_settings);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+            lan_tester_nav_back_settings);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
     } else if(index == 7) { /* "Clear History" */
         HistoryState* hs = malloc(sizeof(HistoryState));
         if(hs) {
@@ -827,50 +827,50 @@ static void settings_enter_callback(void* context, uint32_t index) {
         byte_input_set_header_text(app->byte_input_mac_changer, "New MAC (edit or OK):");
         byte_input_set_result_callback(
             app->byte_input_mac_changer,
-            eth_tester_mac_changer_input_callback,
+            lan_tester_mac_changer_input_callback,
             NULL,
             app,
             app->mac_changer_input,
             6);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMacChangerInput);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewMacChangerInput);
     }
 }
 
 /* ==================== PXE Settings callbacks ==================== */
 
-static uint32_t eth_tester_nav_back_settings(void* context) {
+static uint32_t lan_tester_nav_back_settings(void* context) {
     UNUSED(context);
-    eth_tester_stop_worker_on_back();
-    return EthTesterViewSettings;
+    lan_tester_stop_worker_on_back();
+    return LanTesterViewSettings;
 }
 
-static uint32_t eth_tester_nav_back_pxe_settings(void* context) {
+static uint32_t lan_tester_nav_back_pxe_settings(void* context) {
     UNUSED(context);
-    return EthTesterViewPxeSettings;
+    return LanTesterViewPxeSettings;
 }
 
 static void pxe_server_ip_input_callback(void* context) {
-    EthTesterApp* app = context;
+    LanTesterApp* app = context;
     furi_assert(app);
-    eth_tester_parse_ip(app->pxe_server_ip_input, app->pxe_server_ip);
+    lan_tester_parse_ip(app->pxe_server_ip_input, app->pxe_server_ip);
     variable_item_set_current_value_text(app->pxe_item_sip, app->pxe_server_ip_input);
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeSettings);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPxeSettings);
 }
 
 static void pxe_client_ip_input_callback(void* context) {
-    EthTesterApp* app = context;
+    LanTesterApp* app = context;
     furi_assert(app);
-    eth_tester_parse_ip(app->pxe_client_ip_input, app->pxe_client_ip);
+    lan_tester_parse_ip(app->pxe_client_ip_input, app->pxe_client_ip);
     variable_item_set_current_value_text(app->pxe_item_cip, app->pxe_client_ip_input);
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeSettings);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPxeSettings);
 }
 
 static void pxe_subnet_input_callback(void* context) {
-    EthTesterApp* app = context;
+    LanTesterApp* app = context;
     furi_assert(app);
-    eth_tester_parse_ip(app->pxe_subnet_input, app->pxe_subnet);
+    lan_tester_parse_ip(app->pxe_subnet_input, app->pxe_subnet);
     variable_item_set_current_value_text(app->pxe_item_sub, app->pxe_subnet_input);
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeSettings);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPxeSettings);
 }
 
 static void pxe_dhcp_toggle_callback(VariableItem* item) {
@@ -885,7 +885,7 @@ static void pxe_dhcp_toggle_callback(VariableItem* item) {
 static void pxe_boot_file_changed(VariableItem* item) {
     if(!g_app) return;
     uint8_t idx = variable_item_get_current_value_index(item);
-    EthTesterApp* app = g_app;
+    LanTesterApp* app = g_app;
     PxeServerState* scan = &app->pxe_scan;
 
     if(idx < scan->boot_file_count) {
@@ -902,7 +902,7 @@ static void pxe_boot_file_changed(VariableItem* item) {
 }
 
 static void pxe_settings_enter_callback(void* context, uint32_t index) {
-    EthTesterApp* app = context;
+    LanTesterApp* app = context;
     furi_assert(app);
 
     switch(index) {
@@ -918,7 +918,7 @@ static void pxe_settings_enter_callback(void* context, uint32_t index) {
         }
         furi_string_set(app->pxe_text, "Starting PXE Server...\n");
         text_box_set_text(app->text_box_pxe, furi_string_get_cstr(app->pxe_text));
-        eth_tester_worker_start(app, EthTesterMenuItemPxeServer, EthTesterViewPxeServer);
+        lan_tester_worker_start(app, LanTesterMenuItemPxeServer, LanTesterViewPxeServer);
         break;
     }
     case 1: /* DHCP Server toggle — handled by change_callback */
@@ -935,8 +935,8 @@ static void pxe_settings_enter_callback(void* context, uint32_t index) {
             app,
             app->pxe_server_ip_input,
             sizeof(app->pxe_server_ip_input),
-            eth_tester_nav_back_pxe_settings);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+            lan_tester_nav_back_pxe_settings);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
     case 4: /* Client IP */
         ip_keyboard_setup(
@@ -948,8 +948,8 @@ static void pxe_settings_enter_callback(void* context, uint32_t index) {
             app,
             app->pxe_client_ip_input,
             sizeof(app->pxe_client_ip_input),
-            eth_tester_nav_back_pxe_settings);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+            lan_tester_nav_back_pxe_settings);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
     case 5: /* Subnet Mask */
         ip_keyboard_setup(
@@ -961,17 +961,17 @@ static void pxe_settings_enter_callback(void* context, uint32_t index) {
             app,
             app->pxe_subnet_input,
             sizeof(app->pxe_subnet_input),
-            eth_tester_nav_back_pxe_settings);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+            lan_tester_nav_back_pxe_settings);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
     case 6: /* ? Help */
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeHelp);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPxeHelp);
         break;
     }
 }
 
 /* Refresh boot file list and DHCP defaults for PXE settings screen */
-static void pxe_settings_refresh(EthTesterApp* app) {
+static void pxe_settings_refresh(LanTesterApp* app) {
     /* Scan for boot files */
     memset(&app->pxe_scan, 0, sizeof(app->pxe_scan));
     bool found = pxe_detect_boot_file(&app->pxe_scan);
@@ -1020,7 +1020,7 @@ static void pxe_settings_refresh(EthTesterApp* app) {
                 sip[1],
                 sip[2],
                 sip[3]);
-            eth_tester_parse_ip(app->pxe_server_ip_input, app->pxe_server_ip);
+            lan_tester_parse_ip(app->pxe_server_ip_input, app->pxe_server_ip);
             variable_item_set_current_value_text(app->pxe_item_sip, app->pxe_server_ip_input);
 
             /* Client IP: use offered IP */
@@ -1032,7 +1032,7 @@ static void pxe_settings_refresh(EthTesterApp* app) {
                 ext.offered_ip[1],
                 ext.offered_ip[2],
                 ext.offered_ip[3]);
-            eth_tester_parse_ip(app->pxe_client_ip_input, app->pxe_client_ip);
+            lan_tester_parse_ip(app->pxe_client_ip_input, app->pxe_client_ip);
             variable_item_set_current_value_text(app->pxe_item_cip, app->pxe_client_ip_input);
 
             /* Subnet from DHCP */
@@ -1045,7 +1045,7 @@ static void pxe_settings_refresh(EthTesterApp* app) {
                     ext.subnet[1],
                     ext.subnet[2],
                     ext.subnet[3]);
-                eth_tester_parse_ip(app->pxe_subnet_input, app->pxe_subnet);
+                lan_tester_parse_ip(app->pxe_subnet_input, app->pxe_subnet);
                 variable_item_set_current_value_text(app->pxe_item_sub, app->pxe_subnet_input);
             }
 
@@ -1055,9 +1055,9 @@ static void pxe_settings_refresh(EthTesterApp* app) {
     }
 }
 
-static EthTesterApp* eth_tester_app_alloc(void) {
-    EthTesterApp* app = malloc(sizeof(EthTesterApp));
-    memset(app, 0, sizeof(EthTesterApp));
+static LanTesterApp* lan_tester_app_alloc(void) {
+    LanTesterApp* app = malloc(sizeof(LanTesterApp));
+    memset(app, 0, sizeof(LanTesterApp));
     g_app = app;
 
     /* Allocate frame buffer on heap */
@@ -1065,7 +1065,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     furi_assert(app->frame_buf);
 
     /* Set default MAC (derived from device UID for uniqueness) */
-    eth_tester_generate_default_mac(app->mac_addr);
+    lan_tester_generate_default_mac(app->mac_addr);
 
     /* DHCP timer: 1 second periodic, needed by WIZnet DHCP_run() */
     app->dhcp_timer = furi_timer_alloc(dhcp_timer_callback, FuriTimerTypePeriodic, NULL);
@@ -1112,215 +1112,215 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->view_dispatcher = view_dispatcher_alloc();
     view_dispatcher_attach_to_gui(app->view_dispatcher, app->gui, ViewDispatcherTypeFullscreen);
     view_dispatcher_set_event_callback_context(app->view_dispatcher, app);
-    view_dispatcher_set_navigation_event_callback(app->view_dispatcher, eth_tester_nav_event_cb);
-    view_dispatcher_set_custom_event_callback(app->view_dispatcher, eth_tester_custom_event_cb);
+    view_dispatcher_set_navigation_event_callback(app->view_dispatcher, lan_tester_nav_event_cb);
+    view_dispatcher_set_custom_event_callback(app->view_dispatcher, lan_tester_custom_event_cb);
 
     /* Main menu (Submenu view) */
     app->submenu = submenu_alloc();
     /* Main menu: grouped categories */
-    submenu_add_item(app->submenu, "Network Info", 100, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Discovery", 101, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Diagnostics", 102, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Tools", 103, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Network Info", 100, lan_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Discovery", 101, lan_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Diagnostics", 102, lan_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Tools", 103, lan_tester_submenu_callback, app);
     submenu_add_item(
-        app->submenu, "History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
-    submenu_add_item(app->submenu, "Settings", 104, eth_tester_submenu_callback, app);
+        app->submenu, "History", LanTesterMenuItemHistory, lan_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Settings", 104, lan_tester_submenu_callback, app);
     submenu_add_item(
-        app->submenu, "About", EthTesterMenuItemAbout, eth_tester_submenu_callback, app);
+        app->submenu, "About", LanTesterMenuItemAbout, lan_tester_submenu_callback, app);
     view_set_previous_callback(
-        submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
+        submenu_get_view(app->submenu), lan_tester_navigation_exit_callback);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
+        app->view_dispatcher, LanTesterViewMainMenu, submenu_get_view(app->submenu));
 
     /* Category: Network Info */
     app->submenu_cat_netinfo = submenu_alloc();
     submenu_add_item(
         app->submenu_cat_netinfo,
         "Link Info",
-        EthTesterMenuItemLinkInfo,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemLinkInfo,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_netinfo,
         "DHCP Analyze",
-        EthTesterMenuItemDhcpAnalyze,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemDhcpAnalyze,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_netinfo,
         "Statistics",
-        EthTesterMenuItemStats,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemStats,
+        lan_tester_submenu_callback,
         app);
     view_set_previous_callback(
-        submenu_get_view(app->submenu_cat_netinfo), eth_tester_navigation_submenu_callback);
+        submenu_get_view(app->submenu_cat_netinfo), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewCatNetInfo, submenu_get_view(app->submenu_cat_netinfo));
+        app->view_dispatcher, LanTesterViewCatNetInfo, submenu_get_view(app->submenu_cat_netinfo));
 
     /* Category: Discovery */
     app->submenu_cat_discovery = submenu_alloc();
     submenu_add_item(
         app->submenu_cat_discovery,
         "ARP Scan",
-        EthTesterMenuItemArpScan,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemArpScan,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_discovery,
         "Ping Sweep",
-        EthTesterMenuItemPingSweep,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemPingSweep,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_discovery,
         "LLDP/CDP",
-        EthTesterMenuItemLldpCdp,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemLldpCdp,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_discovery,
         "mDNS/SSDP",
-        EthTesterMenuItemDiscovery,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemDiscovery,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_discovery,
         "STP/VLAN",
-        EthTesterMenuItemStpVlan,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemStpVlan,
+        lan_tester_submenu_callback,
         app);
     view_set_previous_callback(
-        submenu_get_view(app->submenu_cat_discovery), eth_tester_navigation_submenu_callback);
+        submenu_get_view(app->submenu_cat_discovery), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        EthTesterViewCatDiscovery,
+        LanTesterViewCatDiscovery,
         submenu_get_view(app->submenu_cat_discovery));
 
     /* Category: Diagnostics */
     app->submenu_cat_diag = submenu_alloc();
     submenu_add_item(
-        app->submenu_cat_diag, "Ping", EthTesterMenuItemPing, eth_tester_submenu_callback, app);
+        app->submenu_cat_diag, "Ping", LanTesterMenuItemPing, lan_tester_submenu_callback, app);
     submenu_add_item(
         app->submenu_cat_diag,
         "Continuous Ping",
-        EthTesterMenuItemContPing,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemContPing,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_diag,
         "DNS Lookup",
-        EthTesterMenuItemDnsLookup,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemDnsLookup,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_diag,
         "Traceroute",
-        EthTesterMenuItemTraceroute,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemTraceroute,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_diag,
         "Port Scan (Top 20)",
-        EthTesterMenuItemPortScan,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemPortScan,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_diag,
         "Port Scan (Top 100)",
-        EthTesterMenuItemPortScanFull,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemPortScanFull,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_diag,
         "Port Scan (Custom)",
-        EthTesterMenuItemPortScanCustom,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemPortScanCustom,
+        lan_tester_submenu_callback,
         app);
     view_set_previous_callback(
-        submenu_get_view(app->submenu_cat_diag), eth_tester_navigation_submenu_callback);
+        submenu_get_view(app->submenu_cat_diag), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewCatDiag, submenu_get_view(app->submenu_cat_diag));
+        app->view_dispatcher, LanTesterViewCatDiag, submenu_get_view(app->submenu_cat_diag));
 
     /* Category: Tools */
     app->submenu_cat_tools = submenu_alloc();
     submenu_add_item(
         app->submenu_cat_tools,
         "Wake-on-LAN",
-        EthTesterMenuItemWol,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemWol,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_tools,
         "ETH Bridge",
-        EthTesterMenuItemEthBridge,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemEthBridge,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_tools,
         "PXE Server",
-        EthTesterMenuItemPxeServer,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemPxeServer,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_tools,
         "File Manager",
-        EthTesterMenuItemFileManager,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemFileManager,
+        lan_tester_submenu_callback,
         app);
     submenu_add_item(
         app->submenu_cat_tools,
         "Packet Capture",
-        EthTesterMenuItemPacketCapture,
-        eth_tester_submenu_callback,
+        LanTesterMenuItemPacketCapture,
+        lan_tester_submenu_callback,
         app);
     view_set_previous_callback(
-        submenu_get_view(app->submenu_cat_tools), eth_tester_navigation_submenu_callback);
+        submenu_get_view(app->submenu_cat_tools), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewCatTools, submenu_get_view(app->submenu_cat_tools));
+        app->view_dispatcher, LanTesterViewCatTools, submenu_get_view(app->submenu_cat_tools));
 
     /* TextBox views for each feature */
     app->text_box_link = text_box_alloc();
     text_box_set_font(app->text_box_link, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_link), eth_tester_nav_back_netinfo);
+    view_set_previous_callback(text_box_get_view(app->text_box_link), lan_tester_nav_back_netinfo);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewLinkInfo, text_box_get_view(app->text_box_link));
+        app->view_dispatcher, LanTesterViewLinkInfo, text_box_get_view(app->text_box_link));
 
     app->text_box_lldp = text_box_alloc();
     text_box_set_font(app->text_box_lldp, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_lldp), eth_tester_nav_back_discovery);
+        text_box_get_view(app->text_box_lldp), lan_tester_nav_back_discovery);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewLldp, text_box_get_view(app->text_box_lldp));
+        app->view_dispatcher, LanTesterViewLldp, text_box_get_view(app->text_box_lldp));
 
     app->text_box_arp = text_box_alloc();
     text_box_set_font(app->text_box_arp, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_arp), eth_tester_nav_back_arp_scan);
+    view_set_previous_callback(text_box_get_view(app->text_box_arp), lan_tester_nav_back_arp_scan);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewArpScan, text_box_get_view(app->text_box_arp));
+        app->view_dispatcher, LanTesterViewArpScan, text_box_get_view(app->text_box_arp));
 
     app->text_box_dhcp = text_box_alloc();
     text_box_set_font(app->text_box_dhcp, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_dhcp), eth_tester_nav_back_netinfo);
+    view_set_previous_callback(text_box_get_view(app->text_box_dhcp), lan_tester_nav_back_netinfo);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewDhcpAnalyze, text_box_get_view(app->text_box_dhcp));
+        app->view_dispatcher, LanTesterViewDhcpAnalyze, text_box_get_view(app->text_box_dhcp));
 
     app->text_box_ping = text_box_alloc();
     text_box_set_font(app->text_box_ping, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_ping), eth_tester_nav_back_diag);
+    view_set_previous_callback(text_box_get_view(app->text_box_ping), lan_tester_nav_back_diag);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewPing, text_box_get_view(app->text_box_ping));
+        app->view_dispatcher, LanTesterViewPing, text_box_get_view(app->text_box_ping));
 
     app->text_box_stats = text_box_alloc();
     text_box_set_font(app->text_box_stats, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_stats), eth_tester_nav_back_netinfo);
+        text_box_get_view(app->text_box_stats), lan_tester_nav_back_netinfo);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewStats, text_box_get_view(app->text_box_stats));
+        app->view_dispatcher, LanTesterViewStats, text_box_get_view(app->text_box_stats));
 
     /* IP Keyboard (shared custom view for all IP address inputs) */
     app->ip_keyboard = ip_keyboard_alloc();
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewIpKeyboard, ip_keyboard_get_view(app->ip_keyboard));
+        app->view_dispatcher, LanTesterViewIpKeyboard, ip_keyboard_get_view(app->ip_keyboard));
 
     /* Default ping target */
     strncpy(app->ping_ip_input, "8.8.8.8", sizeof(app->ping_ip_input));
@@ -1328,14 +1328,14 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* DNS Lookup views */
     app->text_box_dns = text_box_alloc();
     text_box_set_font(app->text_box_dns, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_dns), eth_tester_nav_back_diag);
+    view_set_previous_callback(text_box_get_view(app->text_box_dns), lan_tester_nav_back_diag);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewDnsLookup, text_box_get_view(app->text_box_dns));
+        app->view_dispatcher, LanTesterViewDnsLookup, text_box_get_view(app->text_box_dns));
 
     app->text_input_dns = text_input_alloc();
-    view_set_previous_callback(text_input_get_view(app->text_input_dns), eth_tester_nav_back_diag);
+    view_set_previous_callback(text_input_get_view(app->text_input_dns), lan_tester_nav_back_diag);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewDnsInput, text_input_get_view(app->text_input_dns));
+        app->view_dispatcher, LanTesterViewDnsInput, text_input_get_view(app->text_input_dns));
 
     /* Default DNS hostname */
     strncpy(app->dns_hostname_input, "google.com", sizeof(app->dns_hostname_input));
@@ -1343,15 +1343,15 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Wake-on-LAN views */
     app->text_box_wol = text_box_alloc();
     text_box_set_font(app->text_box_wol, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_wol), eth_tester_nav_back_tools);
+    view_set_previous_callback(text_box_get_view(app->text_box_wol), lan_tester_nav_back_tools);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewWol, text_box_get_view(app->text_box_wol));
+        app->view_dispatcher, LanTesterViewWol, text_box_get_view(app->text_box_wol));
 
     app->byte_input_wol = byte_input_alloc();
     view_set_previous_callback(
-        byte_input_get_view(app->byte_input_wol), eth_tester_nav_back_tools);
+        byte_input_get_view(app->byte_input_wol), lan_tester_nav_back_tools);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewWolInput, byte_input_get_view(app->byte_input_wol));
+        app->view_dispatcher, LanTesterViewWolInput, byte_input_get_view(app->byte_input_wol));
 
     /* Continuous Ping views */
     app->view_cont_ping = view_alloc();
@@ -1360,7 +1360,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_input_callback(app->view_cont_ping, cont_ping_input_callback);
     view_set_context(app->view_cont_ping, app);
     with_view_model(app->view_cont_ping, ContPingViewModel * vm, { vm->app = app; }, false);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewContPing, app->view_cont_ping);
+    view_dispatcher_add_view(app->view_dispatcher, LanTesterViewContPing, app->view_cont_ping);
 
     /* Default continuous ping target */
     strncpy(app->cont_ping_ip_input, "8.8.8.8", sizeof(app->cont_ping_ip_input));
@@ -1369,9 +1369,9 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->text_box_port_scan = text_box_alloc();
     text_box_set_font(app->text_box_port_scan, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_port_scan), eth_tester_nav_back_diag);
+        text_box_get_view(app->text_box_port_scan), lan_tester_nav_back_diag);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewPortScan, text_box_get_view(app->text_box_port_scan));
+        app->view_dispatcher, LanTesterViewPortScan, text_box_get_view(app->text_box_port_scan));
 
     /* Port scan target defaults to empty — filled from DHCP gateway when available */
     app->port_scan_ip_input[0] = '\0';
@@ -1383,28 +1383,28 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* Port scan custom range text input */
     app->text_input_port_custom = text_input_alloc();
     view_set_previous_callback(
-        text_input_get_view(app->text_input_port_custom), eth_tester_nav_back_diag);
+        text_input_get_view(app->text_input_port_custom), lan_tester_nav_back_diag);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        EthTesterViewPortScanCustomInput,
+        LanTesterViewPortScanCustomInput,
         text_input_get_view(app->text_input_port_custom));
 
     /* MAC Changer views */
     app->text_box_mac_changer = text_box_alloc();
     text_box_set_font(app->text_box_mac_changer, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_mac_changer), eth_tester_nav_back_settings);
+        text_box_get_view(app->text_box_mac_changer), lan_tester_nav_back_settings);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        EthTesterViewMacChanger,
+        LanTesterViewMacChanger,
         text_box_get_view(app->text_box_mac_changer));
 
     app->byte_input_mac_changer = byte_input_alloc();
     view_set_previous_callback(
-        byte_input_get_view(app->byte_input_mac_changer), eth_tester_nav_back_settings);
+        byte_input_get_view(app->byte_input_mac_changer), lan_tester_nav_back_settings);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        EthTesterViewMacChangerInput,
+        LanTesterViewMacChangerInput,
         byte_input_get_view(app->byte_input_mac_changer));
 
     /* ETH Bridge view (custom View with draw_callback, no TextBox) */
@@ -1413,7 +1413,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_draw_callback(app->view_bridge, bridge_draw_callback);
     view_set_input_callback(app->view_bridge, bridge_input_callback);
     view_set_context(app->view_bridge, app);
-    view_set_previous_callback(app->view_bridge, eth_tester_nav_back_tools);
+    view_set_previous_callback(app->view_bridge, lan_tester_nav_back_tools);
     with_view_model(
         app->view_bridge,
         BridgeViewModel * vm,
@@ -1422,7 +1422,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
             vm->status_line = "Starting...";
         },
         false);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewEthBridge, app->view_bridge);
+    view_dispatcher_add_view(app->view_dispatcher, LanTesterViewEthBridge, app->view_bridge);
     app->bridge_state = malloc(sizeof(EthBridgeState));
 
     /* PXE Server views */
@@ -1449,9 +1449,9 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     /* PXE TextBox (live status during server run) */
     app->text_box_pxe = text_box_alloc();
     text_box_set_font(app->text_box_pxe, TextBoxFontText);
-    view_set_previous_callback(text_box_get_view(app->text_box_pxe), eth_tester_nav_back_tools);
+    view_set_previous_callback(text_box_get_view(app->text_box_pxe), lan_tester_nav_back_tools);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewPxeServer, text_box_get_view(app->text_box_pxe));
+        app->view_dispatcher, LanTesterViewPxeServer, text_box_get_view(app->text_box_pxe));
 
     /* PXE Help TextBox */
     app->text_box_pxe_help = text_box_alloc();
@@ -1462,7 +1462,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         "== Prerequisites ==\n\n"
         "1. Place boot file on SD:\n"
         "   /ext/apps_data/\n"
-        "     eth_tester/pxe/\n\n"
+        "     lan_tester/pxe/\n\n"
         "   Supported formats:\n"
         "   .kpxe (Legacy BIOS)\n"
         "   .efi  (UEFI)\n"
@@ -1502,17 +1502,17 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         "Set boot order to\n"
         "Network first.\n");
     view_set_previous_callback(
-        text_box_get_view(app->text_box_pxe_help), eth_tester_nav_back_pxe_settings);
+        text_box_get_view(app->text_box_pxe_help), lan_tester_nav_back_pxe_settings);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewPxeHelp, text_box_get_view(app->text_box_pxe_help));
+        app->view_dispatcher, LanTesterViewPxeHelp, text_box_get_view(app->text_box_pxe_help));
 
     /* PXE Settings (VariableItemList) — reordered: Start first */
     app->pxe_settings_list = variable_item_list_alloc();
     view_set_previous_callback(
-        variable_item_list_get_view(app->pxe_settings_list), eth_tester_nav_back_tools);
+        variable_item_list_get_view(app->pxe_settings_list), lan_tester_nav_back_tools);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        EthTesterViewPxeSettings,
+        LanTesterViewPxeSettings,
         variable_item_list_get_view(app->pxe_settings_list));
 
     /* Index 0: Start PXE */
@@ -1553,10 +1553,10 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->text_box_file_manager = text_box_alloc();
     text_box_set_font(app->text_box_file_manager, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_file_manager), eth_tester_nav_back_tools);
+        text_box_get_view(app->text_box_file_manager), lan_tester_nav_back_tools);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        EthTesterViewFileManager,
+        LanTesterViewFileManager,
         text_box_get_view(app->text_box_file_manager));
 
     /* Packet Capture view */
@@ -1566,26 +1566,26 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_draw_callback(app->view_packet_capture, packet_capture_draw_callback);
     view_set_input_callback(app->view_packet_capture, packet_capture_input_callback);
     view_set_context(app->view_packet_capture, app);
-    view_set_previous_callback(app->view_packet_capture, eth_tester_nav_back_tools);
+    view_set_previous_callback(app->view_packet_capture, lan_tester_nav_back_tools);
     with_view_model(
         app->view_packet_capture, PacketCaptureViewModel * vm, { vm->app = app; }, false);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewPacketCapture, app->view_packet_capture);
+        app->view_dispatcher, LanTesterViewPacketCapture, app->view_packet_capture);
     memset(&app->pcap_state, 0, sizeof(app->pcap_state));
 
     /* Host List / Host Actions submenus */
     app->submenu_host_list = submenu_alloc();
     view_set_previous_callback(
-        submenu_get_view(app->submenu_host_list), eth_tester_nav_back_host_list);
+        submenu_get_view(app->submenu_host_list), lan_tester_nav_back_host_list);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewHostList, submenu_get_view(app->submenu_host_list));
+        app->view_dispatcher, LanTesterViewHostList, submenu_get_view(app->submenu_host_list));
 
     app->submenu_host_actions = submenu_alloc();
     view_set_previous_callback(
-        submenu_get_view(app->submenu_host_actions), eth_tester_nav_back_host_actions);
+        submenu_get_view(app->submenu_host_actions), lan_tester_nav_back_host_actions);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        EthTesterViewHostActions,
+        LanTesterViewHostActions,
         submenu_get_view(app->submenu_host_actions));
 
     app->discovered_host_count = 0;
@@ -1594,19 +1594,19 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->text_box_traceroute = text_box_alloc();
     text_box_set_font(app->text_box_traceroute, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_traceroute), eth_tester_nav_back_diag);
+        text_box_get_view(app->text_box_traceroute), lan_tester_nav_back_diag);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        EthTesterViewTraceroute,
+        LanTesterViewTraceroute,
         text_box_get_view(app->text_box_traceroute));
 
     /* Traceroute text input (supports hostnames and IPs) */
     app->text_input_traceroute = text_input_alloc();
     view_set_previous_callback(
-        text_input_get_view(app->text_input_traceroute), eth_tester_nav_back_diag);
+        text_input_get_view(app->text_input_traceroute), lan_tester_nav_back_diag);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        EthTesterViewTracerouteInput,
+        LanTesterViewTracerouteInput,
         text_input_get_view(app->text_input_traceroute));
 
     /* Default traceroute target */
@@ -1617,9 +1617,9 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->text_box_ping_sweep = text_box_alloc();
     text_box_set_font(app->text_box_ping_sweep, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_ping_sweep), eth_tester_nav_back_ping_sweep);
+        text_box_get_view(app->text_box_ping_sweep), lan_tester_nav_back_ping_sweep);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewPingSweep, text_box_get_view(app->text_box_ping_sweep));
+        app->view_dispatcher, LanTesterViewPingSweep, text_box_get_view(app->text_box_ping_sweep));
 
     /* Ping sweep defaults to empty — auto-detected from DHCP at scan time */
     app->ping_sweep_ip_input[0] = '\0';
@@ -1628,41 +1628,41 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->text_box_discovery = text_box_alloc();
     text_box_set_font(app->text_box_discovery, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_discovery), eth_tester_nav_back_discovery);
+        text_box_get_view(app->text_box_discovery), lan_tester_nav_back_discovery);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewDiscovery, text_box_get_view(app->text_box_discovery));
+        app->view_dispatcher, LanTesterViewDiscovery, text_box_get_view(app->text_box_discovery));
 
     /* History views */
     app->submenu_history = submenu_alloc();
     view_set_previous_callback(
-        submenu_get_view(app->submenu_history), eth_tester_navigation_submenu_callback);
+        submenu_get_view(app->submenu_history), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewHistory, submenu_get_view(app->submenu_history));
+        app->view_dispatcher, LanTesterViewHistory, submenu_get_view(app->submenu_history));
     app->history_state = NULL;
 
     app->text_box_history_file = text_box_alloc();
     text_box_set_font(app->text_box_history_file, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_history_file), eth_tester_navigation_history_callback);
+        text_box_get_view(app->text_box_history_file), lan_tester_navigation_history_callback);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        EthTesterViewHistoryFile,
+        LanTesterViewHistoryFile,
         text_box_get_view(app->text_box_history_file));
 
     /* STP/VLAN Detection view */
     app->text_box_stp_vlan = text_box_alloc();
     text_box_set_font(app->text_box_stp_vlan, TextBoxFontText);
     view_set_previous_callback(
-        text_box_get_view(app->text_box_stp_vlan), eth_tester_nav_back_discovery);
+        text_box_get_view(app->text_box_stp_vlan), lan_tester_nav_back_discovery);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewStpVlan, text_box_get_view(app->text_box_stp_vlan));
+        app->view_dispatcher, LanTesterViewStpVlan, text_box_get_view(app->text_box_stp_vlan));
 
     /* About view */
     app->text_box_about = text_box_alloc();
     text_box_set_font(app->text_box_about, TextBoxFontText);
     text_box_set_text(
         app->text_box_about,
-        "[LAN Analyzer]\n\n"
+        "[LAN Tester]\n\n"
         "Ethernet network analysis\n"
         "tool for Flipper Zero\n"
         "using W5500 SPI module.\n\n"
@@ -1670,21 +1670,21 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         "discover devices,\n"
         "analyze DHCP/LLDP/CDP,\n"
         "detect VLANs and STP.\n\n"
-        "v1.0 | by dok2d\n"
+        "v1.2.0 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
-        text_box_get_view(app->text_box_about), eth_tester_navigation_submenu_callback);
+        text_box_get_view(app->text_box_about), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
-        app->view_dispatcher, EthTesterViewAbout, text_box_get_view(app->text_box_about));
+        app->view_dispatcher, LanTesterViewAbout, text_box_get_view(app->text_box_about));
 
     /* Settings view (VariableItemList) */
     app->settings_list = variable_item_list_alloc();
     view_set_previous_callback(
-        variable_item_list_get_view(app->settings_list), eth_tester_navigation_submenu_callback);
+        variable_item_list_get_view(app->settings_list), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        EthTesterViewSettings,
+        LanTesterViewSettings,
         variable_item_list_get_view(app->settings_list));
 
     VariableItem* item_autosave = variable_item_list_add(
@@ -1724,7 +1724,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     variable_item_list_set_enter_callback(app->settings_list, settings_enter_callback, app);
 
     /* Load settings from SD */
-    eth_tester_settings_load(app);
+    lan_tester_settings_load(app);
     variable_item_set_current_value_index(item_autosave, app->setting_autosave ? 1 : 0);
     variable_item_set_current_value_text(
         item_autosave, setting_onoff[app->setting_autosave ? 1 : 0]);
@@ -1768,51 +1768,51 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     return app;
 }
 
-static void eth_tester_app_free(EthTesterApp* app) {
+static void lan_tester_app_free(LanTesterApp* app) {
     furi_assert(app);
 
     /* Stop worker thread */
-    eth_tester_worker_stop(app);
+    lan_tester_worker_stop(app);
 
     /* Remove and free views */
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMainMenu);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewLinkInfo);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewLldp);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewArpScan);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDhcpAnalyze);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPing);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewStats);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDnsLookup);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDnsInput);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewWol);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewWolInput);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewContPing);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPortScan);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPortScanCustomInput);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChanger);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChangerInput);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTraceroute);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTracerouteInput);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingSweep);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewIpKeyboard);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDiscovery);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewStpVlan);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHistory);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHistoryFile);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewAbout);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatNetInfo);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatDiscovery);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatDiag);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatTools);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewSettings);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewEthBridge);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeServer);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeSettings);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPxeHelp);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewFileManager);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPacketCapture);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHostList);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHostActions);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewMainMenu);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewLinkInfo);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewLldp);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewArpScan);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewDhcpAnalyze);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPing);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewStats);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewDnsLookup);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewDnsInput);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewWol);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewWolInput);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewContPing);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPortScan);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPortScanCustomInput);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewMacChanger);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewMacChangerInput);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewTraceroute);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewTracerouteInput);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPingSweep);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewIpKeyboard);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewDiscovery);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewStpVlan);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHistory);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHistoryFile);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewAbout);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatNetInfo);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatDiscovery);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatDiag);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatTools);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewSettings);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewEthBridge);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPxeServer);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPxeSettings);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPxeHelp);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewFileManager);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPacketCapture);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHostList);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHostActions);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_netinfo);
@@ -1897,7 +1897,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
 /* ==================== Navigation callbacks ==================== */
 
 /* Update main menu header with link status */
-static void eth_tester_update_menu_header(EthTesterApp* app) {
+static void lan_tester_update_menu_header(LanTesterApp* app) {
     if(app->w5500_initialized) {
         bool link = w5500_hal_get_link_status();
         if(link) {
@@ -1916,13 +1916,13 @@ static void eth_tester_update_menu_header(EthTesterApp* app) {
     }
 }
 
-static uint32_t eth_tester_navigation_exit_callback(void* context) {
+static uint32_t lan_tester_navigation_exit_callback(void* context) {
     UNUSED(context);
     return VIEW_NONE;
 }
 
 /* Stop worker helper used by all back-navigation callbacks */
-static void eth_tester_stop_worker_on_back(void) {
+static void lan_tester_stop_worker_on_back(void) {
     if(g_app) {
         if(g_app->worker_thread &&
            furi_thread_get_state(g_app->worker_thread) != FuriThreadStateStopped) {
@@ -1934,97 +1934,97 @@ static void eth_tester_stop_worker_on_back(void) {
          * loop waiting for TX buffer free space, and furi_thread_join() blocks
          * forever causing the Flipper to freeze. Socket 3 is shared across
          * multiple tools that never run concurrently, so this is safe. */
-        if(g_app->worker_op == EthTesterMenuItemFileManager) {
+        if(g_app->worker_op == LanTesterMenuItemFileManager) {
             close(FILEMGR_HTTP_SOCKET);
         }
-        eth_tester_update_menu_header(g_app);
+        lan_tester_update_menu_header(g_app);
     }
 }
 
-static uint32_t eth_tester_navigation_submenu_callback(void* context) {
+static uint32_t lan_tester_navigation_submenu_callback(void* context) {
     UNUSED(context);
-    eth_tester_stop_worker_on_back();
-    return EthTesterViewMainMenu;
+    lan_tester_stop_worker_on_back();
+    return LanTesterViewMainMenu;
 }
 
-static uint32_t eth_tester_nav_back_netinfo(void* context) {
+static uint32_t lan_tester_nav_back_netinfo(void* context) {
     UNUSED(context);
-    eth_tester_stop_worker_on_back();
-    return EthTesterViewCatNetInfo;
+    lan_tester_stop_worker_on_back();
+    return LanTesterViewCatNetInfo;
 }
 
-static uint32_t eth_tester_nav_back_discovery(void* context) {
+static uint32_t lan_tester_nav_back_discovery(void* context) {
     UNUSED(context);
-    eth_tester_stop_worker_on_back();
-    return EthTesterViewCatDiscovery;
+    lan_tester_stop_worker_on_back();
+    return LanTesterViewCatDiscovery;
 }
 
-static uint32_t eth_tester_nav_back_ping_sweep(void* context) {
+static uint32_t lan_tester_nav_back_ping_sweep(void* context) {
     UNUSED(context);
     if(g_app && g_app->worker_thread &&
        furi_thread_get_state(g_app->worker_thread) != FuriThreadStateStopped &&
-       g_app->worker_op == EthTesterMenuItemPingSweep) {
+       g_app->worker_op == LanTesterMenuItemPingSweep) {
         /* Scan running: stop it but stay on results screen */
         g_app->worker_running = false;
         furi_string_cat_printf(g_app->ping_sweep_text, "\nScan stopped by user.\n");
-        eth_tester_update_view(g_app->text_box_ping_sweep, g_app->ping_sweep_text);
-        return EthTesterViewPingSweep;
+        lan_tester_update_view(g_app->text_box_ping_sweep, g_app->ping_sweep_text);
+        return LanTesterViewPingSweep;
     }
-    eth_tester_stop_worker_on_back();
-    return EthTesterViewCatDiscovery;
+    lan_tester_stop_worker_on_back();
+    return LanTesterViewCatDiscovery;
 }
 
-static uint32_t eth_tester_nav_back_arp_scan(void* context) {
+static uint32_t lan_tester_nav_back_arp_scan(void* context) {
     UNUSED(context);
     if(g_app && g_app->worker_thread &&
        furi_thread_get_state(g_app->worker_thread) != FuriThreadStateStopped &&
-       g_app->worker_op == EthTesterMenuItemArpScan) {
+       g_app->worker_op == LanTesterMenuItemArpScan) {
         /* Scan running: stop it but stay on results screen */
         g_app->worker_running = false;
         furi_string_cat_printf(g_app->arp_text, "\nScan stopped by user.\n");
-        eth_tester_update_view(g_app->text_box_arp, g_app->arp_text);
-        return EthTesterViewArpScan;
+        lan_tester_update_view(g_app->text_box_arp, g_app->arp_text);
+        return LanTesterViewArpScan;
     }
-    eth_tester_stop_worker_on_back();
-    return EthTesterViewCatDiscovery;
+    lan_tester_stop_worker_on_back();
+    return LanTesterViewCatDiscovery;
 }
 
-static uint32_t eth_tester_nav_back_diag(void* context) {
+static uint32_t lan_tester_nav_back_diag(void* context) {
     UNUSED(context);
-    eth_tester_stop_worker_on_back();
-    return EthTesterViewCatDiag;
+    lan_tester_stop_worker_on_back();
+    return LanTesterViewCatDiag;
 }
 
-static uint32_t eth_tester_nav_back_tools(void* context) {
+static uint32_t lan_tester_nav_back_tools(void* context) {
     UNUSED(context);
-    eth_tester_stop_worker_on_back();
-    return EthTesterViewCatTools;
+    lan_tester_stop_worker_on_back();
+    return LanTesterViewCatTools;
 }
 
-static uint32_t eth_tester_navigation_history_callback(void* context) {
+static uint32_t lan_tester_navigation_history_callback(void* context) {
     UNUSED(context);
-    return EthTesterViewHistory;
+    return LanTesterViewHistory;
 }
 
 /* ==================== Worker thread ==================== */
 
 /* Navigation event callback: stop worker on app exit */
-static bool eth_tester_nav_event_cb(void* context) {
-    EthTesterApp* app = context;
+static bool lan_tester_nav_event_cb(void* context) {
+    LanTesterApp* app = context;
     /* Stop any running worker before exiting */
-    eth_tester_worker_stop(app);
+    lan_tester_worker_stop(app);
     return false; /* Allow app to exit */
 }
 
-static void eth_tester_ping_sweep_input_callback(void* context);
+static void lan_tester_ping_sweep_input_callback(void* context);
 
-static bool eth_tester_custom_event_cb(void* context, uint32_t event) {
-    EthTesterApp* app = context;
+static bool lan_tester_custom_event_cb(void* context, uint32_t event) {
+    LanTesterApp* app = context;
 
     if(event == CUSTOM_EVENT_SHOW_HOST_LIST) {
         if(app->discovered_host_count > 0) {
-            eth_tester_populate_host_list(app);
-            view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewHostList);
+            lan_tester_populate_host_list(app);
+            view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewHostList);
         }
         return true;
     }
@@ -2032,8 +2032,8 @@ static bool eth_tester_custom_event_cb(void* context, uint32_t event) {
     if(event == CUSTOM_EVENT_CONT_PING_BACK) {
         /* Worker is stopping (worker_running = false). Wait for it to finish,
          * then navigate back to Diagnostics submenu. */
-        eth_tester_worker_stop(app);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewCatDiag);
+        lan_tester_worker_stop(app);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatDiag);
         return true;
     }
 
@@ -2044,98 +2044,98 @@ static bool eth_tester_custom_event_cb(void* context, uint32_t event) {
             "Scan range (CIDR):",
             app->ping_sweep_ip_input,
             true,
-            eth_tester_ping_sweep_input_callback,
+            lan_tester_ping_sweep_input_callback,
             app,
             app->ping_sweep_ip_input,
             sizeof(app->ping_sweep_ip_input),
-            eth_tester_nav_back_discovery);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+            lan_tester_nav_back_discovery);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         return true;
     }
 
     return false;
 }
 
-static int32_t eth_tester_worker_fn(void* context) {
-    EthTesterApp* app = context;
+static int32_t lan_tester_worker_fn(void* context) {
+    LanTesterApp* app = context;
 
     /* Dispatch to the appropriate operation */
     switch(app->worker_op) {
-    case EthTesterMenuItemLinkInfo:
-        eth_tester_do_link_info(app);
-        eth_tester_update_view(app->text_box_link, app->link_info_text);
+    case LanTesterMenuItemLinkInfo:
+        lan_tester_do_link_info(app);
+        lan_tester_update_view(app->text_box_link, app->link_info_text);
         break;
-    case EthTesterMenuItemLldpCdp:
-        eth_tester_do_lldp_cdp(app);
-        eth_tester_update_view(app->text_box_lldp, app->lldp_text);
+    case LanTesterMenuItemLldpCdp:
+        lan_tester_do_lldp_cdp(app);
+        lan_tester_update_view(app->text_box_lldp, app->lldp_text);
         break;
-    case EthTesterMenuItemArpScan:
-        eth_tester_do_arp_scan(app);
-        eth_tester_update_view(app->text_box_arp, app->arp_text);
+    case LanTesterMenuItemArpScan:
+        lan_tester_do_arp_scan(app);
+        lan_tester_update_view(app->text_box_arp, app->arp_text);
         break;
-    case EthTesterMenuItemDhcpAnalyze:
-        eth_tester_do_dhcp_analyze(app);
-        eth_tester_update_view(app->text_box_dhcp, app->dhcp_text);
+    case LanTesterMenuItemDhcpAnalyze:
+        lan_tester_do_dhcp_analyze(app);
+        lan_tester_update_view(app->text_box_dhcp, app->dhcp_text);
         break;
-    case EthTesterMenuItemPing:
-        eth_tester_do_ping(app);
-        eth_tester_update_view(app->text_box_ping, app->ping_text);
+    case LanTesterMenuItemPing:
+        lan_tester_do_ping(app);
+        lan_tester_update_view(app->text_box_ping, app->ping_text);
         break;
-    case EthTesterMenuItemStats:
-        eth_tester_do_stats(app);
-        eth_tester_update_view(app->text_box_stats, app->stats_text);
+    case LanTesterMenuItemStats:
+        lan_tester_do_stats(app);
+        lan_tester_update_view(app->text_box_stats, app->stats_text);
         break;
-    case EthTesterMenuItemDnsLookup:
-        eth_tester_do_dns_lookup(app);
-        eth_tester_update_view(app->text_box_dns, app->dns_text);
+    case LanTesterMenuItemDnsLookup:
+        lan_tester_do_dns_lookup(app);
+        lan_tester_update_view(app->text_box_dns, app->dns_text);
         break;
-    case EthTesterMenuItemWol:
-        eth_tester_do_wol(app);
-        eth_tester_update_view(app->text_box_wol, app->wol_text);
+    case LanTesterMenuItemWol:
+        lan_tester_do_wol(app);
+        lan_tester_update_view(app->text_box_wol, app->wol_text);
         break;
-    case EthTesterMenuItemContPing:
-        eth_tester_do_cont_ping(app);
+    case LanTesterMenuItemContPing:
+        lan_tester_do_cont_ping(app);
         break; /* Uses custom view, not TextBox */
-    case EthTesterMenuItemPortScan:
-        eth_tester_do_port_scan(app);
-        eth_tester_update_view(app->text_box_port_scan, app->port_scan_text);
+    case LanTesterMenuItemPortScan:
+        lan_tester_do_port_scan(app);
+        lan_tester_update_view(app->text_box_port_scan, app->port_scan_text);
         break;
-    case EthTesterMenuItemMacChanger:
-        eth_tester_do_mac_changer(app);
-        eth_tester_update_view(app->text_box_mac_changer, app->mac_changer_text);
+    case LanTesterMenuItemMacChanger:
+        lan_tester_do_mac_changer(app);
+        lan_tester_update_view(app->text_box_mac_changer, app->mac_changer_text);
         break;
-    case EthTesterMenuItemTraceroute:
-        eth_tester_do_traceroute(app);
-        eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+    case LanTesterMenuItemTraceroute:
+        lan_tester_do_traceroute(app);
+        lan_tester_update_view(app->text_box_traceroute, app->traceroute_text);
         break;
-    case EthTesterMenuItemPingSweep:
-        eth_tester_do_ping_sweep(app);
-        eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+    case LanTesterMenuItemPingSweep:
+        lan_tester_do_ping_sweep(app);
+        lan_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
         break;
-    case EthTesterMenuItemDiscovery:
-        eth_tester_do_discovery(app);
-        eth_tester_update_view(app->text_box_discovery, app->discovery_text);
+    case LanTesterMenuItemDiscovery:
+        lan_tester_do_discovery(app);
+        lan_tester_update_view(app->text_box_discovery, app->discovery_text);
         break;
-    case EthTesterMenuItemStpVlan:
-        eth_tester_do_stp_vlan(app);
-        eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
+    case LanTesterMenuItemStpVlan:
+        lan_tester_do_stp_vlan(app);
+        lan_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
         break;
-    case EthTesterMenuItemEthBridge:
-        eth_tester_do_eth_bridge(app);
+    case LanTesterMenuItemEthBridge:
+        lan_tester_do_eth_bridge(app);
         break; /* Uses custom view, not TextBox */
-    case EthTesterMenuItemPxeServer:
-        eth_tester_do_pxe_server(app);
+    case LanTesterMenuItemPxeServer:
+        lan_tester_do_pxe_server(app);
         break;
-    case EthTesterMenuItemFileManager:
-        eth_tester_do_file_manager(app);
+    case LanTesterMenuItemFileManager:
+        lan_tester_do_file_manager(app);
         break;
-    case EthTesterMenuItemPacketCapture:
-        eth_tester_do_packet_capture(app);
+    case LanTesterMenuItemPacketCapture:
+        lan_tester_do_packet_capture(app);
         break;
-    case EthTesterMenuItemHistory:
+    case LanTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
     case WORKER_OP_PING_SWEEP_DETECT:
-        eth_tester_do_ping_sweep_detect(app);
+        lan_tester_do_ping_sweep_detect(app);
         break;
     default:
         break;
@@ -2143,11 +2143,11 @@ static int32_t eth_tester_worker_fn(void* context) {
     return 0;
 }
 
-static void eth_tester_worker_stop(EthTesterApp* app) {
+static void lan_tester_worker_stop(LanTesterApp* app) {
     if(app->worker_thread) {
         app->worker_running = false;
         /* Force-close file manager socket to unblock blocking send/recv */
-        if(app->worker_op == EthTesterMenuItemFileManager) {
+        if(app->worker_op == LanTesterMenuItemFileManager) {
             close(FILEMGR_HTTP_SOCKET);
         }
         furi_thread_join(app->worker_thread);
@@ -2156,11 +2156,11 @@ static void eth_tester_worker_stop(EthTesterApp* app) {
     }
 }
 
-static void eth_tester_worker_start(EthTesterApp* app, uint32_t op, EthTesterView result_view) {
+static void lan_tester_worker_start(LanTesterApp* app, uint32_t op, LanTesterView result_view) {
     /* If old worker is done, clean it up (non-blocking) */
     if(app->worker_thread) {
         app->worker_running = false;
-        if(app->worker_op == EthTesterMenuItemFileManager) {
+        if(app->worker_op == LanTesterMenuItemFileManager) {
             close(FILEMGR_HTTP_SOCKET);
         }
         if(furi_thread_get_state(app->worker_thread) == FuriThreadStateStopped) {
@@ -2181,13 +2181,13 @@ static void eth_tester_worker_start(EthTesterApp* app, uint32_t op, EthTesterVie
     /* Switch to result view BEFORE starting thread */
     view_dispatcher_switch_to_view(app->view_dispatcher, result_view);
 
-    app->worker_thread = furi_thread_alloc_ex("EthWorker", 8 * 1024, eth_tester_worker_fn, app);
+    app->worker_thread = furi_thread_alloc_ex("LanWorker", 8 * 1024, lan_tester_worker_fn, app);
     furi_thread_start(app->worker_thread);
 }
 
 /* ==================== W5500 initialization helper ==================== */
 
-static bool eth_tester_ensure_w5500(EthTesterApp* app) {
+static bool lan_tester_ensure_w5500(LanTesterApp* app) {
     if(app->w5500_initialized) return true;
 
     FURI_LOG_I(TAG, "Initializing W5500...");
@@ -2225,8 +2225,8 @@ static bool eth_tester_ensure_w5500(EthTesterApp* app) {
  * Uses cached result if available; only runs DHCP once per session
  * (or after link state change).
  */
-static bool eth_tester_ensure_dhcp(EthTesterApp* app) {
-    if(!eth_tester_ensure_w5500(app)) {
+static bool lan_tester_ensure_dhcp(LanTesterApp* app) {
+    if(!lan_tester_ensure_w5500(app)) {
         if(app->setting_sound) notification_message(app->notifications, &sequence_error);
         return false;
     }
@@ -2304,7 +2304,7 @@ static bool eth_tester_ensure_dhcp(EthTesterApp* app) {
  * Generate an ASCII progress bar like "[=========>    ] 75%"
  * buf must be at least 28 bytes.
  */
-static void eth_tester_progress_bar(char* buf, size_t buf_size, uint16_t current, uint16_t total) {
+static void lan_tester_progress_bar(char* buf, size_t buf_size, uint16_t current, uint16_t total) {
     if(total == 0) total = 1;
     uint8_t pct = (uint8_t)((current * 100) / total);
     uint8_t filled = (uint8_t)((current * 16) / total);
@@ -2319,10 +2319,10 @@ static void eth_tester_progress_bar(char* buf, size_t buf_size, uint16_t current
 
 /* ==================== View update helpers ==================== */
 
-static void eth_tester_show_view(
-    EthTesterApp* app,
+static void lan_tester_show_view(
+    LanTesterApp* app,
     TextBox* tb,
-    EthTesterView view,
+    LanTesterView view,
     FuriString* text,
     const char* initial) {
     furi_string_set(text, initial);
@@ -2331,14 +2331,14 @@ static void eth_tester_show_view(
     furi_delay_ms(1);
 }
 
-static void eth_tester_update_view(TextBox* tb, FuriString* text) {
+static void lan_tester_update_view(TextBox* tb, FuriString* text) {
     text_box_set_text(tb, furi_string_get_cstr(text));
     furi_delay_ms(1);
 }
 
 /* ==================== Ping IP input callback ==================== */
 
-static bool eth_tester_parse_ip(const char* str, uint8_t ip[4]) {
+static bool lan_tester_parse_ip(const char* str, uint8_t ip[4]) {
     unsigned int a, b, c, d;
     if(sscanf(str, "%u.%u.%u.%u", &a, &b, &c, &d) != 4) return false;
     if(a > 255 || b > 255 || c > 255 || d > 255) return false;
@@ -2349,43 +2349,43 @@ static bool eth_tester_parse_ip(const char* str, uint8_t ip[4]) {
     return true;
 }
 
-static void eth_tester_ping_ip_input_callback(void* context) {
-    EthTesterApp* app = context;
+static void lan_tester_ping_ip_input_callback(void* context) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
-    if(eth_tester_parse_ip(app->ping_ip_input, app->ping_ip_custom)) {
+    if(lan_tester_parse_ip(app->ping_ip_input, app->ping_ip_custom)) {
         furi_string_set(app->ping_text, "Initializing...\n");
         text_box_set_text(app->text_box_ping, furi_string_get_cstr(app->ping_text));
-        eth_tester_worker_start(app, EthTesterMenuItemPing, EthTesterViewPing);
+        lan_tester_worker_start(app, LanTesterMenuItemPing, LanTesterViewPing);
     } else {
         furi_string_set(app->ping_text, "Invalid IP address!\n");
         text_box_set_text(app->text_box_ping, furi_string_get_cstr(app->ping_text));
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPing);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPing);
     }
 }
 
 /* ==================== Continuous Ping IP input callback ==================== */
 
-static void eth_tester_cont_ping_ip_input_callback(void* context) {
-    EthTesterApp* app = context;
+static void lan_tester_cont_ping_ip_input_callback(void* context) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
-    if(!eth_tester_parse_ip(app->cont_ping_ip_input, app->cont_ping_target)) {
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
+    if(!lan_tester_parse_ip(app->cont_ping_ip_input, app->cont_ping_target)) {
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewMainMenu);
         return;
     }
 
-    eth_tester_worker_start(app, EthTesterMenuItemContPing, EthTesterViewContPing);
+    lan_tester_worker_start(app, LanTesterMenuItemContPing, LanTesterViewContPing);
 }
 
 /* ==================== Traceroute IP input callback ==================== */
 
-static void eth_tester_traceroute_input_callback(void* context) {
-    EthTesterApp* app = context;
+static void lan_tester_traceroute_input_callback(void* context) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
     /* Try parsing as IP first */
-    if(eth_tester_parse_ip(app->traceroute_host_input, app->traceroute_target)) {
+    if(lan_tester_parse_ip(app->traceroute_host_input, app->traceroute_target)) {
         app->traceroute_is_hostname = false;
     } else if(strlen(app->traceroute_host_input) > 0) {
         /* Treat as hostname — DNS resolve will happen in worker */
@@ -2393,54 +2393,54 @@ static void eth_tester_traceroute_input_callback(void* context) {
     } else {
         furi_string_set(app->traceroute_text, "Empty input!\n");
         text_box_set_text(app->text_box_traceroute, furi_string_get_cstr(app->traceroute_text));
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewTraceroute);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewTraceroute);
         return;
     }
 
     furi_string_set(app->traceroute_text, "Initializing...\n");
     text_box_set_text(app->text_box_traceroute, furi_string_get_cstr(app->traceroute_text));
-    eth_tester_worker_start(app, EthTesterMenuItemTraceroute, EthTesterViewTraceroute);
+    lan_tester_worker_start(app, LanTesterMenuItemTraceroute, LanTesterViewTraceroute);
 }
 
 /* ==================== Port scan IP input callback ==================== */
 
-static void eth_tester_port_scan_ip_input_callback(void* context) {
-    EthTesterApp* app = context;
+static void lan_tester_port_scan_ip_input_callback(void* context) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
-    if(!eth_tester_parse_ip(app->port_scan_ip_input, app->port_scan_target)) {
+    if(!lan_tester_parse_ip(app->port_scan_ip_input, app->port_scan_target)) {
         furi_string_set(app->port_scan_text, "Invalid IP address!\n");
         text_box_set_text(app->text_box_port_scan, furi_string_get_cstr(app->port_scan_text));
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPortScan);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPortScan);
         return;
     }
 
     furi_string_set(app->port_scan_text, "Initializing...\n");
     text_box_set_text(app->text_box_port_scan, furi_string_get_cstr(app->port_scan_text));
-    eth_tester_worker_start(app, EthTesterMenuItemPortScan, EthTesterViewPortScan);
+    lan_tester_worker_start(app, LanTesterMenuItemPortScan, LanTesterViewPortScan);
 }
 
 /* Custom port scan: step 3 — IP entered, start scan */
-static void eth_tester_port_scan_custom_ip_callback(void* context) {
-    EthTesterApp* app = context;
+static void lan_tester_port_scan_custom_ip_callback(void* context) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
-    if(!eth_tester_parse_ip(app->port_scan_ip_input, app->port_scan_target)) {
+    if(!lan_tester_parse_ip(app->port_scan_ip_input, app->port_scan_target)) {
         furi_string_set(app->port_scan_text, "Invalid IP address!\n");
         text_box_set_text(app->text_box_port_scan, furi_string_get_cstr(app->port_scan_text));
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPortScan);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPortScan);
         return;
     }
 
     app->port_scan_custom = true;
     furi_string_set(app->port_scan_text, "Initializing...\n");
     text_box_set_text(app->text_box_port_scan, furi_string_get_cstr(app->port_scan_text));
-    eth_tester_worker_start(app, EthTesterMenuItemPortScan, EthTesterViewPortScan);
+    lan_tester_worker_start(app, LanTesterMenuItemPortScan, LanTesterViewPortScan);
 }
 
 /* Custom port scan: step 2 — end port entered, ask for IP */
-static void eth_tester_port_scan_end_callback(void* context) {
-    EthTesterApp* app = context;
+static void lan_tester_port_scan_end_callback(void* context) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
     int end = atoi(app->port_scan_end_input);
@@ -2468,17 +2468,17 @@ static void eth_tester_port_scan_end_callback(void* context) {
         "Target IP (Custom):",
         app->port_scan_ip_input,
         false,
-        eth_tester_port_scan_custom_ip_callback,
+        lan_tester_port_scan_custom_ip_callback,
         app,
         app->port_scan_ip_input,
         sizeof(app->port_scan_ip_input),
-        eth_tester_nav_back_diag);
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+        lan_tester_nav_back_diag);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
 }
 
 /* Custom port scan: step 1 — start port entered, ask for end port */
-static void eth_tester_port_scan_start_callback(void* context) {
-    EthTesterApp* app = context;
+static void lan_tester_port_scan_start_callback(void* context) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
     int start = atoi(app->port_scan_start_input);
@@ -2490,40 +2490,40 @@ static void eth_tester_port_scan_start_callback(void* context) {
     text_input_set_header_text(app->text_input_port_custom, "End port (1-65535):");
     text_input_set_result_callback(
         app->text_input_port_custom,
-        eth_tester_port_scan_end_callback,
+        lan_tester_port_scan_end_callback,
         app,
         app->port_scan_end_input,
         sizeof(app->port_scan_end_input),
         false);
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPortScanCustomInput);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPortScanCustomInput);
 }
 
 /* ==================== Ping sweep CIDR input callback ==================== */
 
-static void eth_tester_ping_sweep_input_callback(void* context) {
-    EthTesterApp* app = context;
+static void lan_tester_ping_sweep_input_callback(void* context) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
     furi_string_set(app->ping_sweep_text, "Starting ping sweep...\n");
     text_box_set_text(app->text_box_ping_sweep, furi_string_get_cstr(app->ping_sweep_text));
-    eth_tester_worker_start(app, EthTesterMenuItemPingSweep, EthTesterViewPingSweep);
+    lan_tester_worker_start(app, LanTesterMenuItemPingSweep, LanTesterViewPingSweep);
 }
 
 /* ==================== DNS hostname input callback ==================== */
 
-static void eth_tester_dns_input_callback(void* context) {
-    EthTesterApp* app = context;
+static void lan_tester_dns_input_callback(void* context) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
     furi_string_set(app->dns_text, "Initializing...\n");
     text_box_set_text(app->text_box_dns, furi_string_get_cstr(app->dns_text));
-    eth_tester_worker_start(app, EthTesterMenuItemDnsLookup, EthTesterViewDnsLookup);
+    lan_tester_worker_start(app, LanTesterMenuItemDnsLookup, LanTesterViewDnsLookup);
 }
 
 /* ==================== MAC Changer input callback ==================== */
 
-static void eth_tester_mac_changer_input_callback(void* context) {
-    EthTesterApp* app = context;
+static void lan_tester_mac_changer_input_callback(void* context) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
     /* Apply the MAC from byte input */
@@ -2548,65 +2548,65 @@ static void eth_tester_mac_changer_input_callback(void* context) {
         "DHCP/reconnect.\n",
         new_mac_str);
     text_box_set_text(app->text_box_mac_changer, furi_string_get_cstr(app->mac_changer_text));
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMacChanger);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewMacChanger);
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 }
 
 /* ==================== WoL MAC input callback ==================== */
 
-static void eth_tester_wol_input_callback(void* context) {
-    EthTesterApp* app = context;
+static void lan_tester_wol_input_callback(void* context) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
     furi_string_set(app->wol_text, "Sending WoL...\n");
     text_box_set_text(app->text_box_wol, furi_string_get_cstr(app->wol_text));
-    eth_tester_worker_start(app, EthTesterMenuItemWol, EthTesterViewWol);
+    lan_tester_worker_start(app, LanTesterMenuItemWol, LanTesterViewWol);
 }
 
 /* ==================== Submenu callback ==================== */
 
-static void eth_tester_submenu_callback(void* context, uint32_t index) {
-    EthTesterApp* app = context;
+static void lan_tester_submenu_callback(void* context, uint32_t index) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
     switch(index) {
-    case EthTesterMenuItemLinkInfo:
-        eth_tester_show_view(
+    case LanTesterMenuItemLinkInfo:
+        lan_tester_show_view(
             app,
             app->text_box_link,
-            EthTesterViewLinkInfo,
+            LanTesterViewLinkInfo,
             app->link_info_text,
             "Reading link status...\n");
-        eth_tester_worker_start(app, EthTesterMenuItemLinkInfo, EthTesterViewLinkInfo);
+        lan_tester_worker_start(app, LanTesterMenuItemLinkInfo, LanTesterViewLinkInfo);
         break;
 
-    case EthTesterMenuItemLldpCdp:
-        eth_tester_show_view(
+    case LanTesterMenuItemLldpCdp:
+        lan_tester_show_view(
             app,
             app->text_box_lldp,
-            EthTesterViewLldp,
+            LanTesterViewLldp,
             app->lldp_text,
             "Listening for LLDP/CDP...\n");
-        eth_tester_worker_start(app, EthTesterMenuItemLldpCdp, EthTesterViewLldp);
+        lan_tester_worker_start(app, LanTesterMenuItemLldpCdp, LanTesterViewLldp);
         break;
 
-    case EthTesterMenuItemArpScan:
-        eth_tester_show_view(
-            app, app->text_box_arp, EthTesterViewArpScan, app->arp_text, "Initializing W5500...\n");
-        eth_tester_worker_start(app, EthTesterMenuItemArpScan, EthTesterViewArpScan);
+    case LanTesterMenuItemArpScan:
+        lan_tester_show_view(
+            app, app->text_box_arp, LanTesterViewArpScan, app->arp_text, "Initializing W5500...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemArpScan, LanTesterViewArpScan);
         break;
 
-    case EthTesterMenuItemDhcpAnalyze:
-        eth_tester_show_view(
+    case LanTesterMenuItemDhcpAnalyze:
+        lan_tester_show_view(
             app,
             app->text_box_dhcp,
-            EthTesterViewDhcpAnalyze,
+            LanTesterViewDhcpAnalyze,
             app->dhcp_text,
             "Initializing W5500...\n");
-        eth_tester_worker_start(app, EthTesterMenuItemDhcpAnalyze, EthTesterViewDhcpAnalyze);
+        lan_tester_worker_start(app, LanTesterMenuItemDhcpAnalyze, LanTesterViewDhcpAnalyze);
         break;
 
-    case EthTesterMenuItemPing:
+    case LanTesterMenuItemPing:
         /* Pre-populate with gateway if DHCP available and no custom target set */
         if(app->dhcp_valid && strcmp(app->ping_ip_input, "8.8.8.8") == 0) {
             snprintf(
@@ -2623,70 +2623,70 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             "Ping target IP:",
             app->ping_ip_input,
             false,
-            eth_tester_ping_ip_input_callback,
+            lan_tester_ping_ip_input_callback,
             app,
             app->ping_ip_input,
             sizeof(app->ping_ip_input),
-            eth_tester_nav_back_diag);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+            lan_tester_nav_back_diag);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
 
-    case EthTesterMenuItemStats:
-        eth_tester_show_view(
+    case LanTesterMenuItemStats:
+        lan_tester_show_view(
             app,
             app->text_box_stats,
-            EthTesterViewStats,
+            LanTesterViewStats,
             app->stats_text,
             "Initializing W5500...\n");
-        eth_tester_worker_start(app, EthTesterMenuItemStats, EthTesterViewStats);
+        lan_tester_worker_start(app, LanTesterMenuItemStats, LanTesterViewStats);
         break;
 
-    case EthTesterMenuItemDnsLookup:
+    case LanTesterMenuItemDnsLookup:
         text_input_reset(app->text_input_dns);
         text_input_set_header_text(app->text_input_dns, "Hostname to resolve:");
         text_input_set_result_callback(
             app->text_input_dns,
-            eth_tester_dns_input_callback,
+            lan_tester_dns_input_callback,
             app,
             app->dns_hostname_input,
             sizeof(app->dns_hostname_input),
             false);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewDnsInput);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewDnsInput);
         break;
 
-    case EthTesterMenuItemWol:
+    case LanTesterMenuItemWol:
         byte_input_set_header_text(app->byte_input_wol, "Target MAC address:");
         byte_input_set_result_callback(
-            app->byte_input_wol, eth_tester_wol_input_callback, NULL, app, app->wol_mac_input, 6);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewWolInput);
+            app->byte_input_wol, lan_tester_wol_input_callback, NULL, app, app->wol_mac_input, 6);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewWolInput);
         break;
 
-    case EthTesterMenuItemHistory:
-        eth_tester_history_populate(app);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewHistory);
+    case LanTesterMenuItemHistory:
+        lan_tester_history_populate(app);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewHistory);
         break;
 
-    case EthTesterMenuItemStpVlan:
-        eth_tester_show_view(
+    case LanTesterMenuItemStpVlan:
+        lan_tester_show_view(
             app,
             app->text_box_stp_vlan,
-            EthTesterViewStpVlan,
+            LanTesterViewStpVlan,
             app->stp_vlan_text,
             "Listening...\n");
-        eth_tester_worker_start(app, EthTesterMenuItemStpVlan, EthTesterViewStpVlan);
+        lan_tester_worker_start(app, LanTesterMenuItemStpVlan, LanTesterViewStpVlan);
         break;
 
-    case EthTesterMenuItemDiscovery:
-        eth_tester_show_view(
+    case LanTesterMenuItemDiscovery:
+        lan_tester_show_view(
             app,
             app->text_box_discovery,
-            EthTesterViewDiscovery,
+            LanTesterViewDiscovery,
             app->discovery_text,
             "Scanning...\n");
-        eth_tester_worker_start(app, EthTesterMenuItemDiscovery, EthTesterViewDiscovery);
+        lan_tester_worker_start(app, LanTesterMenuItemDiscovery, LanTesterViewDiscovery);
         break;
 
-    case EthTesterMenuItemPingSweep:
+    case LanTesterMenuItemPingSweep:
         if(app->dhcp_valid) {
             /* Already have DHCP — go straight to input */
             uint8_t net[4];
@@ -2707,25 +2707,25 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
                 "Scan range (CIDR):",
                 app->ping_sweep_ip_input,
                 true,
-                eth_tester_ping_sweep_input_callback,
+                lan_tester_ping_sweep_input_callback,
                 app,
                 app->ping_sweep_ip_input,
                 sizeof(app->ping_sweep_ip_input),
-                eth_tester_nav_back_discovery);
-            view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+                lan_tester_nav_back_discovery);
+            view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         } else {
             /* No DHCP yet — detect network first, then show input */
-            eth_tester_show_view(
+            lan_tester_show_view(
                 app,
                 app->text_box_ping_sweep,
-                EthTesterViewPingSweep,
+                LanTesterViewPingSweep,
                 app->ping_sweep_text,
                 "Detecting network...\n");
-            eth_tester_worker_start(app, WORKER_OP_PING_SWEEP_DETECT, EthTesterViewPingSweep);
+            lan_tester_worker_start(app, WORKER_OP_PING_SWEEP_DETECT, LanTesterViewPingSweep);
         }
         break;
 
-    case EthTesterMenuItemTraceroute:
+    case LanTesterMenuItemTraceroute:
         if(app->dhcp_valid && strcmp(app->traceroute_host_input, "8.8.8.8") == 0) {
             snprintf(
                 app->traceroute_host_input,
@@ -2740,23 +2740,23 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         text_input_set_header_text(app->text_input_traceroute, "IP or hostname:");
         text_input_set_result_callback(
             app->text_input_traceroute,
-            eth_tester_traceroute_input_callback,
+            lan_tester_traceroute_input_callback,
             app,
             app->traceroute_host_input,
             sizeof(app->traceroute_host_input),
             false);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewTracerouteInput);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewTracerouteInput);
         break;
 
-    case EthTesterMenuItemMacChanger:
+    case LanTesterMenuItemMacChanger:
         /* Now handled via Settings; kept here for safety */
         break;
 
-    case EthTesterMenuItemPortScanFull:
+    case LanTesterMenuItemPortScanFull:
         app->port_scan_top100 = true;
         /* fall through */
-    case EthTesterMenuItemPortScan:
-        if(index == EthTesterMenuItemPortScan) app->port_scan_top100 = false;
+    case LanTesterMenuItemPortScan:
+        if(index == LanTesterMenuItemPortScan) app->port_scan_top100 = false;
         app->port_scan_custom = false;
         /* Pre-populate target with DHCP gateway if available */
         if(app->dhcp_valid &&
@@ -2775,29 +2775,29 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             app->port_scan_top100 ? "Target IP (Top 100):" : "Target IP (Top 20):",
             app->port_scan_ip_input,
             false,
-            eth_tester_port_scan_ip_input_callback,
+            lan_tester_port_scan_ip_input_callback,
             app,
             app->port_scan_ip_input,
             sizeof(app->port_scan_ip_input),
-            eth_tester_nav_back_diag);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+            lan_tester_nav_back_diag);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
 
-    case EthTesterMenuItemPortScanCustom:
+    case LanTesterMenuItemPortScanCustom:
         app->port_scan_custom = true;
         text_input_reset(app->text_input_port_custom);
         text_input_set_header_text(app->text_input_port_custom, "Start port (1-65535):");
         text_input_set_result_callback(
             app->text_input_port_custom,
-            eth_tester_port_scan_start_callback,
+            lan_tester_port_scan_start_callback,
             app,
             app->port_scan_start_input,
             sizeof(app->port_scan_start_input),
             false);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPortScanCustomInput);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPortScanCustomInput);
         break;
 
-    case EthTesterMenuItemContPing:
+    case LanTesterMenuItemContPing:
         if(app->dhcp_valid && strcmp(app->cont_ping_ip_input, "8.8.8.8") == 0) {
             snprintf(
                 app->cont_ping_ip_input,
@@ -2813,15 +2813,15 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             "Ping target IP:",
             app->cont_ping_ip_input,
             false,
-            eth_tester_cont_ping_ip_input_callback,
+            lan_tester_cont_ping_ip_input_callback,
             app,
             app->cont_ping_ip_input,
             sizeof(app->cont_ping_ip_input),
-            eth_tester_nav_back_diag);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+            lan_tester_nav_back_diag);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
 
-    case EthTesterMenuItemEthBridge:
+    case LanTesterMenuItemEthBridge:
         with_view_model(
             app->view_bridge,
             BridgeViewModel * vm,
@@ -2830,43 +2830,43 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
                 vm->status_line = "Starting ETH Bridge...";
             },
             true);
-        eth_tester_worker_start(app, EthTesterMenuItemEthBridge, EthTesterViewEthBridge);
+        lan_tester_worker_start(app, LanTesterMenuItemEthBridge, LanTesterViewEthBridge);
         break;
 
-    case EthTesterMenuItemPxeServer:
+    case LanTesterMenuItemPxeServer:
         pxe_settings_refresh(app);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPxeSettings);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPxeSettings);
         break;
 
-    case EthTesterMenuItemFileManager:
+    case LanTesterMenuItemFileManager:
         furi_string_set(app->file_manager_text, "Starting File Manager...\n");
         text_box_set_text(
             app->text_box_file_manager, furi_string_get_cstr(app->file_manager_text));
-        eth_tester_worker_start(app, EthTesterMenuItemFileManager, EthTesterViewFileManager);
+        lan_tester_worker_start(app, LanTesterMenuItemFileManager, LanTesterViewFileManager);
         break;
 
-    case EthTesterMenuItemPacketCapture:
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPacketCapture);
+    case LanTesterMenuItemPacketCapture:
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPacketCapture);
         break;
 
-    case EthTesterMenuItemAbout:
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewAbout);
+    case LanTesterMenuItemAbout:
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewAbout);
         break;
 
     case 100: /* Network Info category */
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewCatNetInfo);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatNetInfo);
         break;
     case 101: /* Discovery category */
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewCatDiscovery);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatDiscovery);
         break;
     case 102: /* Diagnostics category */
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewCatDiag);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatDiag);
         break;
     case 103: /* Tools category */
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewCatTools);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatTools);
         break;
     case 104: /* Settings */
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewSettings);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewSettings);
         break;
 
     default:
@@ -2876,10 +2876,10 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
 
 /* ==================== Feature implementations ==================== */
 
-static void eth_tester_do_link_info(EthTesterApp* app) {
+static void lan_tester_do_link_info(LanTesterApp* app) {
     furi_string_reset(app->link_info_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
+    if(!lan_tester_ensure_w5500(app)) {
         furi_string_set(app->link_info_text, "W5500 Not Found!\nCheck SPI wiring.\n");
         return;
     }
@@ -2913,10 +2913,10 @@ static void eth_tester_do_link_info(EthTesterApp* app) {
         mac_str);
 }
 
-static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
+static void lan_tester_do_lldp_cdp(LanTesterApp* app) {
     furi_string_reset(app->lldp_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
+    if(!lan_tester_ensure_w5500(app)) {
         furi_string_set(app->lldp_text, "W5500 Not Found!\n");
         return;
     }
@@ -2927,7 +2927,7 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
     }
 
     furi_string_set(app->lldp_text, "Listening for\nLLDP/CDP...\n(up to 60 sec)\n");
-    eth_tester_update_view(app->text_box_lldp, app->lldp_text);
+    lan_tester_update_view(app->text_box_lldp, app->lldp_text);
 
     /* Open MACRAW socket */
     if(!w5500_hal_open_macraw()) {
@@ -2955,13 +2955,13 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
                 app->lldp_text,
                 "Listening for\nLLDP/CDP...\n(%lus remaining)\n",
                 (unsigned long)remaining);
-            eth_tester_update_view(app->text_box_lldp, app->lldp_text);
+            lan_tester_update_view(app->text_box_lldp, app->lldp_text);
         }
 
         uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
         if(recv_len >= ETH_HEADER_SIZE) {
             /* Count frame for statistics */
-            eth_tester_count_frame(app, app->frame_buf, recv_len);
+            lan_tester_count_frame(app, app->frame_buf, recv_len);
 
             uint16_t ethertype = pkt_get_ethertype(app->frame_buf);
 
@@ -3020,16 +3020,16 @@ static void eth_tester_do_lldp_cdp(EthTesterApp* app) {
     }
 
     /* Save results to SD card */
-    eth_tester_save_and_notify(app, "lldp_cdp.txt", app->lldp_text);
+    lan_tester_save_and_notify(app, "lldp_cdp.txt", app->lldp_text);
 }
 
-static void eth_tester_do_arp_scan(EthTesterApp* app) {
+static void lan_tester_do_arp_scan(LanTesterApp* app) {
     furi_string_reset(app->arp_text);
 
     furi_string_set(app->arp_text, "Getting IP via DHCP...\n");
-    eth_tester_update_view(app->text_box_arp, app->arp_text);
+    lan_tester_update_view(app->text_box_arp, app->arp_text);
 
-    if(!eth_tester_ensure_dhcp(app)) {
+    if(!lan_tester_ensure_dhcp(app)) {
         furi_string_set(
             app->arp_text,
             !app->w5500_initialized ? "W5500 Not Found!\n" :
@@ -3062,7 +3062,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     pkt_format_ip(net_info.ip, ip_str);
     furi_string_printf(
         app->arp_text, "My IP: %s/%d\nScanning %d hosts...\n", ip_str, prefix, num_hosts);
-    eth_tester_update_view(app->text_box_arp, app->arp_text);
+    lan_tester_update_view(app->text_box_arp, app->arp_text);
 
     /* Open MACRAW for sending ARP requests and receiving replies */
     if(!w5500_hal_open_macraw()) {
@@ -3120,7 +3120,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
                 scan->total_sent,
                 num_hosts,
                 scan->count);
-            eth_tester_update_view(app->text_box_arp, app->arp_text);
+            lan_tester_update_view(app->text_box_arp, app->arp_text);
 
             /* Collect any pending replies */
             for(uint8_t i = 0; i < 20; i++) {
@@ -3151,7 +3151,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
         prefix,
         num_hosts,
         scan->count);
-    eth_tester_update_view(app->text_box_arp, app->arp_text);
+    lan_tester_update_view(app->text_box_arp, app->arp_text);
     uint32_t tail_start = furi_get_tick();
     while(furi_get_tick() - tail_start < ARP_TAIL_WAIT_MS && app->worker_running) {
         uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
@@ -3227,7 +3227,7 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     free(scan);
 
     /* Save results to SD card */
-    eth_tester_save_and_notify(app, "arp_scan.txt", app->arp_text);
+    lan_tester_save_and_notify(app, "arp_scan.txt", app->arp_text);
 
     /* Show interactive host list if hosts were found */
     if(app->discovered_host_count > 0 && app->worker_running) {
@@ -3235,10 +3235,10 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
     }
 }
 
-static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
+static void lan_tester_do_dhcp_analyze(LanTesterApp* app) {
     furi_string_reset(app->dhcp_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
+    if(!lan_tester_ensure_w5500(app)) {
         furi_string_set(app->dhcp_text, "W5500 Not Found!\n");
         return;
     }
@@ -3249,7 +3249,7 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
     }
 
     furi_string_set(app->dhcp_text, "Sending DHCP\nDiscover...\n");
-    eth_tester_update_view(app->text_box_dhcp, app->dhcp_text);
+    lan_tester_update_view(app->text_box_dhcp, app->dhcp_text);
 
     /*
      * Use UDP socket directly to send DHCP Discover and receive Offer
@@ -3301,7 +3301,7 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
 
     FURI_LOG_I(TAG, "DHCP Discover sent (xid=0x%08lX)", (unsigned long)xid);
     furi_string_set(app->dhcp_text, "Waiting for DHCP\nOffer... (10s)\n");
-    eth_tester_update_view(app->text_box_dhcp, app->dhcp_text);
+    lan_tester_update_view(app->text_box_dhcp, app->dhcp_text);
 
     /* Wait for DHCP Offer */
     DhcpAnalyzeResult dhcp_result;
@@ -3354,16 +3354,16 @@ static void eth_tester_do_dhcp_analyze(EthTesterApp* app) {
     }
 
     /* Save results to SD card */
-    eth_tester_save_and_notify(app, "dhcp_analyze.txt", app->dhcp_text);
+    lan_tester_save_and_notify(app, "dhcp_analyze.txt", app->dhcp_text);
 }
 
-static void eth_tester_do_ping(EthTesterApp* app) {
+static void lan_tester_do_ping(LanTesterApp* app) {
     furi_string_reset(app->ping_text);
 
     furi_string_set(app->ping_text, "Getting IP via DHCP...\n");
-    eth_tester_update_view(app->text_box_ping, app->ping_text);
+    lan_tester_update_view(app->text_box_ping, app->ping_text);
 
-    if(!eth_tester_ensure_dhcp(app)) {
+    if(!lan_tester_ensure_dhcp(app)) {
         furi_string_set(
             app->ping_text,
             !app->w5500_initialized      ? "W5500 Not Found!\n" :
@@ -3388,7 +3388,7 @@ static void eth_tester_do_ping(EthTesterApp* app) {
     pkt_format_ip(net_info.ip, my_ip_str);
 
     furi_string_printf(app->ping_text, "My IP: %s\nPing %s\n\n", my_ip_str, target_str);
-    eth_tester_update_view(app->text_box_ping, app->ping_text);
+    lan_tester_update_view(app->text_box_ping, app->ping_text);
 
     /* Send pings (count from settings) */
     for(uint16_t i = 1; i <= app->ping_count && app->worker_running; i++) {
@@ -3400,20 +3400,20 @@ static void eth_tester_do_ping(EthTesterApp* app) {
         } else {
             furi_string_cat_printf(app->ping_text, "#%d: timeout\n", i);
         }
-        eth_tester_update_view(app->text_box_ping, app->ping_text);
+        lan_tester_update_view(app->text_box_ping, app->ping_text);
         furi_delay_ms(100);
     }
 }
 
 /* ==================== DNS Lookup ==================== */
 
-static void eth_tester_do_dns_lookup(EthTesterApp* app) {
+static void lan_tester_do_dns_lookup(LanTesterApp* app) {
     furi_string_reset(app->dns_text);
 
     furi_string_set(app->dns_text, "Getting IP via DHCP...\n");
-    eth_tester_update_view(app->text_box_dns, app->dns_text);
+    lan_tester_update_view(app->text_box_dns, app->dns_text);
 
-    if(!eth_tester_ensure_dhcp(app)) {
+    if(!lan_tester_ensure_dhcp(app)) {
         furi_string_set(
             app->dns_text,
             !app->w5500_initialized      ? "W5500 Not Found!\n" :
@@ -3427,7 +3427,7 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
 
     /* Get DNS server: custom if enabled, otherwise from DHCP */
     uint8_t dns_ip[4];
-    eth_tester_get_dns_server(app, dns_ip);
+    lan_tester_get_dns_server(app, dns_ip);
 
     /* Check DNS server is valid */
     if(dns_ip[0] == 0 && dns_ip[1] == 0 && dns_ip[2] == 0 && dns_ip[3] == 0) {
@@ -3442,7 +3442,7 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
 
     furi_string_printf(
         app->dns_text, "Resolving:\n%s\nDNS: %s\n\n", app->dns_hostname_input, dns_str);
-    eth_tester_update_view(app->text_box_dns, app->dns_text);
+    lan_tester_update_view(app->text_box_dns, app->dns_text);
 
     /* Perform DNS lookup */
     DnsLookupResult dns_result;
@@ -3472,18 +3472,18 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
             dns_result.rcode == DNS_RCODE_NXDOMAIN ? "NXDOMAIN (not found)" : "Timeout (3s)");
     }
 
-    eth_tester_save_and_notify(app, "dns_lookup.txt", app->dns_text);
+    lan_tester_save_and_notify(app, "dns_lookup.txt", app->dns_text);
 }
 
 /* ==================== Wake-on-LAN ==================== */
 
-static void eth_tester_do_wol(EthTesterApp* app) {
+static void lan_tester_do_wol(LanTesterApp* app) {
     furi_string_reset(app->wol_text);
 
     furi_string_set(app->wol_text, "Getting IP via DHCP...\n");
-    eth_tester_update_view(app->text_box_wol, app->wol_text);
+    lan_tester_update_view(app->text_box_wol, app->wol_text);
 
-    if(!eth_tester_ensure_dhcp(app)) {
+    if(!lan_tester_ensure_dhcp(app)) {
         furi_string_set(
             app->wol_text,
             !app->w5500_initialized      ? "W5500 Not Found!\n" :
@@ -3499,7 +3499,7 @@ static void eth_tester_do_wol(EthTesterApp* app) {
     pkt_format_mac(app->wol_mac_input, mac_str);
 
     furi_string_printf(app->wol_text, "Sending WoL to:\n%s\n\n", mac_str);
-    eth_tester_update_view(app->text_box_wol, app->wol_text);
+    lan_tester_update_view(app->text_box_wol, app->wol_text);
 
     bool ok = wol_send(W5500_WOL_SOCKET, app->wol_mac_input);
 
@@ -3526,7 +3526,7 @@ static void eth_tester_do_wol(EthTesterApp* app) {
 
 /* ==================== MAC Changer ==================== */
 
-static void eth_tester_do_mac_changer(EthTesterApp* app) {
+static void lan_tester_do_mac_changer(LanTesterApp* app) {
     furi_string_reset(app->mac_changer_text);
 
     /* Read current MAC */
@@ -3555,13 +3555,13 @@ static void eth_tester_do_mac_changer(EthTesterApp* app) {
 
 /* ==================== Traceroute ==================== */
 
-static void eth_tester_do_traceroute(EthTesterApp* app) {
+static void lan_tester_do_traceroute(LanTesterApp* app) {
     furi_string_reset(app->traceroute_text);
 
     furi_string_set(app->traceroute_text, "Getting IP via DHCP...\n");
-    eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+    lan_tester_update_view(app->text_box_traceroute, app->traceroute_text);
 
-    if(!eth_tester_ensure_dhcp(app)) {
+    if(!lan_tester_ensure_dhcp(app)) {
         furi_string_set(
             app->traceroute_text,
             !app->w5500_initialized      ? "W5500 Not Found!\n" :
@@ -3576,10 +3576,10 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
     /* If input is a hostname, resolve via DNS first */
     if(app->traceroute_is_hostname) {
         furi_string_printf(app->traceroute_text, "Resolving %s...\n", app->traceroute_host_input);
-        eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+        lan_tester_update_view(app->text_box_traceroute, app->traceroute_text);
 
         uint8_t dns_ip[4];
-        eth_tester_get_dns_server(app, dns_ip);
+        lan_tester_get_dns_server(app, dns_ip);
 
         if(dns_ip[0] == 0 && dns_ip[1] == 0 && dns_ip[2] == 0 && dns_ip[3] == 0) {
             furi_string_set(app->traceroute_text, "No DNS server available.\n");
@@ -3601,7 +3601,7 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
         pkt_format_ip(dns_result.resolved_ip, ip_str);
         furi_string_printf(
             app->traceroute_text, "%s -> %s\n\n", app->traceroute_host_input, ip_str);
-        eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+        lan_tester_update_view(app->text_box_traceroute, app->traceroute_text);
     }
 
     char target_str[16];
@@ -3612,7 +3612,7 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
         "[Traceroute]\n"
         "Target: %s\n\n",
         target_str);
-    eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+    lan_tester_update_view(app->text_box_traceroute, app->traceroute_text);
 
     /* Run traceroute */
     for(uint8_t ttl = 1; ttl <= TRACEROUTE_MAX_TTL && app->worker_running; ttl++) {
@@ -3638,7 +3638,7 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
             furi_string_cat_printf(app->traceroute_text, "%2d  * * *\n", ttl);
         }
 
-        eth_tester_update_view(app->text_box_traceroute, app->traceroute_text);
+        lan_tester_update_view(app->text_box_traceroute, app->traceroute_text);
 
         /* Stop if destination reached */
         if(got_reply && hop.is_destination) {
@@ -3647,7 +3647,7 @@ static void eth_tester_do_traceroute(EthTesterApp* app) {
         }
     }
 
-    eth_tester_save_and_notify(app, "traceroute.txt", app->traceroute_text);
+    lan_tester_save_and_notify(app, "traceroute.txt", app->traceroute_text);
 }
 
 /* ==================== Ping Sweep ==================== */
@@ -3666,19 +3666,19 @@ static bool parse_cidr(const char* str, uint8_t base_ip[4], uint8_t* prefix) {
 }
 
 /* Phase 1: detect network via DHCP, then signal main thread to show input */
-static void eth_tester_do_ping_sweep_detect(EthTesterApp* app) {
+static void lan_tester_do_ping_sweep_detect(LanTesterApp* app) {
     furi_string_reset(app->ping_sweep_text);
 
     furi_string_set(app->ping_sweep_text, "Getting IP via DHCP...\n");
-    eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+    lan_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
 
-    if(!eth_tester_ensure_dhcp(app)) {
+    if(!lan_tester_ensure_dhcp(app)) {
         furi_string_set(
             app->ping_sweep_text,
             !app->w5500_initialized      ? "W5500 Not Found!\n" :
             !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
                                            "DHCP failed.\n");
-        eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+        lan_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
         return;
     }
 
@@ -3705,13 +3705,13 @@ static void eth_tester_do_ping_sweep_detect(EthTesterApp* app) {
 }
 
 /* Phase 2: actual ping sweep scan */
-static void eth_tester_do_ping_sweep(EthTesterApp* app) {
+static void lan_tester_do_ping_sweep(LanTesterApp* app) {
     furi_string_reset(app->ping_sweep_text);
 
     furi_string_set(app->ping_sweep_text, "Getting IP via DHCP...\n");
-    eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+    lan_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
 
-    if(!eth_tester_ensure_dhcp(app)) {
+    if(!lan_tester_ensure_dhcp(app)) {
         furi_string_set(
             app->ping_sweep_text,
             !app->w5500_initialized      ? "W5500 Not Found!\n" :
@@ -3774,7 +3774,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
         "Hosts: %d\n\n",
         app->ping_sweep_ip_input,
         num_hosts);
-    eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+    lan_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
 
     /* Sweep */
     uint32_t current = pkt_read_u32_be(start_ip);
@@ -3813,7 +3813,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
         /* Update progress every 5 hosts */
         if(scanned % 5 == 0 || current == last) {
             char progress[28];
-            eth_tester_progress_bar(progress, sizeof(progress), scanned, num_hosts);
+            lan_tester_progress_bar(progress, sizeof(progress), scanned, num_hosts);
             furi_string_printf(
                 app->ping_sweep_text,
                 "[Ping Sweep]\n"
@@ -3823,7 +3823,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
                 alive,
                 scanned,
                 furi_string_get_cstr(results));
-            eth_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
+            lan_tester_update_view(app->text_box_ping_sweep, app->ping_sweep_text);
         }
 
         current++;
@@ -3847,7 +3847,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
     }
 
     furi_string_free(results);
-    eth_tester_save_and_notify(app, "ping_sweep.txt", app->ping_sweep_text);
+    lan_tester_save_and_notify(app, "ping_sweep.txt", app->ping_sweep_text);
 
     /* Show interactive host list if hosts were found */
     if(app->discovered_host_count > 0 && app->worker_running) {
@@ -3857,13 +3857,13 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
 
 /* ==================== mDNS / SSDP Discovery ==================== */
 
-static void eth_tester_do_discovery(EthTesterApp* app) {
+static void lan_tester_do_discovery(LanTesterApp* app) {
     furi_string_reset(app->discovery_text);
 
     furi_string_set(app->discovery_text, "Getting IP via DHCP...\n");
-    eth_tester_update_view(app->text_box_discovery, app->discovery_text);
+    lan_tester_update_view(app->text_box_discovery, app->discovery_text);
 
-    if(!eth_tester_ensure_dhcp(app)) {
+    if(!lan_tester_ensure_dhcp(app)) {
         furi_string_set(
             app->discovery_text,
             !app->w5500_initialized      ? "W5500 Not Found!\n" :
@@ -3876,7 +3876,7 @@ static void eth_tester_do_discovery(EthTesterApp* app) {
     wizchip_getnetinfo(&net_info);
 
     furi_string_set(app->discovery_text, "Sending mDNS + SSDP...\n");
-    eth_tester_update_view(app->text_box_discovery, app->discovery_text);
+    lan_tester_update_view(app->text_box_discovery, app->discovery_text);
 
     /* Allocate device array */
     DiscoveryDevice* devices = malloc(sizeof(DiscoveryDevice) * DISCOVERY_MAX_DEVICES);
@@ -3898,7 +3898,7 @@ static void eth_tester_do_discovery(EthTesterApp* app) {
     }
 
     furi_string_set(app->discovery_text, "Listening for responses...\n(5 seconds)\n");
-    eth_tester_update_view(app->text_box_discovery, app->discovery_text);
+    lan_tester_update_view(app->text_box_discovery, app->discovery_text);
 
     /* Listen for responses */
     uint8_t recv_buf[512];
@@ -3994,15 +3994,15 @@ static void eth_tester_do_discovery(EthTesterApp* app) {
     }
 
     free(devices);
-    eth_tester_save_and_notify(app, "discovery.txt", app->discovery_text);
+    lan_tester_save_and_notify(app, "discovery.txt", app->discovery_text);
 }
 
 /* ==================== STP/BPDU + VLAN Detection ==================== */
 
-static void eth_tester_do_stp_vlan(EthTesterApp* app) {
+static void lan_tester_do_stp_vlan(LanTesterApp* app) {
     furi_string_reset(app->stp_vlan_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
+    if(!lan_tester_ensure_w5500(app)) {
         furi_string_set(app->stp_vlan_text, "W5500 Not Found!\n");
         return;
     }
@@ -4013,7 +4013,7 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
     }
 
     furi_string_set(app->stp_vlan_text, "Listening for BPDU\nand VLAN tags...\n(30s remaining)\n");
-    eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
+    lan_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
 
     /* Open MACRAW socket */
     if(!w5500_hal_open_macraw()) {
@@ -4041,13 +4041,13 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
                 app->stp_vlan_text,
                 "Listening for BPDU\nand VLAN tags...\n(%lus remaining)\n",
                 (unsigned long)(30 - elapsed_sec));
-            eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
+            lan_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
         }
 
         uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
         if(recv_len >= ETH_HEADER_SIZE) {
             /* Count frame for stats */
-            eth_tester_count_frame(app, app->frame_buf, recv_len);
+            lan_tester_count_frame(app, app->frame_buf, recv_len);
 
             /* Check for BPDU */
             if(!bpdu.valid) {
@@ -4093,7 +4093,7 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
                 furi_string_cat_str(app->stp_vlan_text, "No 802.1Q tags.\n");
             }
 
-            eth_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
+            lan_tester_update_view(app->text_box_stp_vlan, app->stp_vlan_text);
         }
 
         furi_delay_ms(50);
@@ -4130,12 +4130,12 @@ static void eth_tester_do_stp_vlan(EthTesterApp* app) {
             app->stp_vlan_text, "No 802.1Q tags detected.\n(Not on trunk port?)\n");
     }
 
-    eth_tester_save_and_notify(app, "stp_vlan.txt", app->stp_vlan_text);
+    lan_tester_save_and_notify(app, "stp_vlan.txt", app->stp_vlan_text);
 }
 
 /* ==================== History Browser ==================== */
 
-static void eth_tester_history_populate(EthTesterApp* app) {
+static void lan_tester_history_populate(LanTesterApp* app) {
     submenu_reset(app->submenu_history);
 
     /* Free previous state if any */
@@ -4175,7 +4175,7 @@ static void eth_tester_history_populate(EthTesterApp* app) {
         memcpy(e->label, tmp, sizeof(e->label));
 
         /* View entry */
-        submenu_add_item(app->submenu_history, e->label, i, eth_tester_history_file_callback, app);
+        submenu_add_item(app->submenu_history, e->label, i, lan_tester_history_file_callback, app);
         /* Delete entry (index offset by HISTORY_MAX_FILES) */
         char del_label[HISTORY_FILENAME_LEN];
         snprintf(del_label, sizeof(del_label), "  DEL %s", e->label);
@@ -4183,13 +4183,13 @@ static void eth_tester_history_populate(EthTesterApp* app) {
             app->submenu_history,
             del_label,
             HISTORY_MAX_FILES + i,
-            eth_tester_history_delete_callback,
+            lan_tester_history_delete_callback,
             app);
     }
 }
 
-static void eth_tester_history_file_callback(void* context, uint32_t index) {
-    EthTesterApp* app = context;
+static void lan_tester_history_file_callback(void* context, uint32_t index) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
     if(!app->history_state || index >= app->history_state->file_count) return;
@@ -4210,11 +4210,11 @@ static void eth_tester_history_file_callback(void* context, uint32_t index) {
 
     text_box_reset(app->text_box_history_file);
     text_box_set_text(app->text_box_history_file, furi_string_get_cstr(app->history_file_text));
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewHistoryFile);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewHistoryFile);
 }
 
-static void eth_tester_history_delete_callback(void* context, uint32_t index) {
-    EthTesterApp* app = context;
+static void lan_tester_history_delete_callback(void* context, uint32_t index) {
+    LanTesterApp* app = context;
     furi_assert(app);
 
     uint16_t file_idx = index - HISTORY_MAX_FILES;
@@ -4225,18 +4225,18 @@ static void eth_tester_history_delete_callback(void* context, uint32_t index) {
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 
     /* Refresh list */
-    eth_tester_history_populate(app);
+    lan_tester_history_populate(app);
 }
 
 /* ==================== Port Scanner ==================== */
 
-static void eth_tester_do_port_scan(EthTesterApp* app) {
+static void lan_tester_do_port_scan(LanTesterApp* app) {
     furi_string_reset(app->port_scan_text);
 
     furi_string_set(app->port_scan_text, "Getting IP via DHCP...\n");
-    eth_tester_update_view(app->text_box_port_scan, app->port_scan_text);
+    lan_tester_update_view(app->text_box_port_scan, app->port_scan_text);
 
-    if(!eth_tester_ensure_dhcp(app)) {
+    if(!lan_tester_ensure_dhcp(app)) {
         furi_string_set(
             app->port_scan_text,
             !app->w5500_initialized      ? "W5500 Not Found!\n" :
@@ -4288,7 +4288,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
             target_str,
             port_count);
     }
-    eth_tester_update_view(app->text_box_port_scan, app->port_scan_text);
+    lan_tester_update_view(app->text_box_port_scan, app->port_scan_text);
 
     /* Scan ports and collect results */
     uint16_t open_count = 0;
@@ -4328,7 +4328,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
         /* Update progress */
         {
             char progress[28];
-            eth_tester_progress_bar(progress, sizeof(progress), i + 1, port_count);
+            lan_tester_progress_bar(progress, sizeof(progress), i + 1, port_count);
             furi_string_printf(
                 app->port_scan_text,
                 "[Port Scan] %s\n"
@@ -4338,7 +4338,7 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
                 progress,
                 furi_string_get_cstr(results));
         }
-        eth_tester_update_view(app->text_box_port_scan, app->port_scan_text);
+        lan_tester_update_view(app->text_box_port_scan, app->port_scan_text);
     }
 
     /* Final results */
@@ -4364,13 +4364,13 @@ static void eth_tester_do_port_scan(EthTesterApp* app) {
 
     furi_string_free(results);
 
-    eth_tester_save_and_notify(app, "port_scan.txt", app->port_scan_text);
+    lan_tester_save_and_notify(app, "port_scan.txt", app->port_scan_text);
 }
 
 /* ==================== Continuous Ping ==================== */
 
-static void eth_tester_do_cont_ping(EthTesterApp* app) {
-    if(!eth_tester_ensure_dhcp(app)) return;
+static void lan_tester_do_cont_ping(LanTesterApp* app) {
+    if(!lan_tester_ensure_dhcp(app)) return;
 
     /* Allocate ping graph state */
     PingGraphState* pg = malloc(sizeof(PingGraphState));
@@ -4429,7 +4429,7 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
         (unsigned long)ping_graph_avg_rtt(pg),
         (unsigned long)pg->rtt_max);
     if(app->setting_autosave) {
-        eth_tester_save_results("cont_ping.txt", furi_string_get_cstr(log));
+        lan_tester_save_results("cont_ping.txt", furi_string_get_cstr(log));
     }
     furi_string_free(log);
 
@@ -4440,7 +4440,7 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
 
 /* ==================== Packet statistics ==================== */
 
-static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len) {
+static void lan_tester_count_frame(LanTesterApp* app, const uint8_t* frame, uint16_t len) {
     if(len < ETH_HEADER_SIZE) return;
 
     app->stats.total_frames++;
@@ -4485,10 +4485,10 @@ static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint
     }
 }
 
-static void eth_tester_do_stats(EthTesterApp* app) {
+static void lan_tester_do_stats(LanTesterApp* app) {
     furi_string_reset(app->stats_text);
 
-    if(!eth_tester_ensure_w5500(app)) {
+    if(!lan_tester_ensure_w5500(app)) {
         furi_string_set(app->stats_text, "W5500 Not Found!\n");
         return;
     }
@@ -4501,7 +4501,7 @@ static void eth_tester_do_stats(EthTesterApp* app) {
     /* If no frames counted yet, do a quick capture */
     if(app->stats.total_frames == 0) {
         furi_string_set(app->stats_text, "Capturing frames...\n(10s remaining)\n");
-        eth_tester_update_view(app->text_box_stats, app->stats_text);
+        lan_tester_update_view(app->text_box_stats, app->stats_text);
 
         if(!w5500_hal_open_macraw()) {
             furi_string_set(app->stats_text, "Failed to open\nMACRAW!\n");
@@ -4513,7 +4513,7 @@ static void eth_tester_do_stats(EthTesterApp* app) {
         while(furi_get_tick() - start_tick < 10000 && app->worker_running) {
             uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
             if(recv_len >= ETH_HEADER_SIZE) {
-                eth_tester_count_frame(app, app->frame_buf, recv_len);
+                lan_tester_count_frame(app, app->frame_buf, recv_len);
             }
             /* Update countdown every second */
             uint32_t sec = (furi_get_tick() - start_tick) / 1000;
@@ -4524,7 +4524,7 @@ static void eth_tester_do_stats(EthTesterApp* app) {
                     "Capturing frames...\n(%lus remaining)\nFrames: %lu\n",
                     (unsigned long)(10 - sec),
                     (unsigned long)app->stats.total_frames);
-                eth_tester_update_view(app->text_box_stats, app->stats_text);
+                lan_tester_update_view(app->text_box_stats, app->stats_text);
             }
             furi_delay_ms(10);
         }
@@ -4556,13 +4556,13 @@ static void eth_tester_do_stats(EthTesterApp* app) {
 
     /* Save stats to SD card (no sound — passive capture) */
     if(app->setting_autosave) {
-        eth_tester_save_results("stats.txt", furi_string_get_cstr(app->stats_text));
+        lan_tester_save_results("stats.txt", furi_string_get_cstr(app->stats_text));
     }
 }
 
 /* ==================== Save results to SD card ==================== */
 
-static bool eth_tester_save_results(const char* type, const char* content) {
+static bool lan_tester_save_results(const char* type, const char* content) {
     /* Extract scan type from filename (remove .txt extension if present) */
     char scan_type[32];
     strncpy(scan_type, type, sizeof(scan_type) - 1);
@@ -4576,9 +4576,9 @@ static bool eth_tester_save_results(const char* type, const char* content) {
 }
 
 /* Save results and append status to the display text, with optional LED/vibro feedback */
-static void eth_tester_save_and_notify(EthTesterApp* app, const char* type, FuriString* text) {
+static void lan_tester_save_and_notify(LanTesterApp* app, const char* type, FuriString* text) {
     if(app->setting_autosave) {
-        bool ok = eth_tester_save_results(type, furi_string_get_cstr(text));
+        bool ok = lan_tester_save_results(type, furi_string_get_cstr(text));
         furi_string_cat_str(text, ok ? "\nSaved to History\n" : "\nHistory save failed\n");
     }
     if(app->setting_sound) {
@@ -4588,7 +4588,7 @@ static void eth_tester_save_and_notify(EthTesterApp* app, const char* type, Furi
 
 /* ==================== ETH Bridge ==================== */
 
-static void eth_tester_do_eth_bridge(EthTesterApp* app) {
+static void lan_tester_do_eth_bridge(LanTesterApp* app) {
 /* Helper macro for status updates */
 #define BRIDGE_SET_STATUS(msg)       \
     with_view_model(                 \
@@ -4601,7 +4601,7 @@ static void eth_tester_do_eth_bridge(EthTesterApp* app) {
         true)
 
     /* Step 1: Initialize W5500 */
-    if(!eth_tester_ensure_w5500(app)) {
+    if(!lan_tester_ensure_w5500(app)) {
         BRIDGE_SET_STATUS("W5500 Not Found!\nCheck SPI wiring.");
         if(app->setting_sound) notification_message(app->notifications, &sequence_error);
         return;
@@ -4717,12 +4717,12 @@ static void eth_tester_do_eth_bridge(EthTesterApp* app) {
 
 /* ==================== PXE Server ==================== */
 
-static void eth_tester_do_pxe_server(EthTesterApp* app) {
+static void lan_tester_do_pxe_server(LanTesterApp* app) {
     FuriString* out = app->pxe_text;
     furi_string_reset(out);
 
     /* Step 1: Init W5500 */
-    if(!eth_tester_ensure_w5500(app)) {
+    if(!lan_tester_ensure_w5500(app)) {
         furi_string_cat(out, "[PXE] W5500 Not Found!\nCheck SPI wiring.\n");
         return;
     }
@@ -4771,7 +4771,7 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
     /* Step 6: Open sockets */
     if(!pxe_server_start(&state)) {
         furi_string_cat(out, "\n[PXE] Failed to open sockets!\n");
-        eth_tester_update_view(app->text_box_pxe, out);
+        lan_tester_update_view(app->text_box_pxe, out);
         return;
     }
 
@@ -4790,7 +4790,7 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
         state.config.dhcp_enabled ? "ON" : "OFF",
         state.boot_filename,
         state.boot_file_size);
-    eth_tester_update_view(app->text_box_pxe, out);
+    lan_tester_update_view(app->text_box_pxe, out);
 
     /* Step 8: Main loop */
     state.running = true;
@@ -4868,7 +4868,7 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
                 furi_string_cat_printf(out, "\nERROR! Errs: %lu\n", state.tftp_errors);
                 break;
             }
-            eth_tester_update_view(app->text_box_pxe, out);
+            lan_tester_update_view(app->text_box_pxe, out);
         }
 
         /* After Done → reset to Idle for next client */
@@ -4897,8 +4897,8 @@ static void eth_tester_do_pxe_server(EthTesterApp* app) {
 
 /* ==================== Packet Capture ==================== */
 
-static void eth_tester_do_packet_capture(EthTesterApp* app) {
-    if(!eth_tester_ensure_w5500(app)) return;
+static void lan_tester_do_packet_capture(LanTesterApp* app) {
+    if(!lan_tester_ensure_w5500(app)) return;
 
     if(!w5500_hal_open_macraw()) {
         return;
@@ -4938,12 +4938,12 @@ static void eth_tester_do_packet_capture(EthTesterApp* app) {
 
 /* ==================== File Manager ==================== */
 
-static void eth_tester_do_file_manager(EthTesterApp* app) {
+static void lan_tester_do_file_manager(LanTesterApp* app) {
     FuriString* out = app->file_manager_text;
     furi_string_reset(out);
 
     /* Step 1: Init W5500 */
-    if(!eth_tester_ensure_w5500(app)) {
+    if(!lan_tester_ensure_w5500(app)) {
         furi_string_cat(out, "[File Manager] W5500 Not Found!\nCheck SPI wiring.\n");
         return;
     }
@@ -4956,9 +4956,9 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
 
     /* Step 3: Run DHCP to get IP */
     furi_string_set(out, "[File Manager]\nRunning DHCP...\n");
-    eth_tester_update_view(app->text_box_file_manager, out);
+    lan_tester_update_view(app->text_box_file_manager, out);
 
-    if(!eth_tester_ensure_dhcp(app)) {
+    if(!lan_tester_ensure_dhcp(app)) {
         furi_string_set(out, "[File Manager]\nDHCP failed!\n");
         return;
     }
@@ -4983,7 +4983,7 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
         app->dhcp_ip[2],
         app->dhcp_ip[3],
         fm_state.auth_token);
-    eth_tester_update_view(app->text_box_file_manager, out);
+    lan_tester_update_view(app->text_box_file_manager, out);
 
     /* Step 7: Main loop */
     uint32_t last_status = furi_get_tick();
@@ -5009,7 +5009,7 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
                 (unsigned long)fm_state.bytes_sent,
                 (unsigned long)fm_state.bytes_received,
                 fm_state.errors ? "Errors!" : "");
-            eth_tester_update_view(app->text_box_file_manager, out);
+            lan_tester_update_view(app->text_box_file_manager, out);
         }
     }
 
@@ -5028,22 +5028,22 @@ static void eth_tester_do_file_manager(EthTesterApp* app) {
 
 /* ==================== Entry point ==================== */
 
-int32_t eth_tester_app(void* p) {
+int32_t lan_tester_app(void* p) {
     UNUSED(p);
 
     FURI_LOG_I(TAG, "LAN Tester starting");
 
     furi_hal_power_insomnia_enter();
 
-    EthTesterApp* app = eth_tester_app_alloc();
+    LanTesterApp* app = lan_tester_app_alloc();
 
     /* Start on main menu */
-    eth_tester_update_menu_header(app);
-    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMainMenu);
+    lan_tester_update_menu_header(app);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewMainMenu);
     view_dispatcher_run(app->view_dispatcher);
 
     /* Cleanup */
-    eth_tester_app_free(app);
+    lan_tester_app_free(app);
 
     furi_hal_power_insomnia_exit();
 

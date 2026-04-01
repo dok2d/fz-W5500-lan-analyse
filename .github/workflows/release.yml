@@ -20,7 +20,7 @@ jobs:
         id: build
         with:
           task: build
-          app-dir: eth_tester
+          app-dir: lan_tester
 
       - name: Prepare assets
         id: assets
@@ -30,7 +30,7 @@ jobs:
           mkdir -p release
 
           # Copy .fap artifacts
-          for f in eth_tester/dist/*.fap; do
+          for f in lan_tester/dist/*.fap; do
             [ -f "$f" ] || continue
             base=$(basename "$f" .fap)
             cp "$f" "release/${base}-${TAG}.fap"

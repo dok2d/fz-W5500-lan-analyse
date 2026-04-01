@@ -5,7 +5,7 @@ Thank you for your interest in contributing to the Flipper Zero LAN Tester!
 ## Building
 
 ```bash
-cd eth_tester
+cd lan_tester
 ufbt build        # build only
 ufbt launch       # build and run on connected Flipper
 ```
@@ -45,12 +45,12 @@ PRs without corresponding documentation updates will be asked to add them before
 
 ## Project Structure
 
-- `eth_tester/hal/` — W5500 hardware abstraction
-- `eth_tester/protocols/` — network protocol implementations
-- `eth_tester/bridge/` — Ethernet bridge engine + PCAP
-- `eth_tester/usb_eth/` — USB CDC-ECM driver
-- `eth_tester/utils/` — shared utilities (OUI lookup, packet parsing)
-- `eth_tester/lib/` — vendored WIZnet ioLibrary_Driver (do not modify)
+- `lan_tester/hal/` — W5500 hardware abstraction
+- `lan_tester/protocols/` — network protocol implementations
+- `lan_tester/bridge/` — Ethernet bridge engine + PCAP
+- `lan_tester/usb_eth/` — USB CDC-ECM driver
+- `lan_tester/utils/` — shared utilities (OUI lookup, packet parsing)
+- `lan_tester/lib/` — vendored WIZnet ioLibrary_Driver (do not modify)
 
 ## License
 
