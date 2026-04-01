@@ -135,6 +135,9 @@ struct EthTesterApp {
     /* User settings (persisted to SD) */
     bool setting_autosave;  /* auto-save results to history */
     bool setting_sound;     /* LED/vibro/sound notifications */
+    bool dns_custom_enabled;       /* use custom DNS instead of DHCP */
+    uint8_t dns_custom_server[4];  /* custom DNS IP (default 8.8.8.8) */
+    char dns_custom_ip_input[16];  /* text input buffer for DNS IP */
 
     /* Worker thread for non-blocking operations */
     FuriThread* worker_thread;

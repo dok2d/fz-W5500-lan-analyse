@@ -104,20 +104,40 @@ static void eth_tester_generate_default_mac(uint8_t mac[6]) {
 /* ==================== Settings persistence ==================== */
 
 static void eth_tester_settings_load(EthTesterApp* app) {
-    /* Defaults: both enabled */
+    /* Defaults */
     app->setting_autosave = true;
     app->setting_sound = true;
+    app->dns_custom_enabled = false;
+    app->dns_custom_server[0] = 8;
+    app->dns_custom_server[1] = 8;
+    app->dns_custom_server[2] = 8;
+    app->dns_custom_server[3] = 8;
+    strncpy(app->dns_custom_ip_input, "8.8.8.8", sizeof(app->dns_custom_ip_input));
 
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);
     if(storage_file_open(file, SETTINGS_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
-        char buf[32];
+        char buf[128];
         uint16_t read = storage_file_read(file, buf, sizeof(buf) - 1);
         buf[read] = '\0';
         storage_file_close(file);
-        /* Simple format: "autosave=X\nsound=X\n" */
         if(strstr(buf, "autosave=0")) app->setting_autosave = false;
         if(strstr(buf, "sound=0")) app->setting_sound = false;
+        if(strstr(buf, "dns_custom=1")) app->dns_custom_enabled = true;
+        char* dns_ip = strstr(buf, "dns_ip=");
+        if(dns_ip) {
+            dns_ip += 7; /* skip "dns_ip=" */
+            char ip_buf[16];
+            int j = 0;
+            while(dns_ip[j] && dns_ip[j] != '\n' && j < 15) {
+                ip_buf[j] = dns_ip[j];
+                j++;
+            }
+            ip_buf[j] = '\0';
+            if(eth_tester_parse_ip(ip_buf, app->dns_custom_server)) {
+                strncpy(app->dns_custom_ip_input, ip_buf, sizeof(app->dns_custom_ip_input));
+            }
+        }
     }
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
@@ -128,10 +148,13 @@ static void eth_tester_settings_save(EthTesterApp* app) {
     storage_simply_mkdir(storage, APP_DATA_PATH(""));
     File* file = storage_file_alloc(storage);
     if(storage_file_open(file, SETTINGS_PATH, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "autosave=%d\nsound=%d\n",
+        char buf[96];
+        snprintf(buf, sizeof(buf),
+            "autosave=%d\nsound=%d\ndns_custom=%d\ndns_ip=%s\n",
             app->setting_autosave ? 1 : 0,
-            app->setting_sound ? 1 : 0);
+            app->setting_sound ? 1 : 0,
+            app->dns_custom_enabled ? 1 : 0,
+            app->dns_custom_ip_input);
         storage_file_write(file, buf, strlen(buf));
         storage_file_close(file);
     }
@@ -151,6 +174,7 @@ static uint32_t eth_tester_nav_back_ping_sweep(void* context);
 static uint32_t eth_tester_nav_back_arp_scan(void* context);
 static uint32_t eth_tester_nav_back_diag(void* context);
 static uint32_t eth_tester_nav_back_tools(void* context);
+static uint32_t eth_tester_nav_back_settings(void* context);
 static bool eth_tester_nav_event_cb(void* context);
 static bool eth_tester_custom_event_cb(void* context, uint32_t event);
 static void eth_tester_worker_stop(EthTesterApp* app);
@@ -429,9 +453,47 @@ static void settings_sound_changed(VariableItem* item) {
     }
 }
 
+static void settings_dns_custom_changed(VariableItem* item) {
+    uint8_t idx = variable_item_get_current_value_index(item);
+    variable_item_set_current_value_text(item, setting_onoff[idx]);
+    if(g_app) {
+        g_app->dns_custom_enabled = (idx == 1);
+        eth_tester_settings_save(g_app);
+    }
+}
+
+static void dns_custom_ip_input_callback(void* context) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+    eth_tester_parse_ip(app->dns_custom_ip_input, app->dns_custom_server);
+    eth_tester_settings_save(app);
+    view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewSettings);
+}
+
+/* Helper: get active DNS server (custom if enabled, else DHCP) */
+static void eth_tester_get_dns_server(EthTesterApp* app, uint8_t out_ip[4]) {
+    if(app->dns_custom_enabled) {
+        memcpy(out_ip, app->dns_custom_server, 4);
+    } else {
+        memcpy(out_ip, app->dhcp_dns, 4);
+    }
+}
+
 static void settings_enter_callback(void* context, uint32_t index) {
     EthTesterApp* app = context;
-    if(index == 2) { /* "Clear History" */
+    if(index == 3) { /* "DNS Server" IP input */
+        ip_keyboard_setup(
+            app->ip_keyboard,
+            "DNS Server IP:",
+            app->dns_custom_ip_input,
+            false,
+            dns_custom_ip_input_callback,
+            app,
+            app->dns_custom_ip_input,
+            sizeof(app->dns_custom_ip_input),
+            eth_tester_nav_back_settings);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+    } else if(index == 4) { /* "Clear History" */
         HistoryState* hs = malloc(sizeof(HistoryState));
         if(hs) {
             uint16_t count = history_list(hs);
@@ -443,7 +505,7 @@ static void settings_enter_callback(void* context, uint32_t index) {
         if(app->setting_sound) {
             notification_message(app->notifications, &sequence_success);
         }
-    } else if(index == 3) { /* "MAC Changer" */
+    } else if(index == 5) { /* "MAC Changer" */
         mac_changer_generate_random(app->mac_changer_input);
         byte_input_set_header_text(app->byte_input_mac_changer, "New MAC (edit or OK):");
         byte_input_set_result_callback(
@@ -1078,12 +1140,21 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     VariableItem* item_sound = variable_item_list_add(
         app->settings_list, "Sound & vibro", 2, settings_sound_changed, app);
 
-    /* "Clear History" — no value cycling, action on OK press */
+    /* Custom DNS toggle (index 2) */
+    VariableItem* item_dns_custom = variable_item_list_add(
+        app->settings_list, "Custom DNS", 2, settings_dns_custom_changed, app);
+
+    /* Custom DNS server IP (index 3) — opens ip_keyboard on OK press */
+    VariableItem* item_dns_ip = variable_item_list_add(
+        app->settings_list, "DNS Server", 0, NULL, app);
+    variable_item_set_current_value_text(item_dns_ip, app->dns_custom_ip_input);
+
+    /* "Clear History" — no value cycling, action on OK press (index 4) */
     VariableItem* item_clear = variable_item_list_add(
         app->settings_list, "Clear History", 0, NULL, app);
     variable_item_set_current_value_text(item_clear, "Press OK");
 
-    /* MAC Changer — opens byte input for MAC address */
+    /* MAC Changer — opens byte input for MAC address (index 5) */
     variable_item_list_add(
         app->settings_list, "MAC Changer", 0, NULL, app);
 
@@ -1096,6 +1167,9 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     variable_item_set_current_value_text(item_autosave, setting_onoff[app->setting_autosave ? 1 : 0]);
     variable_item_set_current_value_index(item_sound, app->setting_sound ? 1 : 0);
     variable_item_set_current_value_text(item_sound, setting_onoff[app->setting_sound ? 1 : 0]);
+    variable_item_set_current_value_index(item_dns_custom, app->dns_custom_enabled ? 1 : 0);
+    variable_item_set_current_value_text(item_dns_custom, setting_onoff[app->dns_custom_enabled ? 1 : 0]);
+    variable_item_set_current_value_text(item_dns_ip, app->dns_custom_ip_input);
 
     /* Load saved MAC from SD card if available, otherwise save the generated one */
     if(mac_changer_load(app->mac_addr)) {
@@ -2541,17 +2615,21 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
 
+    /* Get DNS server: custom if enabled, otherwise from DHCP */
+    uint8_t dns_ip[4];
+    eth_tester_get_dns_server(app, dns_ip);
+
     /* Check DNS server is valid */
-    if(net_info.dns[0] == 0 && net_info.dns[1] == 0 &&
-       net_info.dns[2] == 0 && net_info.dns[3] == 0) {
-        furi_string_set(app->dns_text, "No DNS server\nfrom DHCP.\n");
+    if(dns_ip[0] == 0 && dns_ip[1] == 0 &&
+       dns_ip[2] == 0 && dns_ip[3] == 0) {
+        furi_string_set(app->dns_text, "No DNS server\navailable.\n");
         return;
     }
 
-    memcpy(app->dns_server_ip, net_info.dns, 4);
+    memcpy(app->dns_server_ip, dns_ip, 4);
 
     char dns_str[16];
-    pkt_format_ip(net_info.dns, dns_str);
+    pkt_format_ip(dns_ip, dns_str);
 
     furi_string_printf(
         app->dns_text,
@@ -2562,7 +2640,7 @@ static void eth_tester_do_dns_lookup(EthTesterApp* app) {
 
     /* Perform DNS lookup */
     DnsLookupResult dns_result;
-    bool ok = dns_lookup(W5500_DNS_SOCKET, net_info.dns, app->dns_hostname_input, &dns_result);
+    bool ok = dns_lookup(W5500_DNS_SOCKET, dns_ip, app->dns_hostname_input, &dns_result);
 
     if(ok) {
         char ip_str[16];
