@@ -36,7 +36,6 @@ typedef enum {
     EthTesterViewMacChanger,
     EthTesterViewMacChangerInput,
     EthTesterViewTraceroute,
-    EthTesterViewTracerouteInput,
     EthTesterViewPingSweep,
     EthTesterViewIpKeyboard,
     EthTesterViewDiscovery,
@@ -114,7 +113,6 @@ struct EthTesterApp {
     TextBox* text_box_mac_changer;
     ByteInput* byte_input_mac_changer;
     TextBox* text_box_traceroute;
-    TextInput* text_input_traceroute;
     TextBox* text_box_ping_sweep;
     IpKeyboard* ip_keyboard;
     TextBox* text_box_discovery;
