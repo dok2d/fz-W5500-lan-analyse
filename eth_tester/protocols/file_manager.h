@@ -3,13 +3,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* W5500 socket assignments for HTTP file manager */
-#define FILEMGR_HTTP_SOCKET   6   /* TCP listen socket on port 80 */
+/* W5500 socket assignments for HTTP file manager.
+ * Uses socket 3 (2KB TX/RX buffer) — same as DNS/WOL/discovery,
+ * but those tools never run simultaneously with file manager. */
+#define FILEMGR_HTTP_SOCKET   3
 #define FILEMGR_HTTP_PORT     80
 
 /* Buffer sizes */
 #define FILEMGR_PATH_MAX      256
-#define FILEMGR_CHUNK_SIZE    1024
+#define FILEMGR_CHUNK_SIZE    512  /* must fit in socket TX buffer (2KB) */
 
 /* File manager state */
 typedef struct {
