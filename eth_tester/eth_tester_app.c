@@ -530,7 +530,7 @@ static void pxe_settings_refresh_boot_file(EthTesterApp* app) {
     memset(&tmp_state, 0, sizeof(tmp_state));
     bool found = pxe_detect_boot_file(&tmp_state);
     if(found) {
-        char info[48];
+        char info[96];
         snprintf(info, sizeof(info), "%s (%luB)", tmp_state.boot_filename, tmp_state.boot_file_size);
         variable_item_set_current_value_text(app->pxe_item_boot, info);
     } else {
