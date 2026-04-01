@@ -152,20 +152,6 @@ static bool http_send_str(uint8_t sn, const char* str) {
     return http_send_buf(sn, (const uint8_t*)str, len);
 }
 
-/*
- * Send a FuriString in chunks. For large responses built with furi_string.
- */
-static bool http_send_fstr(uint8_t sn, FuriString* fstr) {
-    const char* data = furi_string_get_cstr(fstr);
-    size_t total = furi_string_size(fstr);
-    size_t sent = 0;
-    while(sent < total) {
-        uint16_t chunk = (total - sent > 1024) ? 1024 : (uint16_t)(total - sent);
-        if(!http_send_buf(sn, (const uint8_t*)(data + sent), chunk)) return false;
-        sent += chunk;
-    }
-    return true;
-}
 
 /*
  * Wait for ALL pending data to be transmitted before closing connection.
@@ -259,56 +245,62 @@ static void get_parent_path(const char* path, char* parent, size_t parent_size) 
 /* ==================== HTTP request handling ==================== */
 
 /*
- * Build the entire directory listing page into a FuriString,
- * then send it in one go. This avoids dozens of tiny send() calls.
+ * Stream directory listing page directly to the socket.
+ * No FuriString accumulation — constant memory regardless of file count.
+ * Only the sorted entry array lives on the heap (~10KB for 128 entries).
+ * Uses Connection: close without Content-Length so the browser reads
+ * until the server closes the connection.
  */
 static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_path) {
-    Storage* storage = furi_record_open(RECORD_STORAGE);
-    FuriString* page = furi_string_alloc();
+    /* HTTP headers (no Content-Length — we stream until close) */
+    http_send_str(sn, "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html;charset=utf-8\r\n"
+        "Connection: close\r\n\r\n");
 
-    /* HTML start */
-    furi_string_cat(page, "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+    /* HTML head + CSS */
+    http_send_str(sn, "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<title>Flipper File Manager</title>");
-    furi_string_cat(page, css);
-    furi_string_cat(page, "</head><body>");
+    http_send_str(sn, css);
+    http_send_str(sn, "</head><body>");
 
     /* Title and path */
-    furi_string_cat(page, "<h1>Flipper File Manager</h1><div class='p'>");
-    furi_string_cat(page, web_path);
-    furi_string_cat(page, "</div>");
+    http_send_str(sn, "<h1>Flipper File Manager</h1><div class='p'>");
+    http_send_str(sn, web_path);
+    http_send_str(sn, "</div>");
 
     /* Parent link */
     if(strcmp(web_path, "/") != 0) {
         char parent[FILEMGR_PATH_MAX];
         get_parent_path(web_path, parent, sizeof(parent));
-        furi_string_cat(page, "<a href='/browse");
-        furi_string_cat(page, parent);
-        furi_string_cat(page, "' class='b bs'>Up</a> ");
+        http_send_str(sn, "<a href='/browse");
+        http_send_str(sn, parent);
+        http_send_str(sn, "' class='b bs'>Up</a> ");
     }
 
     /* Upload form */
-    furi_string_cat(page, "<div class='uf'>"
+    http_send_str(sn, "<div class='uf'>"
         "<form method='POST' action='/upload");
-    furi_string_cat(page, web_path);
-    furi_string_cat(page, "' enctype='multipart/form-data'>"
+    http_send_str(sn, web_path);
+    http_send_str(sn, "' enctype='multipart/form-data'>"
         "<input type='file' name='file'> "
         "<button type='submit' class='b bs'>Upload</button>"
         "</form></div>");
 
     /* Mkdir form */
-    furi_string_cat(page, "<div class='mf'>"
+    http_send_str(sn, "<div class='mf'>"
         "<form method='POST' action='/mkdir");
-    furi_string_cat(page, web_path);
-    furi_string_cat(page, "'>"
+    http_send_str(sn, web_path);
+    http_send_str(sn, "'>"
         "<input type='text' name='name' placeholder='New folder' size='16'> "
         "<button type='submit' class='b bs'>Create</button>"
         "</form></div>");
 
-    /* Table */
-    furi_string_cat(page, "<table><tr><th>Name</th><th>Size</th><th></th></tr>");
+    /* Table header */
+    http_send_str(sn, "<table><tr><th>Name</th><th>Size</th><th></th></tr>");
 
     /* Read directory entries into array for sorting */
+    Storage* storage = furi_record_open(RECORD_STORAGE);
     FmDirEntry* entries = malloc(sizeof(FmDirEntry) * FM_MAX_ENTRIES);
     uint16_t entry_count = 0;
 
@@ -331,71 +323,55 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
             qsort(entries, entry_count, sizeof(FmDirEntry), fm_entry_cmp);
         }
 
-        /* Generate HTML rows */
+        /* Stream each row directly — no HTML accumulation */
         for(uint16_t i = 0; i < entry_count; i++) {
             if(entries[i].is_dir) {
-                furi_string_cat(page, "<tr><td><a href='/browse");
-                if(strcmp(web_path, "/") != 0) furi_string_cat(page, web_path);
-                furi_string_cat(page, "/");
-                furi_string_cat(page, entries[i].name);
-                furi_string_cat(page, "' class='d'>");
-                furi_string_cat(page, entries[i].name);
-                furi_string_cat(page, "/</a></td><td class='s'>-</td><td class='a'>"
+                http_send_str(sn, "<tr><td><a href='/browse");
+                if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
+                http_send_str(sn, "/");
+                http_send_str(sn, entries[i].name);
+                http_send_str(sn, "' class='d'>");
+                http_send_str(sn, entries[i].name);
+                http_send_str(sn, "/</a></td><td class='s'>-</td><td class='a'>"
                     "<a href='/delete");
-                if(strcmp(web_path, "/") != 0) furi_string_cat(page, web_path);
-                furi_string_cat(page, "/");
-                furi_string_cat(page, entries[i].name);
-                furi_string_cat(page, "' onclick=\"return confirm('Delete?')\">"
+                if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
+                http_send_str(sn, "/");
+                http_send_str(sn, entries[i].name);
+                http_send_str(sn, "' onclick=\"return confirm('Delete?')\">"
                     "Del</a></td></tr>");
             } else {
                 char size_str[32];
                 format_size(entries[i].size, size_str, sizeof(size_str));
-                furi_string_cat(page, "<tr><td>");
-                furi_string_cat(page, entries[i].name);
-                furi_string_cat(page, "</td><td class='s'>");
-                furi_string_cat(page, size_str);
-                furi_string_cat(page, "</td><td class='a'>"
+                http_send_str(sn, "<tr><td>");
+                http_send_str(sn, entries[i].name);
+                http_send_str(sn, "</td><td class='s'>");
+                http_send_str(sn, size_str);
+                http_send_str(sn, "</td><td class='a'>"
                     "<a href='/download");
-                if(strcmp(web_path, "/") != 0) furi_string_cat(page, web_path);
-                furi_string_cat(page, "/");
-                furi_string_cat(page, entries[i].name);
-                furi_string_cat(page, "' class='b bs'>DL</a>"
+                if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
+                http_send_str(sn, "/");
+                http_send_str(sn, entries[i].name);
+                http_send_str(sn, "' class='b bs'>DL</a>"
                     "<a href='/delete");
-                if(strcmp(web_path, "/") != 0) furi_string_cat(page, web_path);
-                furi_string_cat(page, "/");
-                furi_string_cat(page, entries[i].name);
-                furi_string_cat(page, "' onclick=\"return confirm('Delete?')\">"
+                if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
+                http_send_str(sn, "/");
+                http_send_str(sn, entries[i].name);
+                http_send_str(sn, "' onclick=\"return confirm('Delete?')\">"
                     "Del</a></td></tr>");
             }
         }
     } else {
-        furi_string_cat(page, "<tr><td colspan='3'>Failed to open directory</td></tr>");
+        http_send_str(sn, "<tr><td colspan='3'>Failed to open directory</td></tr>");
     }
     storage_file_free(dir);
     if(entries) free(entries);
     furi_record_close(RECORD_STORAGE);
 
-    furi_string_cat(page, "</table>"
+    /* Footer */
+    http_send_str(sn, "</table>"
         "<div class='ft'>Flipper Zero W5500 File Manager</div>"
         "</body></html>");
-
-    /* Now send the complete page: HTTP headers + body */
-    size_t body_len = furi_string_size(page);
-    char hdr[128];
-    snprintf(
-        hdr,
-        sizeof(hdr),
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/html;charset=utf-8\r\n"
-        "Content-Length: %lu\r\n"
-        "Connection: close\r\n\r\n",
-        (unsigned long)body_len);
-
-    http_send_str(sn, hdr);
-    http_send_fstr(sn, page);
     http_flush(sn);
-
-    furi_string_free(page);
 }
 
 /* Send file download */
