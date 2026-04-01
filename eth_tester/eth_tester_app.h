@@ -139,6 +139,11 @@ struct EthTesterApp {
     uint8_t dns_custom_server[4];  /* custom DNS IP (default 8.8.8.8) */
     char dns_custom_ip_input[16];  /* text input buffer for DNS IP */
 
+    /* Ping settings */
+    uint8_t ping_count;            /* packets for normal ping (1-100, default 4) */
+    uint16_t ping_timeout_ms;      /* reply timeout (500-10000, step 500, default 3000) */
+    uint16_t ping_interval_ms;     /* continuous ping interval (200-5000, step 200, default 1000) */
+
     /* Worker thread for non-blocking operations */
     FuriThread* worker_thread;
     volatile bool worker_running;

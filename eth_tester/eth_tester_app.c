@@ -113,11 +113,14 @@ static void eth_tester_settings_load(EthTesterApp* app) {
     app->dns_custom_server[2] = 8;
     app->dns_custom_server[3] = 8;
     strncpy(app->dns_custom_ip_input, "8.8.8.8", sizeof(app->dns_custom_ip_input));
+    app->ping_count = 4;
+    app->ping_timeout_ms = 3000;
+    app->ping_interval_ms = 1000;
 
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);
     if(storage_file_open(file, SETTINGS_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
-        char buf[128];
+        char buf[256];
         uint16_t read = storage_file_read(file, buf, sizeof(buf) - 1);
         buf[read] = '\0';
         storage_file_close(file);
@@ -138,6 +141,21 @@ static void eth_tester_settings_load(EthTesterApp* app) {
                 strncpy(app->dns_custom_ip_input, ip_buf, sizeof(app->dns_custom_ip_input));
             }
         }
+        char* pc = strstr(buf, "ping_count=");
+        if(pc) {
+            int val = atoi(pc + 11);
+            if(val >= 1 && val <= 100) app->ping_count = (uint8_t)val;
+        }
+        char* pt = strstr(buf, "ping_timeout=");
+        if(pt) {
+            int val = atoi(pt + 13);
+            if(val >= 500 && val <= 10000) app->ping_timeout_ms = (uint16_t)val;
+        }
+        char* pi = strstr(buf, "ping_interval=");
+        if(pi) {
+            int val = atoi(pi + 14);
+            if(val >= 200 && val <= 5000) app->ping_interval_ms = (uint16_t)val;
+        }
     }
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
@@ -148,13 +166,17 @@ static void eth_tester_settings_save(EthTesterApp* app) {
     storage_simply_mkdir(storage, APP_DATA_PATH(""));
     File* file = storage_file_alloc(storage);
     if(storage_file_open(file, SETTINGS_PATH, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
-        char buf[96];
+        char buf[192];
         snprintf(buf, sizeof(buf),
-            "autosave=%d\nsound=%d\ndns_custom=%d\ndns_ip=%s\n",
+            "autosave=%d\nsound=%d\ndns_custom=%d\ndns_ip=%s\n"
+            "ping_count=%d\nping_timeout=%d\nping_interval=%d\n",
             app->setting_autosave ? 1 : 0,
             app->setting_sound ? 1 : 0,
             app->dns_custom_enabled ? 1 : 0,
-            app->dns_custom_ip_input);
+            app->dns_custom_ip_input,
+            app->ping_count,
+            app->ping_timeout_ms,
+            app->ping_interval_ms);
         storage_file_write(file, buf, strlen(buf));
         storage_file_close(file);
     }
@@ -462,6 +484,42 @@ static void settings_dns_custom_changed(VariableItem* item) {
     }
 }
 
+static void settings_ping_count_changed(VariableItem* item) {
+    uint8_t idx = variable_item_get_current_value_index(item);
+    uint8_t count = idx + 1; /* 0 -> 1, 99 -> 100 */
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d", count);
+    variable_item_set_current_value_text(item, buf);
+    if(g_app) {
+        g_app->ping_count = count;
+        eth_tester_settings_save(g_app);
+    }
+}
+
+static void settings_ping_timeout_changed(VariableItem* item) {
+    uint8_t idx = variable_item_get_current_value_index(item);
+    uint16_t timeout = (idx + 1) * 500; /* 500, 1000, ..., 10000 */
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d", timeout);
+    variable_item_set_current_value_text(item, buf);
+    if(g_app) {
+        g_app->ping_timeout_ms = timeout;
+        eth_tester_settings_save(g_app);
+    }
+}
+
+static void settings_ping_interval_changed(VariableItem* item) {
+    uint8_t idx = variable_item_get_current_value_index(item);
+    uint16_t interval = (idx + 1) * 200; /* 200, 400, ..., 5000 */
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d", interval);
+    variable_item_set_current_value_text(item, buf);
+    if(g_app) {
+        g_app->ping_interval_ms = interval;
+        eth_tester_settings_save(g_app);
+    }
+}
+
 static void dns_custom_ip_input_callback(void* context) {
     EthTesterApp* app = context;
     furi_assert(app);
@@ -493,7 +551,7 @@ static void settings_enter_callback(void* context, uint32_t index) {
             sizeof(app->dns_custom_ip_input),
             eth_tester_nav_back_settings);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
-    } else if(index == 4) { /* "Clear History" */
+    } else if(index == 7) { /* "Clear History" */
         HistoryState* hs = malloc(sizeof(HistoryState));
         if(hs) {
             uint16_t count = history_list(hs);
@@ -505,7 +563,7 @@ static void settings_enter_callback(void* context, uint32_t index) {
         if(app->setting_sound) {
             notification_message(app->notifications, &sequence_success);
         }
-    } else if(index == 5) { /* "MAC Changer" */
+    } else if(index == 8) { /* "MAC Changer" */
         mac_changer_generate_random(app->mac_changer_input);
         byte_input_set_header_text(app->byte_input_mac_changer, "New MAC (edit or OK):");
         byte_input_set_result_callback(
@@ -1149,12 +1207,24 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         app->settings_list, "DNS Server", 0, NULL, app);
     variable_item_set_current_value_text(item_dns_ip, app->dns_custom_ip_input);
 
-    /* "Clear History" — no value cycling, action on OK press (index 4) */
+    /* Ping count (index 4) — 1..100 */
+    VariableItem* item_ping_count = variable_item_list_add(
+        app->settings_list, "Ping Count", 100, settings_ping_count_changed, app);
+
+    /* Ping timeout (index 5) — 500..10000 step 500 */
+    VariableItem* item_ping_timeout = variable_item_list_add(
+        app->settings_list, "Ping Timeout ms", 20, settings_ping_timeout_changed, app);
+
+    /* Continuous ping interval (index 6) — 200..5000 step 200 */
+    VariableItem* item_ping_interval = variable_item_list_add(
+        app->settings_list, "Cont.Ping Int ms", 25, settings_ping_interval_changed, app);
+
+    /* "Clear History" — no value cycling, action on OK press (index 7) */
     VariableItem* item_clear = variable_item_list_add(
         app->settings_list, "Clear History", 0, NULL, app);
     variable_item_set_current_value_text(item_clear, "Press OK");
 
-    /* MAC Changer — opens byte input for MAC address (index 5) */
+    /* MAC Changer — opens byte input for MAC address (index 8) */
     variable_item_list_add(
         app->settings_list, "MAC Changer", 0, NULL, app);
 
@@ -1170,6 +1240,28 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     variable_item_set_current_value_index(item_dns_custom, app->dns_custom_enabled ? 1 : 0);
     variable_item_set_current_value_text(item_dns_custom, setting_onoff[app->dns_custom_enabled ? 1 : 0]);
     variable_item_set_current_value_text(item_dns_ip, app->dns_custom_ip_input);
+
+    /* Ping count: index = count - 1 */
+    variable_item_set_current_value_index(item_ping_count, app->ping_count - 1);
+    {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", app->ping_count);
+        variable_item_set_current_value_text(item_ping_count, buf);
+    }
+    /* Ping timeout: index = timeout/500 - 1 */
+    variable_item_set_current_value_index(item_ping_timeout, app->ping_timeout_ms / 500 - 1);
+    {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", app->ping_timeout_ms);
+        variable_item_set_current_value_text(item_ping_timeout, buf);
+    }
+    /* Ping interval: index = interval/200 - 1 */
+    variable_item_set_current_value_index(item_ping_interval, app->ping_interval_ms / 200 - 1);
+    {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", app->ping_interval_ms);
+        variable_item_set_current_value_text(item_ping_interval, buf);
+    }
 
     /* Load saved MAC from SD card if available, otherwise save the generated one */
     if(mac_changer_load(app->mac_addr)) {
@@ -2578,10 +2670,10 @@ static void eth_tester_do_ping(EthTesterApp* app) {
         target_str);
     eth_tester_update_view(app->text_box_ping, app->ping_text);
 
-    /* Send 4 pings */
-    for(uint16_t i = 1; i <= 4 && app->worker_running; i++) {
+    /* Send pings (count from settings) */
+    for(uint16_t i = 1; i <= app->ping_count && app->worker_running; i++) {
         PingResult result;
-        bool ok = icmp_ping(W5500_PING_SOCKET, target_ip, i, 3000, &result);
+        bool ok = icmp_ping(W5500_PING_SOCKET, target_ip, i, app->ping_timeout_ms, &result);
         if(ok) {
             furi_string_cat_printf(
                 app->ping_text,
@@ -2934,7 +3026,7 @@ static void eth_tester_do_ping_sweep(EthTesterApp* app) {
         pkt_write_u32_be(target, current);
 
         PingResult result;
-        bool ok = icmp_ping(W5500_PING_SOCKET, target, (uint16_t)(scanned + 1), 500, &result);
+        bool ok = icmp_ping(W5500_PING_SOCKET, target, (uint16_t)(scanned + 1), app->ping_timeout_ms, &result);
         scanned++;
 
         if(ok) {
@@ -3499,7 +3591,7 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
     uint16_t seq = 1;
     while(app->worker_running) {
         PingResult result;
-        bool ok = icmp_ping(W5500_PING_SOCKET, app->cont_ping_target, seq, PING_GRAPH_TIMEOUT_MS, &result);
+        bool ok = icmp_ping(W5500_PING_SOCKET, app->cont_ping_target, seq, app->ping_timeout_ms, &result);
 
         if(ok) {
             ping_graph_add_sample(pg, result.rtt_ms);
@@ -3517,10 +3609,10 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
         seq++;
 
         /* Wait for the remainder of the interval (account for ping duration) */
-        uint32_t elapsed = ok ? result.rtt_ms : PING_GRAPH_TIMEOUT_MS;
-        if(elapsed < PING_GRAPH_INTERVAL_MS) {
+        uint32_t elapsed = ok ? result.rtt_ms : (uint32_t)app->ping_timeout_ms;
+        if(elapsed < app->ping_interval_ms) {
             /* Check running flag periodically during wait */
-            uint32_t remaining = PING_GRAPH_INTERVAL_MS - elapsed;
+            uint32_t remaining = app->ping_interval_ms - elapsed;
             uint32_t wait_start = furi_get_tick();
             while(app->worker_running && (furi_get_tick() - wait_start < remaining)) {
                 furi_delay_ms(50);
