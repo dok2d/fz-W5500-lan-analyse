@@ -104,6 +104,8 @@ static void eth_tester_generate_default_mac(uint8_t mac[6]) {
 
 /* ==================== Settings persistence ==================== */
 
+static bool eth_tester_parse_ip(const char* str, uint8_t ip[4]);
+
 static void eth_tester_settings_load(EthTesterApp* app) {
     /* Defaults */
     app->setting_autosave = true;
