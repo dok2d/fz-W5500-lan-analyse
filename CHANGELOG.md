@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.1] - 2026
+
+### Added
+- **Custom DNS Server**: configurable DNS server in Settings (default: 8.8.8.8), overrides DHCP-provided DNS
+- **Ping Settings**: configurable ping count (1-100), timeout (500-10000ms), and continuous ping interval (200-5000ms) in Settings
+- **Traceroute DNS Resolve**: traceroute now accepts hostnames in addition to IP addresses, with automatic DNS resolution
+- **Port Scan (Custom)**: scan any port range (1-65535) in addition to Top-20/Top-100 presets
+- **Packet Capture**: standalone PCAP traffic dump in Tools — capture raw Ethernet frames to .pcap file on SD card without ETH Bridge
+- **Interactive Host List**: discovered hosts from Ping Sweep and ARP Scan are now clickable — select a host to Ping, Continuous Ping, Traceroute, Port Scan, or Wake-on-LAN directly
+
+### Fixed
+- **Continuous Ping graph**: graph now correctly fills from right edge to left; increased sample buffer from 100 to 128 to fill full screen width
+- **Continuous Ping back button**: Back now properly exits the continuous ping view (was stuck on screen after pressing Back)
+- **Ping Sweep / ARP Scan back button**: first Back press stops running scan and shows "Scan stopped by user"; second Back returns to Discovery menu (was: immediately navigated away, killing scan silently)
+
+### Changed
+- **Settings**: added Custom DNS, DNS Server IP, Ping Count, Ping Timeout, Continuous Ping Interval items
+- **Traceroute**: replaced IP-only keyboard with TextInput supporting both IPs and hostnames
+
 ## [1.0] - 2025
 
 ### Added

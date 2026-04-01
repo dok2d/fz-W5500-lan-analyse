@@ -8,7 +8,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Build](https://img.shields.io/badge/build-ufbt-yellow)
-![Version](https://img.shields.io/badge/version-1.0-brightgreen)
+![Version](https://img.shields.io/badge/version-1.1-brightgreen)
 
 **[English docs](docs/en/README.md)** | **[Документация на русском](docs/ru/README.md)**
 
@@ -21,22 +21,23 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | **Link Info** | PHY link status, speed (10/100 Mbps), duplex (Half/Full), MAC address, W5500 version check |
 | **DHCP Analyzer** | Discover-only analysis (no IP lease taken), option fingerprinting, full offer parsing |
 | **ARP Scanner** | Active subnet scan with batch requests, OUI vendor lookup (~120 vendors), duplicate detection |
-| **Ping** | Echo request/reply to any IP with RTT measurement (4 pings, 3s timeout) |
-| **Continuous Ping** | Real-time RTT graph with min/max/avg and packet loss percentage |
-| **DNS Lookup** | Resolve hostnames via UDP DNS using DHCP-provided DNS server |
-| **Traceroute** | ICMP-based hop-by-hop path discovery with per-hop RTT |
-| **Ping Sweep** | ICMP sweep of an entire subnet, CIDR auto-detected from DHCP |
-| **Port Scanner** | TCP connect scan with Top-20 (quick) and Top-100 (full) presets |
+| **Ping** | Echo request/reply to any IP with configurable count and timeout |
+| **Continuous Ping** | Real-time RTT graph with min/max/avg and packet loss, configurable interval |
+| **DNS Lookup** | Resolve hostnames via UDP DNS, supports custom DNS server |
+| **Traceroute** | ICMP-based hop-by-hop path discovery, accepts IPs and hostnames with DNS resolve |
+| **Ping Sweep** | ICMP sweep of an entire subnet with interactive host list — click to ping, scan, or WOL |
+| **Port Scanner** | TCP connect scan: Top-20, Top-100 presets, or custom port range (1-65535) |
 | **LLDP/CDP** | Passive IEEE 802.1AB & Cisco CDP neighbor discovery with full TLV parsing |
 | **mDNS/SSDP** | Discover services and devices via multicast DNS and UPnP/SSDP |
 | **STP/VLAN** | Passive BPDU listener + 802.1Q VLAN tag detection |
 | **Statistics** | Frame counters by type (unicast/broadcast/multicast) and EtherType |
 | **Wake-on-LAN** | Send magic packets to any MAC address |
+| **Packet Capture** | Standalone PCAP traffic dump — capture raw Ethernet frames to .pcap file on SD card |
 | **ETH Bridge** | USB-to-Ethernet bridge: phone/PC gets LAN access via Flipper (CDC-ECM), optional PCAP traffic dump to SD card |
 | **PXE Server** | Minimal PXE boot server with built-in DHCP + TFTP, boots .kpxe/.efi files from SD card |
 | **File Manager** | Web-based file manager: browse, download, upload, delete files on microSD via HTTP from any browser on the LAN |
 | **History** | All scan results auto-saved with timestamps, browsable and deletable |
-| **Settings** | Toggle auto-save and sound/vibro, clear history, MAC Changer (randomize or set custom MAC, persisted to SD) |
+| **Settings** | Auto-save, sound/vibro, custom DNS server, ping count/timeout/interval, clear history, MAC Changer |
 
 ### UX Highlights
 
