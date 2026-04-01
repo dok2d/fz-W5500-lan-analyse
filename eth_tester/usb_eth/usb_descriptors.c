@@ -384,9 +384,12 @@ static void ecm_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     intf->str_prod_descr = (void*)&ecm_str_prod;
     intf->str_serial_descr = (void*)ecm_str_mac;
 
-    /* Register callbacks — framework handles descriptors and usbd_connect */
+    /* Register callbacks — framework handles descriptors */
     usbd_reg_config(dev, ecm_ep_config);
     usbd_reg_control(dev, ecm_control);
+
+    /* Connect to USB bus — init callback is responsible for this */
+    usbd_connect(dev, true);
 
     FURI_LOG_I(TAG, "CDC-ECM initialized");
 }
