@@ -8,11 +8,39 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define TAG "FILEMGR"
 
 /* Max single file/folder name */
-#define FM_NAME_MAX 64
+#define FM_NAME_MAX  64
+#define FM_MAX_ENTRIES 128 /* max directory entries to sort */
+
+/* Directory entry for sorting */
+typedef struct {
+    char name[FM_NAME_MAX];
+    uint64_t size;
+    bool is_dir;
+} FmDirEntry;
+
+/* Compare: directories first, then case-insensitive alphabetical */
+static int fm_entry_cmp(const void* a, const void* b) {
+    const FmDirEntry* ea = a;
+    const FmDirEntry* eb = b;
+    if(ea->is_dir != eb->is_dir) return ea->is_dir ? -1 : 1;
+    /* Case-insensitive compare */
+    const char* sa = ea->name;
+    const char* sb = eb->name;
+    while(*sa && *sb) {
+        char ca = *sa, cb = *sb;
+        if(ca >= 'A' && ca <= 'Z') ca += 32;
+        if(cb >= 'A' && cb <= 'Z') cb += 32;
+        if(ca != cb) return (ca < cb) ? -1 : 1;
+        sa++;
+        sb++;
+    }
+    return (*sa == 0 && *sb == 0) ? 0 : (*sa == 0 ? -1 : 1);
+}
 
 /* Simple memmem implementation */
 static void* filemgr_memmem(
@@ -280,54 +308,71 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
     /* Table */
     furi_string_cat(page, "<table><tr><th>Name</th><th>Size</th><th></th></tr>");
 
-    /* Directory entries */
+    /* Read directory entries into array for sorting */
+    FmDirEntry* entries = malloc(sizeof(FmDirEntry) * FM_MAX_ENTRIES);
+    uint16_t entry_count = 0;
+
     File* dir = storage_file_alloc(storage);
-    if(storage_dir_open(dir, sd_path)) {
+    if(entries && storage_dir_open(dir, sd_path)) {
         FileInfo info;
         char name[FM_NAME_MAX];
-        while(storage_dir_read(dir, &info, name, sizeof(name))) {
-            bool is_dir = (info.flags & FSF_DIRECTORY);
+        while(storage_dir_read(dir, &info, name, sizeof(name)) &&
+              entry_count < FM_MAX_ENTRIES) {
+            strncpy(entries[entry_count].name, name, FM_NAME_MAX - 1);
+            entries[entry_count].name[FM_NAME_MAX - 1] = '\0';
+            entries[entry_count].size = info.size;
+            entries[entry_count].is_dir = (info.flags & FSF_DIRECTORY);
+            entry_count++;
+        }
+        storage_dir_close(dir);
 
-            if(is_dir) {
+        /* Sort: directories first, then alphabetical */
+        if(entry_count > 1) {
+            qsort(entries, entry_count, sizeof(FmDirEntry), fm_entry_cmp);
+        }
+
+        /* Generate HTML rows */
+        for(uint16_t i = 0; i < entry_count; i++) {
+            if(entries[i].is_dir) {
                 furi_string_cat(page, "<tr><td><a href='/browse");
                 if(strcmp(web_path, "/") != 0) furi_string_cat(page, web_path);
                 furi_string_cat(page, "/");
-                furi_string_cat(page, name);
+                furi_string_cat(page, entries[i].name);
                 furi_string_cat(page, "' class='d'>");
-                furi_string_cat(page, name);
+                furi_string_cat(page, entries[i].name);
                 furi_string_cat(page, "/</a></td><td class='s'>-</td><td class='a'>"
                     "<a href='/delete");
                 if(strcmp(web_path, "/") != 0) furi_string_cat(page, web_path);
                 furi_string_cat(page, "/");
-                furi_string_cat(page, name);
+                furi_string_cat(page, entries[i].name);
                 furi_string_cat(page, "' onclick=\"return confirm('Delete?')\">"
                     "Del</a></td></tr>");
             } else {
                 char size_str[32];
-                format_size(info.size, size_str, sizeof(size_str));
+                format_size(entries[i].size, size_str, sizeof(size_str));
                 furi_string_cat(page, "<tr><td>");
-                furi_string_cat(page, name);
+                furi_string_cat(page, entries[i].name);
                 furi_string_cat(page, "</td><td class='s'>");
                 furi_string_cat(page, size_str);
                 furi_string_cat(page, "</td><td class='a'>"
                     "<a href='/download");
                 if(strcmp(web_path, "/") != 0) furi_string_cat(page, web_path);
                 furi_string_cat(page, "/");
-                furi_string_cat(page, name);
+                furi_string_cat(page, entries[i].name);
                 furi_string_cat(page, "' class='b bs'>DL</a>"
                     "<a href='/delete");
                 if(strcmp(web_path, "/") != 0) furi_string_cat(page, web_path);
                 furi_string_cat(page, "/");
-                furi_string_cat(page, name);
+                furi_string_cat(page, entries[i].name);
                 furi_string_cat(page, "' onclick=\"return confirm('Delete?')\">"
                     "Del</a></td></tr>");
             }
         }
-        storage_dir_close(dir);
     } else {
         furi_string_cat(page, "<tr><td colspan='3'>Failed to open directory</td></tr>");
     }
     storage_file_free(dir);
+    if(entries) free(entries);
     furi_record_close(RECORD_STORAGE);
 
     furi_string_cat(page, "</table>"
