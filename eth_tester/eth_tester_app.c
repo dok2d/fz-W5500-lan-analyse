@@ -130,6 +130,10 @@ static void eth_tester_submenu_callback(void* context, uint32_t index);
 static uint32_t eth_tester_navigation_exit_callback(void* context);
 static uint32_t eth_tester_navigation_submenu_callback(void* context);
 static uint32_t eth_tester_navigation_history_callback(void* context);
+static uint32_t eth_tester_nav_back_netinfo(void* context);
+static uint32_t eth_tester_nav_back_discovery(void* context);
+static uint32_t eth_tester_nav_back_diag(void* context);
+static uint32_t eth_tester_nav_back_tools(void* context);
 static bool eth_tester_nav_event_cb(void* context);
 static bool eth_tester_custom_event_cb(void* context, uint32_t event);
 static void eth_tester_worker_stop(EthTesterApp* app);
@@ -154,6 +158,7 @@ static void eth_tester_do_ping_sweep_detect(EthTesterApp* app);
 static void eth_tester_do_stp_vlan(EthTesterApp* app);
 static void eth_tester_history_populate(EthTesterApp* app);
 static void eth_tester_history_file_callback(void* context, uint32_t index);
+static void eth_tester_history_delete_callback(void* context, uint32_t index);
 static void eth_tester_count_frame(EthTesterApp* app, const uint8_t* frame, uint16_t len);
 static bool eth_tester_save_results(const char* filename, const char* content);
 static void eth_tester_save_and_notify(EthTesterApp* app, const char* type, FuriString* text);
@@ -574,9 +579,9 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         app->view_dispatcher, EthTesterViewSettings,
         variable_item_list_get_view(app->settings_list));
 
-    VariableItem* item_autosave = variable_item_list_add_item(
+    VariableItem* item_autosave = variable_item_list_add(
         app->settings_list, "Auto-save results", 2, settings_autosave_changed, app);
-    VariableItem* item_sound = variable_item_list_add_item(
+    VariableItem* item_sound = variable_item_list_add(
         app->settings_list, "Sound & vibro", 2, settings_sound_changed, app);
 
     /* Load settings from SD */
@@ -2636,8 +2641,6 @@ static void eth_tester_history_populate(EthTesterApp* app) {
             app);
     }
 }
-
-static void eth_tester_history_delete_callback(void* context, uint32_t index);
 
 static void eth_tester_history_file_callback(void* context, uint32_t index) {
     EthTesterApp* app = context;
