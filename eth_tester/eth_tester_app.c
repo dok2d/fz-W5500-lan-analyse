@@ -528,10 +528,9 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_box_get_view(app->text_box_stats), eth_tester_nav_back_netinfo);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewStats, text_box_get_view(app->text_box_stats));
 
-    /* TextInput for ping target IP */
-    app->text_input_ping = text_input_alloc();
-    view_set_previous_callback(text_input_get_view(app->text_input_ping), eth_tester_nav_back_diag);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPingInput, text_input_get_view(app->text_input_ping));
+    /* IP Keyboard (shared custom view for all IP address inputs) */
+    app->ip_keyboard = ip_keyboard_alloc();
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewIpKeyboard, ip_keyboard_get_view(app->ip_keyboard));
 
     /* Default ping target */
     strncpy(app->ping_ip_input, "8.8.8.8", sizeof(app->ping_ip_input));
@@ -572,10 +571,6 @@ static EthTesterApp* eth_tester_app_alloc(void) {
         false);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewContPing, app->view_cont_ping);
 
-    app->text_input_cont_ping = text_input_alloc();
-    view_set_previous_callback(text_input_get_view(app->text_input_cont_ping), eth_tester_nav_back_diag);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewContPingInput, text_input_get_view(app->text_input_cont_ping));
-
     /* Default continuous ping target */
     strncpy(app->cont_ping_ip_input, "8.8.8.8", sizeof(app->cont_ping_ip_input));
 
@@ -584,10 +579,6 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     text_box_set_font(app->text_box_port_scan, TextBoxFontText);
     view_set_previous_callback(text_box_get_view(app->text_box_port_scan), eth_tester_nav_back_diag);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPortScan, text_box_get_view(app->text_box_port_scan));
-
-    app->text_input_port_scan = text_input_alloc();
-    view_set_previous_callback(text_input_get_view(app->text_input_port_scan), eth_tester_nav_back_diag);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPortScanInput, text_input_get_view(app->text_input_port_scan));
 
     /* Port scan target defaults to empty — filled from DHCP gateway when available */
     app->port_scan_ip_input[0] = '\0';
@@ -626,10 +617,6 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_box_get_view(app->text_box_traceroute), eth_tester_nav_back_diag);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewTraceroute, text_box_get_view(app->text_box_traceroute));
 
-    app->text_input_traceroute = text_input_alloc();
-    view_set_previous_callback(text_input_get_view(app->text_input_traceroute), eth_tester_nav_back_diag);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewTracerouteInput, text_input_get_view(app->text_input_traceroute));
-
     /* Default traceroute target */
     strncpy(app->traceroute_ip_input, "8.8.8.8", sizeof(app->traceroute_ip_input));
 
@@ -638,10 +625,6 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     text_box_set_font(app->text_box_ping_sweep, TextBoxFontText);
     view_set_previous_callback(text_box_get_view(app->text_box_ping_sweep), eth_tester_nav_back_discovery);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPingSweep, text_box_get_view(app->text_box_ping_sweep));
-
-    app->text_input_ping_sweep = text_input_alloc();
-    view_set_previous_callback(text_input_get_view(app->text_input_ping_sweep), eth_tester_nav_back_discovery);
-    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewPingSweepInput, text_input_get_view(app->text_input_ping_sweep));
 
     /* Ping sweep defaults to empty — auto-detected from DHCP at scan time */
     app->ping_sweep_ip_input[0] = '\0';
@@ -736,22 +719,18 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewArpScan);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDhcpAnalyze);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPing);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewStats);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDnsLookup);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDnsInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewWol);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewWolInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewContPing);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewContPingInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPortScan);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPortScanInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChanger);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChangerInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTraceroute);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTracerouteInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingSweep);
-    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingSweepInput);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewIpKeyboard);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDiscovery);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewStpVlan);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewHistory);
@@ -775,24 +754,20 @@ static void eth_tester_app_free(EthTesterApp* app) {
     text_box_free(app->text_box_arp);
     text_box_free(app->text_box_dhcp);
     text_box_free(app->text_box_ping);
-    text_input_free(app->text_input_ping);
     text_box_free(app->text_box_stats);
     text_box_free(app->text_box_dns);
     text_input_free(app->text_input_dns);
     text_box_free(app->text_box_wol);
     byte_input_free(app->byte_input_wol);
     view_free(app->view_cont_ping);
-    text_input_free(app->text_input_cont_ping);
     text_box_free(app->text_box_port_scan);
-    text_input_free(app->text_input_port_scan);
     text_box_free(app->text_box_mac_changer);
     byte_input_free(app->byte_input_mac_changer);
     view_free(app->view_bridge);
     if(app->bridge_state) free(app->bridge_state);
     text_box_free(app->text_box_traceroute);
-    text_input_free(app->text_input_traceroute);
     text_box_free(app->text_box_ping_sweep);
-    text_input_free(app->text_input_ping_sweep);
+    ip_keyboard_free(app->ip_keyboard);
     text_box_free(app->text_box_discovery);
     text_box_free(app->text_box_stp_vlan);
     submenu_free(app->submenu_history);
@@ -927,16 +902,17 @@ static bool eth_tester_custom_event_cb(void* context, uint32_t event) {
 
     if(event == CUSTOM_EVENT_PING_SWEEP_READY) {
         /* DHCP detection done — show input with pre-filled CIDR */
-        text_input_reset(app->text_input_ping_sweep);
-        text_input_set_header_text(app->text_input_ping_sweep, "Scan range (CIDR):");
-        text_input_set_result_callback(
-            app->text_input_ping_sweep,
+        ip_keyboard_setup(
+            app->ip_keyboard,
+            "Scan range (CIDR):",
+            app->ping_sweep_ip_input,
+            true,
             eth_tester_ping_sweep_input_callback,
             app,
             app->ping_sweep_ip_input,
             sizeof(app->ping_sweep_ip_input),
-            false);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPingSweepInput);
+            eth_tester_nav_back_discovery);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
         return true;
     }
 
@@ -1380,16 +1356,17 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             snprintf(app->ping_ip_input, sizeof(app->ping_ip_input),
                 "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
         }
-        text_input_reset(app->text_input_ping);
-        text_input_set_header_text(app->text_input_ping, "Ping target IP:");
-        text_input_set_result_callback(
-            app->text_input_ping,
+        ip_keyboard_setup(
+            app->ip_keyboard,
+            "Ping target IP:",
+            app->ping_ip_input,
+            false,
             eth_tester_ping_ip_input_callback,
             app,
             app->ping_ip_input,
             sizeof(app->ping_ip_input),
-            false);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPingInput);
+            eth_tester_nav_back_diag);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
         break;
 
     case EthTesterMenuItemStats:
@@ -1445,16 +1422,17 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             uint8_t pfx = arp_mask_to_prefix(app->dhcp_mask);
             snprintf(app->ping_sweep_ip_input, sizeof(app->ping_sweep_ip_input),
                 "%d.%d.%d.%d/%d", net[0], net[1], net[2], net[3], pfx);
-            text_input_reset(app->text_input_ping_sweep);
-            text_input_set_header_text(app->text_input_ping_sweep, "Scan range (CIDR):");
-            text_input_set_result_callback(
-                app->text_input_ping_sweep,
+            ip_keyboard_setup(
+                app->ip_keyboard,
+                "Scan range (CIDR):",
+                app->ping_sweep_ip_input,
+                true,
                 eth_tester_ping_sweep_input_callback,
                 app,
                 app->ping_sweep_ip_input,
                 sizeof(app->ping_sweep_ip_input),
-                false);
-            view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPingSweepInput);
+                eth_tester_nav_back_discovery);
+            view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
         } else {
             /* No DHCP yet — detect network first, then show input */
             eth_tester_show_view(app, app->text_box_ping_sweep, EthTesterViewPingSweep, app->ping_sweep_text, "Detecting network...\n");
@@ -1467,16 +1445,17 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             snprintf(app->traceroute_ip_input, sizeof(app->traceroute_ip_input),
                 "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
         }
-        text_input_reset(app->text_input_traceroute);
-        text_input_set_header_text(app->text_input_traceroute, "Traceroute target IP:");
-        text_input_set_result_callback(
-            app->text_input_traceroute,
+        ip_keyboard_setup(
+            app->ip_keyboard,
+            "Traceroute target:",
+            app->traceroute_ip_input,
+            false,
             eth_tester_traceroute_ip_input_callback,
             app,
             app->traceroute_ip_input,
             sizeof(app->traceroute_ip_input),
-            false);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewTracerouteInput);
+            eth_tester_nav_back_diag);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
         break;
 
     case EthTesterMenuItemMacChanger:
@@ -1503,17 +1482,17 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             snprintf(app->port_scan_ip_input, sizeof(app->port_scan_ip_input),
                 "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
         }
-        text_input_reset(app->text_input_port_scan);
-        text_input_set_header_text(app->text_input_port_scan,
-            app->port_scan_top100 ? "Target IP (Top 100):" : "Target IP (Top 20):");
-        text_input_set_result_callback(
-            app->text_input_port_scan,
+        ip_keyboard_setup(
+            app->ip_keyboard,
+            app->port_scan_top100 ? "Target IP (Top 100):" : "Target IP (Top 20):",
+            app->port_scan_ip_input,
+            false,
             eth_tester_port_scan_ip_input_callback,
             app,
             app->port_scan_ip_input,
             sizeof(app->port_scan_ip_input),
-            false);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPortScanInput);
+            eth_tester_nav_back_diag);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
         break;
 
     case EthTesterMenuItemContPing:
@@ -1521,16 +1500,17 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             snprintf(app->cont_ping_ip_input, sizeof(app->cont_ping_ip_input),
                 "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
         }
-        text_input_reset(app->text_input_cont_ping);
-        text_input_set_header_text(app->text_input_cont_ping, "Ping target IP:");
-        text_input_set_result_callback(
-            app->text_input_cont_ping,
+        ip_keyboard_setup(
+            app->ip_keyboard,
+            "Ping target IP:",
+            app->cont_ping_ip_input,
+            false,
             eth_tester_cont_ping_ip_input_callback,
             app,
             app->cont_ping_ip_input,
             sizeof(app->cont_ping_ip_input),
-            false);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewContPingInput);
+            eth_tester_nav_back_diag);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
         break;
 
     case EthTesterMenuItemEthBridge:
