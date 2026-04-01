@@ -219,18 +219,6 @@ static bool cont_ping_input_callback(InputEvent* event, void* context) {
     return false;
 }
 
-/* History file view: long-press OK to delete */
-static bool history_file_input_callback(InputEvent* event, void* context) {
-    EthTesterApp* app = context;
-
-    if(event->type == InputTypeLong && event->key == InputKeyOk) {
-        view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_HISTORY_DELETE);
-        return true;
-    }
-
-    return false;
-}
-
 /* ==================== App alloc / free ==================== */
 
 static EthTesterApp* eth_tester_app_alloc(void) {
@@ -487,8 +475,6 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     app->text_box_history_file = text_box_alloc();
     text_box_set_font(app->text_box_history_file, TextBoxFontText);
     view_set_previous_callback(text_box_get_view(app->text_box_history_file), eth_tester_navigation_history_callback);
-    view_set_input_callback(text_box_get_view(app->text_box_history_file), history_file_input_callback);
-    view_set_context(text_box_get_view(app->text_box_history_file), app);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewHistoryFile, text_box_get_view(app->text_box_history_file));
 
     /* STP/VLAN Detection view */
@@ -704,19 +690,6 @@ static bool eth_tester_custom_event_cb(void* context, uint32_t event) {
             sizeof(app->ping_sweep_ip_input),
             false);
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewPingSweepInput);
-        return true;
-    }
-
-    if(event == CUSTOM_EVENT_HISTORY_DELETE) {
-        /* Delete currently viewed history file */
-        if(app->history_state && app->history_selected < app->history_state->file_count) {
-            const char* filename = app->history_state->files[app->history_selected].filename;
-            history_delete_file(filename);
-            notification_message(app->notifications, &sequence_success);
-            /* Refresh history list and go back */
-            eth_tester_history_populate(app);
-            view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewHistory);
-        }
         return true;
     }
 
@@ -2525,14 +2498,26 @@ static void eth_tester_history_populate(EthTesterApp* app) {
         }
         memcpy(e->label, tmp, sizeof(e->label));
 
+        /* View entry */
         submenu_add_item(
             app->submenu_history,
             e->label,
             i,
             eth_tester_history_file_callback,
             app);
+        /* Delete entry (index offset by HISTORY_MAX_FILES) */
+        char del_label[HISTORY_FILENAME_LEN];
+        snprintf(del_label, sizeof(del_label), "  DEL %s", e->label);
+        submenu_add_item(
+            app->submenu_history,
+            del_label,
+            HISTORY_MAX_FILES + i,
+            eth_tester_history_delete_callback,
+            app);
     }
 }
+
+static void eth_tester_history_delete_callback(void* context, uint32_t index);
 
 static void eth_tester_history_file_callback(void* context, uint32_t index) {
     EthTesterApp* app = context;
@@ -2548,7 +2533,6 @@ static void eth_tester_history_file_callback(void* context, uint32_t index) {
         furi_string_set(app->history_file_text, "Memory alloc failed!\n");
     } else if(history_read_file(filename, buf, 2048)) {
         furi_string_set(app->history_file_text, buf);
-        furi_string_cat_str(app->history_file_text, "\n[Hold OK to delete]\n");
         free(buf);
     } else {
         furi_string_printf(app->history_file_text, "Failed to read:\n%s\n", filename);
@@ -2558,6 +2542,21 @@ static void eth_tester_history_file_callback(void* context, uint32_t index) {
     text_box_reset(app->text_box_history_file);
     text_box_set_text(app->text_box_history_file, furi_string_get_cstr(app->history_file_text));
     view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewHistoryFile);
+}
+
+static void eth_tester_history_delete_callback(void* context, uint32_t index) {
+    EthTesterApp* app = context;
+    furi_assert(app);
+
+    uint16_t file_idx = index - HISTORY_MAX_FILES;
+    if(!app->history_state || file_idx >= app->history_state->file_count) return;
+
+    const char* filename = app->history_state->files[file_idx].filename;
+    history_delete_file(filename);
+    notification_message(app->notifications, &sequence_success);
+
+    /* Refresh list */
+    eth_tester_history_populate(app);
 }
 
 /* ==================== Port Scanner ==================== */
