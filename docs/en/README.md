@@ -17,26 +17,27 @@ Turn your **Flipper Zero + W5500** Ethernet module into a professional-grade por
 
 | Feature | Category | Description |
 |---|---|---|
-| Link Info | Network Info | PHY link status, speed, duplex, MAC address, W5500 version |
-| DHCP Analyzer | Network Info | Discover-only analysis with option fingerprinting |
-| Statistics | Network Info | Frame counters by type and EtherType (10s capture) |
-| ARP Scanner | Discovery | Subnet scan with OUI vendor lookup (~120 vendors) |
-| Ping Sweep | Discovery | ICMP sweep of entire CIDR range with interactive host list |
-| LLDP/CDP | Discovery | Passive IEEE 802.1AB and Cisco CDP neighbor discovery |
-| mDNS/SSDP | Discovery | Multicast DNS and UPnP service discovery |
-| STP/VLAN | Discovery | BPDU listener and 802.1Q VLAN tag detection |
+| Auto Test | -- | One-touch automated diagnostics: Link → DHCP → Ping → DNS → LLDP → ARP |
+| Link Info | Port Info | PHY link status, speed, duplex, MAC address, W5500 version |
+| DHCP Analyzer | Port Info | Discover-only analysis with option fingerprinting |
+| LLDP/CDP | Port Info | Passive IEEE 802.1AB and Cisco CDP neighbor discovery |
+| STP/VLAN | Port Info | BPDU listener and 802.1Q VLAN tag detection |
+| ARP Scanner | Scan | Subnet scan with OUI vendor lookup (~120 vendors) |
+| Ping Sweep | Scan | ICMP sweep of entire CIDR range with interactive host list |
+| mDNS/SSDP | Scan | Multicast DNS and UPnP service discovery |
+| Port Scanner | Scan | TCP connect scan: Top-20, Top-100, or custom range |
 | Ping | Diagnostics | ICMP echo with configurable count and timeout |
 | Continuous Ping | Diagnostics | Real-time RTT graph with min/max/avg and loss tracking |
 | DNS Lookup | Diagnostics | Hostname resolution via UDP DNS |
 | Traceroute | Diagnostics | ICMP hop-by-hop path discovery (up to 30 hops) |
-| Port Scanner | Diagnostics | TCP connect scan: Top-20, Top-100, or custom range |
-| Wake-on-LAN | Tools | Magic packet sender |
-| Packet Capture | Tools | Standalone PCAP dump to SD card |
-| ETH Bridge | Tools | USB-to-Ethernet bridge via CDC-ECM with PCAP recording |
-| PXE Server | Tools | Network boot server with DHCP + TFTP |
-| File Manager | Tools | Web-based SD card manager via HTTP |
+| Packet Capture | Traffic | Standalone PCAP dump to SD card |
+| ETH Bridge | Traffic | USB-to-Ethernet bridge via CDC-ECM with PCAP recording |
+| Statistics | Traffic | Frame counters by type and EtherType (10s capture) |
+| Wake-on-LAN | Utilities | Magic packet sender |
+| PXE Server | Utilities | Network boot server with DHCP + TFTP |
+| File Manager | Utilities | Web-based SD card manager via HTTP |
 | History | -- | Timestamped auto-saved results, browsable and deletable |
-| Settings | -- | Auto-save, sound/vibro, custom DNS, ping config, MAC Changer |
+| Settings | -- | Auto-save, sound/vibro, custom DNS, ping config, MAC Changer, About |
 
 ## Documentation
 

@@ -67,6 +67,8 @@ The W5500 chip provides 8 hardware sockets. The app uses 6 of them with tuned bu
 
 Socket 0 uses MACRAW mode with `MFEN=0` (MAC Filter Enable disabled), which means it receives **all** Ethernet frames on the wire, not just those addressed to the Flipper's MAC. This enables passive protocol listeners (LLDP, CDP, STP) and the promiscuous bridge mode.
 
+**Auto Test sharing**: during Auto Test, Socket 0 is shared between the LLDP listener and the ARP scan. These two operations run sequentially (not in parallel) to avoid contention on the MACRAW socket.
+
 ## Threading Model
 
 The app uses two threads:
@@ -115,6 +117,10 @@ The app runs with a 4 KB application stack (defined in `application.fam`). All l
 
 The worker thread has its own 8 KB stack, which is sufficient for the deepest protocol parser call chains.
 
+### Auto Test LLDP Thread (3 KB stack)
+
+During Auto Test, a dedicated LLDP listener thread is spawned with a 3 KB stack. It opens Socket 0 in MACRAW mode and passively listens for LLDP/CDP frames while the main Auto Test sequence continues with subsequent steps (the LLDP listen runs in parallel with ARP scan sequencing on the worker thread). The LLDP thread uses a private `malloc` buffer for frame reception to avoid conflicts with the worker thread's frame buffer.
+
 ## DHCP Caching
 
 DHCP negotiation takes 3-15 seconds depending on network conditions. To avoid repeating this for every feature, the app caches the first successful DHCP result:
@@ -132,31 +138,32 @@ The app uses Flipper's `ViewDispatcher` pattern with a hierarchical submenu stru
 
 ```
 Main Menu
-├── Network Info (submenu)
+├── Auto Test
+├── Port Info (submenu)
 │   ├── Link Info
 │   ├── DHCP Analyze
-│   └── Statistics
-├── Discovery (submenu)
+│   ├── LLDP/CDP
+│   └── STP/VLAN
+├── Scan (submenu)
 │   ├── ARP Scan
 │   ├── Ping Sweep
-│   ├── LLDP/CDP
 │   ├── mDNS/SSDP
-│   └── STP/VLAN
+│   └── Port Scan (submenu: Top 20 / Top 100 / Custom)
 ├── Diagnostics (submenu)
 │   ├── Ping
 │   ├── Continuous Ping
 │   ├── DNS Lookup
-│   ├── Traceroute
-│   └── Port Scan
-├── Tools (submenu)
-│   ├── Wake-on-LAN
+│   └── Traceroute
+├── Traffic (submenu)
+│   ├── Packet Capture
 │   ├── ETH Bridge
+│   └── Statistics
+├── Utilities (submenu)
+│   ├── Wake-on-LAN
 │   ├── PXE Server
-│   ├── File Manager
-│   └── Packet Capture
+│   └── File Manager
 ├── History
-├── Settings
-└── About
+└── Settings (includes About)
 ```
 
 The menu header dynamically shows link status: `LAN [UP 100M FD]` or `LAN [DOWN]`.

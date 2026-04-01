@@ -17,26 +17,27 @@
 
 | Функция | Категория | Описание |
 |---|---|---|
-| Link Info | Network Info | Статус PHY-линка, скорость, дуплекс, MAC, версия W5500 |
-| DHCP Analyzer | Network Info | Анализ Discover/Offer с фингерпринтом опций |
-| Statistics | Network Info | Счётчики фреймов по типам и EtherType (10с) |
-| ARP Scanner | Discovery | Сканирование подсети с OUI-поиском (~120 вендоров) |
-| Ping Sweep | Discovery | ICMP-свип CIDR-диапазона с интерактивным списком хостов |
-| LLDP/CDP | Discovery | Пассивное обнаружение соседей IEEE 802.1AB и Cisco CDP |
-| mDNS/SSDP | Discovery | Обнаружение сервисов через multicast DNS и UPnP |
-| STP/VLAN | Discovery | Захват BPDU и определение 802.1Q VLAN |
+| Auto Test | -- | Автодиагностика: Link → DHCP → Ping GW → DNS → LLDP → ARP |
+| Link Info | Port Info | Статус PHY-линка, скорость, дуплекс, MAC, версия W5500 |
+| DHCP Analyzer | Port Info | Анализ Discover/Offer с фингерпринтом опций |
+| LLDP/CDP | Port Info | Пассивное обнаружение соседей IEEE 802.1AB и Cisco CDP |
+| STP/VLAN | Port Info | Захват BPDU и определение 802.1Q VLAN |
+| ARP Scanner | Scan | Сканирование подсети с OUI-поиском (~120 вендоров) |
+| Ping Sweep | Scan | ICMP-свип CIDR-диапазона с интерактивным списком хостов |
+| mDNS/SSDP | Scan | Обнаружение сервисов через multicast DNS и UPnP |
+| Port Scanner | Scan | TCP connect: Top-20, Top-100 или свой диапазон (подменю) |
 | Ping | Diagnostics | ICMP echo с настраиваемым количеством и таймаутом |
 | Continuous Ping | Diagnostics | График RTT с min/max/avg и процентом потерь |
 | DNS Lookup | Diagnostics | Разрешение имён через UDP DNS |
 | Traceroute | Diagnostics | ICMP-трассировка до 30 хопов |
-| Port Scanner | Diagnostics | TCP connect: Top-20, Top-100 или свой диапазон |
-| Wake-on-LAN | Tools | Отправка magic-пакетов |
-| Packet Capture | Tools | Автономный PCAP-дамп на SD-карту |
-| ETH Bridge | Tools | USB-Ethernet мост через CDC-ECM с записью PCAP |
-| PXE Server | Tools | Сервер сетевой загрузки (DHCP + TFTP) |
-| File Manager | Tools | Веб-менеджер файлов SD через HTTP |
+| Packet Capture | Traffic | Автономный PCAP-дамп на SD-карту |
+| ETH Bridge | Traffic | USB-Ethernet мост через CDC-ECM с записью PCAP |
+| Statistics | Traffic | Счётчики фреймов по типам и EtherType (10с) |
+| Wake-on-LAN | Utilities | Отправка magic-пакетов |
+| PXE Server | Utilities | Сервер сетевой загрузки (DHCP + TFTP) |
+| File Manager | Utilities | Веб-менеджер файлов SD через HTTP |
 | History | -- | Автосохранение результатов с метками времени |
-| Settings | -- | Автосохранение, звук, DNS, пинг, MAC Changer |
+| Settings | -- | Автосохранение, звук, DNS, пинг, MAC Changer, About |
 
 ## Документация
 

@@ -40,6 +40,18 @@ The File Manager is the most security-sensitive component since it exposes an HT
 
 **Unique per device**: on first boot, the app generates a random locally-administered MAC address using the Flipper's hardware RNG. This MAC is saved to `mac.conf` on the SD card and reused on subsequent boots. This ensures no two devices share the same default MAC, preventing MAC conflicts on the network.
 
+## ARP Scan in Auto Test
+
+When Auto Test runs with **AT ARP scan** enabled (the default), it sends approximately 254 ARP requests to probe every host on the local /24 subnet. On networks with strict port security policies or Dynamic ARP Inspection (DAI), this burst of ARP traffic may trigger security alerts, cause the switch port to be placed in an error-disabled state, or result in the Flipper's MAC being blocked.
+
+**Recommendation**: disable **AT ARP scan** in Settings when connecting to production or security-hardened networks. The ARP scan step is optional and does not affect the pass/fail verdict of the other Auto Test steps.
+
+## AT DNS Host for Isolated Networks
+
+Auto Test resolves a hostname (default: `google.com`) to verify DNS functionality and then pings the resolved address to confirm internet connectivity. On closed or air-gapped networks where external DNS names are unreachable, the DNS and Internet Ping steps will always fail.
+
+**Recommendation**: change **AT DNS host** in Settings to a hostname that is resolvable within the local network (e.g., an internal server or domain controller) so the DNS and Internet Ping steps produce meaningful results.
+
 ## What is NOT Protected
 
 - **No encryption**: all network traffic is plaintext. HTTP, DHCP, TFTP, DNS -- everything is unencrypted.

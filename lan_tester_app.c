@@ -1810,7 +1810,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "discover devices,\n"
         "analyze DHCP/LLDP/CDP,\n"
         "detect VLANs and STP.\n\n"
-        "v1.2.0 | by dok2d\n"
+        "v1.4.0 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(

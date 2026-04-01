@@ -8,7 +8,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Build](https://img.shields.io/badge/build-ufbt-yellow)
-![Version](https://img.shields.io/badge/version-1.2.0-brightgreen)
+![Version](https://img.shields.io/badge/version-1.4.0-brightgreen)
 
 **[English docs](docs/en/README.md)** | **[Документация на русском](docs/ru/README.md)**
 
@@ -20,6 +20,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 
 | Feature | Description |
 |---|---|
+| **Auto Test** | One-touch automated diagnostics: Link → DHCP → Ping GW → DNS → Internet Ping → LLDP/CDP → ARP count. Auto-cycles on cable replug. |
 | **Link Info** | PHY link status, speed (10/100 Mbps), duplex (Half/Full), MAC address, W5500 version check |
 | **DHCP Analyzer** | Discover-only analysis (no IP lease taken), option fingerprinting, full offer parsing |
 | **ARP Scanner** | Active subnet scan with batch requests, OUI vendor lookup (~120 vendors), duplicate detection |
@@ -43,7 +44,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 
 ### UX Highlights
 
-- **Hierarchical menu**: features grouped into Network Info, Discovery, Diagnostics, Tools
+- **Hierarchical menu**: features grouped into Port Info, Scan, Diagnostics, Traffic, Utilities
 - **Link status in header**: see UP/DOWN, speed, duplex without entering Link Info
 - **DHCP caching**: single negotiation shared across all operations — no repeated 15s waits
 - **Visual progress**: countdown timers for listeners, ASCII progress bars for scans
@@ -223,6 +224,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 | Функция | Описание |
 |---|---|
+| **Auto Test** | Автоматическая диагностика в одно касание: Link → DHCP → Ping GW → DNS → Internet Ping → LLDP/CDP → ARP. Автоцикл при перетыке кабеля. |
 | **Link Info** | Статус PHY-линка, скорость (10/100 Мбит/с), дуплекс, MAC-адрес, версия W5500 |
 | **DHCP Analyzer** | Анализ Discover/Offer (IP не берётся!), фингерпринтинг опций |
 | **ARP Scanner** | Сканирование подсети с определением вендора по OUI (~120 производителей) |
@@ -245,7 +247,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 ### UX-особенности
 
-- **Иерархическое меню**: функции сгруппированы в Network Info, Discovery, Diagnostics, Tools
+- **Иерархическое меню**: функции сгруппированы в Port Info, Scan, Diagnostics, Traffic, Utilities
 - **Статус линка в заголовке**: UP/DOWN, скорость, дуплекс видны сразу
 - **Кеширование DHCP**: одна DHCP-сессия на всё — не ждёте 15 секунд каждый раз
 - **Визуальный прогресс**: таймеры обратного отсчёта для прослушиваний, прогрессбары для сканов
