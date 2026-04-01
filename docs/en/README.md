@@ -69,7 +69,7 @@ The W5500 is powered via Flipper's OTG 3.3V output, enabled automatically when t
 ### Build & Install
 
 ```bash
-cd eth_tester
+cd lan_tester
 ufbt build              # build only
 ufbt launch             # build and run on Flipper via USB
 ufbt install            # install .fap to Flipper's SD card
@@ -82,9 +82,9 @@ The compiled `.fap` file appears in `dist/`. You can also copy it manually to `/
 ## Architecture
 
 ```
-eth_tester/
+lan_tester/
 ├── application.fam              # FAP manifest
-├── eth_tester_app.c/h           # Entry point, ViewDispatcher, feature logic
+├── lan_tester_app.c/h           # Entry point, ViewDispatcher, feature logic
 ├── hal/w5500_hal.c/h            # SPI, GPIO, MACRAW socket management
 ├── usb_eth/                     # USB CDC-ECM network device
 ├── bridge/                      # L2 frame forwarding + PCAP dump
@@ -174,7 +174,7 @@ The PXE Server turns Flipper into a network boot server for PXE-capable machines
 
 ### Setup
 
-1. Place boot files on SD card at `/ext/apps_data/eth_tester/pxe/`
+1. Place boot files on SD card at `/ext/apps_data/lan_tester/pxe/`
    - Supported: `.kpxe` (Legacy BIOS), `.efi` (UEFI), `.pxe`, `.0`
    - Recommended: `undionly.kpxe` (~70KB) from [netboot.xyz](https://boot.netboot.xyz)
 2. Connect Flipper to target machine via Ethernet (direct cable or through a switch)
@@ -259,7 +259,7 @@ The ETH Bridge turns Flipper into a USB-to-Ethernet adapter using the CDC-ECM pr
 
 ### PCAP Recording
 
-Press **OK** during bridge operation to start/stop recording traffic to a `.pcap` file on the SD card. Files are saved to `apps_data/eth_tester/pcap/` with timestamped names, compatible with Wireshark.
+Press **OK** during bridge operation to start/stop recording traffic to a `.pcap` file on the SD card. Files are saved to `apps_data/lan_tester/pcap/` with timestamped names, compatible with Wireshark.
 
 ### Platform Compatibility
 
@@ -317,7 +317,7 @@ These cannot be implemented on Flipper Zero + W5500:
 | "DHCP failed" | Ensure the network has a DHCP server. Check cable. Try Link Info first. |
 | Flipper freezes on Back | Fixed in v1.0 — HTTP socket is force-closed on exit. Update to latest version. |
 | File Manager shows 403 | Include the auth token in the URL: `?t=XXXX` (shown on Flipper screen). |
-| PXE client doesn't boot | Check BIOS network boot settings. Verify boot file is in `apps_data/eth_tester/pxe/`. |
+| PXE client doesn't boot | Check BIOS network boot settings. Verify boot file is in `apps_data/lan_tester/pxe/`. |
 
 ---
 

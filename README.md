@@ -8,7 +8,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Build](https://img.shields.io/badge/build-ufbt-yellow)
-![Version](https://img.shields.io/badge/version-1.1.0-brightgreen)
+![Version](https://img.shields.io/badge/version-1.2.0-brightgreen)
 
 **[English docs](docs/en/README.md)** | **[Документация на русском](docs/ru/README.md)**
 
@@ -84,7 +84,7 @@ GND  (G)    →   GND (pin 8 or 11)
 ### Build & Install
 
 ```bash
-cd eth_tester
+cd lan_tester
 ufbt build              # build only
 ufbt launch             # build and run on Flipper via USB
 ufbt install            # install .fap to Flipper's SD card
@@ -95,10 +95,10 @@ The compiled `.fap` file will appear in `dist/`. You can also copy it manually t
 ## Architecture
 
 ```
-eth_tester/
+lan_tester/
 ├── application.fam              # FAP manifest
-├── eth_tester_app.c             # Entry point, ViewDispatcher, feature logic
-├── eth_tester_app.h             # Shared types and app state
+├── lan_tester_app.c             # Entry point, ViewDispatcher, feature logic
+├── lan_tester_app.h             # Shared types and app state
 │
 ├── hal/
 │   ├── w5500_hal.c              # SPI, GPIO, MACRAW socket management
@@ -172,8 +172,8 @@ eth_tester/
 
 ### Tools
 - **Wake-on-LAN** — send magic packet to wake a device by MAC address.
-- **ETH Bridge** — turns Flipper into a USB-to-Ethernet bridge. Phone/PC connects via USB (CDC-ECM), traffic is bridged to LAN via W5500 at Layer 2. The host gets an IP from the LAN's DHCP server transparently. Live stats show frame counts and link status. Press **OK** to start/stop PCAP traffic recording to SD card (Wireshark-compatible `.pcap` files saved to `apps_data/eth_tester/pcap/`). Press Back to stop and restore USB.
-- **PXE Server** — minimal PXE boot server. Configure Server/Client IP and subnet, toggle built-in DHCP server. Serves .kpxe/.efi boot files from SD card (`apps_data/eth_tester/pxe/`) via TFTP. Connect Flipper directly to target machine to network-boot it.
+- **ETH Bridge** — turns Flipper into a USB-to-Ethernet bridge. Phone/PC connects via USB (CDC-ECM), traffic is bridged to LAN via W5500 at Layer 2. The host gets an IP from the LAN's DHCP server transparently. Live stats show frame counts and link status. Press **OK** to start/stop PCAP traffic recording to SD card (Wireshark-compatible `.pcap` files saved to `apps_data/lan_tester/pcap/`). Press Back to stop and restore USB.
+- **PXE Server** — minimal PXE boot server. Configure Server/Client IP and subnet, toggle built-in DHCP server. Serves .kpxe/.efi boot files from SD card (`apps_data/lan_tester/pxe/`) via TFTP. Connect Flipper directly to target machine to network-boot it.
 - **File Manager** — starts an HTTP server on port 80. Open `http://<flipper-ip>/` in any browser on the LAN to browse the microSD card, download/upload files, create folders, and delete items. Flipper gets its IP via DHCP; the address is displayed on screen.
 
 ### Settings
@@ -287,7 +287,7 @@ GND  (G)     →    GND (пин 8 или 11)
 ### Сборка и установка
 
 ```bash
-cd eth_tester
+cd lan_tester
 ufbt build              # только сборка
 ufbt launch             # сборка и запуск на Flipper через USB
 ufbt install            # установка .fap на SD-карту Flipper
@@ -298,10 +298,10 @@ ufbt install            # установка .fap на SD-карту Flipper
 ## Архитектура
 
 ```
-eth_tester/
+lan_tester/
 ├── application.fam              # Манифест FAP
-├── eth_tester_app.c             # Точка входа, ViewDispatcher, логика функций
-├── eth_tester_app.h             # Общие типы и состояние приложения
+├── lan_tester_app.c             # Точка входа, ViewDispatcher, логика функций
+├── lan_tester_app.h             # Общие типы и состояние приложения
 │
 ├── hal/                         # Hardware Abstraction Layer
 │   ├── w5500_hal.c              # SPI, GPIO, управление MACRAW-сокетом
@@ -375,8 +375,8 @@ eth_tester/
 
 ### Tools
 - **Wake-on-LAN** — отправка magic-пакета для пробуждения устройства по MAC.
-- **ETH Bridge** — превращает Flipper в USB-Ethernet мост. Телефон/ПК подключается по USB (CDC-ECM), трафик прозрачно передаётся в LAN через W5500 на уровне L2. Хост получает IP от DHCP-сервера сети. На экране отображаются счётчики фреймов и статус соединений. Нажмите **OK** для старта/остановки записи PCAP-дампа на SD-карту (файлы `.pcap`, совместимые с Wireshark, сохраняются в `apps_data/eth_tester/pcap/`). Нажмите Back для остановки и восстановления USB.
-- **PXE Server** — минимальный PXE-сервер. Настройка IP сервера/клиента и подсети, встроенный DHCP-сервер (вкл/выкл). Раздаёт .kpxe/.efi файлы с SD-карты (`apps_data/eth_tester/pxe/`) по TFTP. Подключите Flipper напрямую к целевой машине для сетевой загрузки.
+- **ETH Bridge** — превращает Flipper в USB-Ethernet мост. Телефон/ПК подключается по USB (CDC-ECM), трафик прозрачно передаётся в LAN через W5500 на уровне L2. Хост получает IP от DHCP-сервера сети. На экране отображаются счётчики фреймов и статус соединений. Нажмите **OK** для старта/остановки записи PCAP-дампа на SD-карту (файлы `.pcap`, совместимые с Wireshark, сохраняются в `apps_data/lan_tester/pcap/`). Нажмите Back для остановки и восстановления USB.
+- **PXE Server** — минимальный PXE-сервер. Настройка IP сервера/клиента и подсети, встроенный DHCP-сервер (вкл/выкл). Раздаёт .kpxe/.efi файлы с SD-карты (`apps_data/lan_tester/pxe/`) по TFTP. Подключите Flipper напрямую к целевой машине для сетевой загрузки.
 - **File Manager** — запускает HTTP-сервер на порту 80. Откройте `http://<ip-flipper>/` в любом браузере в сети для просмотра microSD-карты, скачивания/загрузки файлов, создания папок и удаления. Flipper получает IP по DHCP; адрес отображается на экране.
 
 ### Settings
