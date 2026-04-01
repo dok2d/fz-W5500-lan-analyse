@@ -83,6 +83,47 @@ static void dhcp_timer_callback(void* context) {
 /* Frame receive buffer size */
 #define FRAME_BUF_SIZE 1600
 
+/* Settings file path */
+#define SETTINGS_PATH APP_DATA_PATH("settings.conf")
+
+/* ==================== Settings persistence ==================== */
+
+static void eth_tester_settings_load(EthTesterApp* app) {
+    /* Defaults: both enabled */
+    app->setting_autosave = true;
+    app->setting_sound = true;
+
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* file = storage_file_alloc(storage);
+    if(storage_file_open(file, SETTINGS_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        char buf[32];
+        uint16_t read = storage_file_read(file, buf, sizeof(buf) - 1);
+        buf[read] = '\0';
+        storage_file_close(file);
+        /* Simple format: "autosave=X\nsound=X\n" */
+        if(strstr(buf, "autosave=0")) app->setting_autosave = false;
+        if(strstr(buf, "sound=0")) app->setting_sound = false;
+    }
+    storage_file_free(file);
+    furi_record_close(RECORD_STORAGE);
+}
+
+static void eth_tester_settings_save(EthTesterApp* app) {
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    storage_simply_mkdir(storage, APP_DATA_PATH(""));
+    File* file = storage_file_alloc(storage);
+    if(storage_file_open(file, SETTINGS_PATH, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "autosave=%d\nsound=%d\n",
+            app->setting_autosave ? 1 : 0,
+            app->setting_sound ? 1 : 0);
+        storage_file_write(file, buf, strlen(buf));
+        storage_file_close(file);
+    }
+    storage_file_free(file);
+    furi_record_close(RECORD_STORAGE);
+}
+
 /* ==================== Forward declarations ==================== */
 
 static void eth_tester_submenu_callback(void* context, uint32_t index);
@@ -221,6 +262,28 @@ static bool cont_ping_input_callback(InputEvent* event, void* context) {
 
 /* ==================== App alloc / free ==================== */
 
+/* ==================== Settings view callbacks ==================== */
+
+static const char* const setting_onoff[] = {"OFF", "ON"};
+
+static void settings_autosave_changed(VariableItem* item) {
+    uint8_t idx = variable_item_get_current_value_index(item);
+    variable_item_set_current_value_text(item, setting_onoff[idx]);
+    if(g_app) {
+        g_app->setting_autosave = (idx == 1);
+        eth_tester_settings_save(g_app);
+    }
+}
+
+static void settings_sound_changed(VariableItem* item) {
+    uint8_t idx = variable_item_get_current_value_index(item);
+    variable_item_set_current_value_text(item, setting_onoff[idx]);
+    if(g_app) {
+        g_app->setting_sound = (idx == 1);
+        eth_tester_settings_save(g_app);
+    }
+}
+
 static EthTesterApp* eth_tester_app_alloc(void) {
     EthTesterApp* app = malloc(sizeof(EthTesterApp));
     memset(app, 0, sizeof(EthTesterApp));
@@ -289,6 +352,7 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "Diagnostics", 102, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Tools", 103, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "History", EthTesterMenuItemHistory, eth_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Settings", 104, eth_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "About", EthTesterMenuItemAbout, eth_tester_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), eth_tester_navigation_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewMainMenu, submenu_get_view(app->submenu));
@@ -501,6 +565,27 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_box_get_view(app->text_box_about), eth_tester_navigation_submenu_callback);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewAbout, text_box_get_view(app->text_box_about));
 
+    /* Settings view (VariableItemList) */
+    app->settings_list = variable_item_list_alloc();
+    view_set_previous_callback(
+        variable_item_list_get_view(app->settings_list),
+        eth_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, EthTesterViewSettings,
+        variable_item_list_get_view(app->settings_list));
+
+    VariableItem* item_autosave = variable_item_list_add_item(
+        app->settings_list, "Auto-save results", 2, settings_autosave_changed, app);
+    VariableItem* item_sound = variable_item_list_add_item(
+        app->settings_list, "Sound & vibro", 2, settings_sound_changed, app);
+
+    /* Load settings from SD */
+    eth_tester_settings_load(app);
+    variable_item_set_current_value_index(item_autosave, app->setting_autosave ? 1 : 0);
+    variable_item_set_current_value_text(item_autosave, setting_onoff[app->setting_autosave ? 1 : 0]);
+    variable_item_set_current_value_index(item_sound, app->setting_sound ? 1 : 0);
+    variable_item_set_current_value_text(item_sound, setting_onoff[app->setting_sound ? 1 : 0]);
+
     /* Load saved MAC from SD card if available */
     if(mac_changer_load(app->mac_addr)) {
         FURI_LOG_I(TAG, "Loaded custom MAC from SD");
@@ -547,12 +632,14 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatDiscovery);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatDiag);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewCatTools);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewSettings);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_netinfo);
     submenu_free(app->submenu_cat_discovery);
     submenu_free(app->submenu_cat_diag);
     submenu_free(app->submenu_cat_tools);
+    variable_item_list_free(app->settings_list);
     text_box_free(app->text_box_link);
     text_box_free(app->text_box_lldp);
     text_box_free(app->text_box_arp);
@@ -877,12 +964,12 @@ static bool eth_tester_ensure_w5500(EthTesterApp* app) {
  */
 static bool eth_tester_ensure_dhcp(EthTesterApp* app) {
     if(!eth_tester_ensure_w5500(app)) {
-        notification_message(app->notifications, &sequence_error);
+        if(app->setting_sound) notification_message(app->notifications, &sequence_error);
         return false;
     }
 
     if(!w5500_hal_get_link_status()) {
-        notification_message(app->notifications, &sequence_error);
+        if(app->setting_sound) notification_message(app->notifications, &sequence_error);
         return false;
     }
 
@@ -941,7 +1028,7 @@ static bool eth_tester_ensure_dhcp(EthTesterApp* app) {
     DHCP_stop();
     free(dhcp_buffer);
 
-    if(!got_ip) {
+    if(!got_ip && app->setting_sound) {
         notification_message(app->notifications, &sequence_error);
     }
 
@@ -1111,7 +1198,7 @@ static void eth_tester_mac_changer_input_callback(void* context) {
         new_mac_str);
     text_box_set_text(app->text_box_mac_changer, furi_string_get_cstr(app->mac_changer_text));
     view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewMacChanger);
-    notification_message(app->notifications, &sequence_success);
+    if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 }
 
 /* ==================== WoL MAC input callback ==================== */
@@ -1326,6 +1413,9 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
     case 103: /* Tools category */
         view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewCatTools);
+        break;
+    case 104: /* Settings */
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewSettings);
         break;
 
     default:
@@ -1948,7 +2038,9 @@ static void eth_tester_do_wol(EthTesterApp* app) {
             "Failed to send!\n",
             mac_str);
     }
-    notification_message(app->notifications, ok ? &sequence_success : &sequence_error);
+    if(app->setting_sound) {
+        notification_message(app->notifications, ok ? &sequence_success : &sequence_error);
+    }
 }
 
 /* ==================== MAC Changer ==================== */
@@ -2581,7 +2673,7 @@ static void eth_tester_history_delete_callback(void* context, uint32_t index) {
 
     const char* filename = app->history_state->files[file_idx].filename;
     history_delete_file(filename);
-    notification_message(app->notifications, &sequence_success);
+    if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 
     /* Refresh list */
     eth_tester_history_populate(app);
@@ -2778,7 +2870,9 @@ static void eth_tester_do_cont_ping(EthTesterApp* app) {
         (unsigned long)((pg->rtt_min == UINT32_MAX) ? 0 : pg->rtt_min),
         (unsigned long)ping_graph_avg_rtt(pg),
         (unsigned long)pg->rtt_max);
-    eth_tester_save_results("cont_ping.txt", furi_string_get_cstr(log));
+    if(app->setting_autosave) {
+        eth_tester_save_results("cont_ping.txt", furi_string_get_cstr(log));
+    }
     furi_string_free(log);
 
     /* Cleanup */
@@ -2920,11 +3014,15 @@ static bool eth_tester_save_results(const char* type, const char* content) {
     return history_save(scan_type, content);
 }
 
-/* Save results and append status to the display text, with LED/vibro feedback */
+/* Save results and append status to the display text, with optional LED/vibro feedback */
 static void eth_tester_save_and_notify(EthTesterApp* app, const char* type, FuriString* text) {
-    bool ok = eth_tester_save_results(type, furi_string_get_cstr(text));
-    furi_string_cat_str(text, ok ? "\nSaved to History\n" : "\nHistory save failed\n");
-    notification_message(app->notifications, ok ? &sequence_success : &sequence_error);
+    if(app->setting_autosave) {
+        bool ok = eth_tester_save_results(type, furi_string_get_cstr(text));
+        furi_string_cat_str(text, ok ? "\nSaved to History\n" : "\nHistory save failed\n");
+    }
+    if(app->setting_sound) {
+        notification_message(app->notifications, &sequence_success);
+    }
 }
 
 /* ==================== Entry point ==================== */

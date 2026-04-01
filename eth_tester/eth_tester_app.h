@@ -4,6 +4,7 @@
 #include <gui/gui.h>
 #include <gui/view_dispatcher.h>
 #include <gui/modules/submenu.h>
+#include <gui/modules/variable_item_list.h>
 #include <gui/modules/text_box.h>
 #include <gui/modules/text_input.h>
 #include <gui/modules/byte_input.h>
@@ -48,6 +49,7 @@ typedef enum {
     EthTesterViewCatDiscovery,
     EthTesterViewCatDiag,
     EthTesterViewCatTools,
+    EthTesterViewSettings,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -124,7 +126,12 @@ struct EthTesterApp {
     HistoryState* history_state;
     uint16_t history_selected; /* index of currently viewed file */
     TextBox* text_box_about;
+    VariableItemList* settings_list;
     NotificationApp* notifications;
+
+    /* User settings (persisted to SD) */
+    bool setting_autosave;  /* auto-save results to history */
+    bool setting_sound;     /* LED/vibro/sound notifications */
 
     /* Worker thread for non-blocking operations */
     FuriThread* worker_thread;
