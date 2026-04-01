@@ -4,6 +4,7 @@
 #include <gui/gui.h>
 #include <gui/view_dispatcher.h>
 #include <gui/modules/submenu.h>
+#include <gui/modules/variable_item_list.h>
 #include <gui/modules/text_box.h>
 #include <gui/modules/text_input.h>
 #include <gui/modules/byte_input.h>
@@ -44,6 +45,11 @@ typedef enum {
     EthTesterViewHistory,
     EthTesterViewHistoryFile,
     EthTesterViewAbout,
+    EthTesterViewCatNetInfo,
+    EthTesterViewCatDiscovery,
+    EthTesterViewCatDiag,
+    EthTesterViewCatTools,
+    EthTesterViewSettings,
     EthTesterViewCount,
 } EthTesterView;
 
@@ -59,6 +65,7 @@ typedef enum {
     EthTesterMenuItemWol,
     EthTesterMenuItemContPing,
     EthTesterMenuItemPortScan,
+    EthTesterMenuItemPortScanFull,
     EthTesterMenuItemMacChanger,
     EthTesterMenuItemTraceroute,
     EthTesterMenuItemPingSweep,
@@ -87,6 +94,10 @@ struct EthTesterApp {
     Gui* gui;
     ViewDispatcher* view_dispatcher;
     Submenu* submenu;
+    Submenu* submenu_cat_netinfo;
+    Submenu* submenu_cat_discovery;
+    Submenu* submenu_cat_diag;
+    Submenu* submenu_cat_tools;
     TextBox* text_box_link;
     TextBox* text_box_lldp;
     TextBox* text_box_arp;
@@ -113,8 +124,14 @@ struct EthTesterApp {
     Submenu* submenu_history;
     TextBox* text_box_history_file;
     HistoryState* history_state;
+    uint16_t history_selected; /* index of currently viewed file */
     TextBox* text_box_about;
+    VariableItemList* settings_list;
     NotificationApp* notifications;
+
+    /* User settings (persisted to SD) */
+    bool setting_autosave;  /* auto-save results to history */
+    bool setting_sound;     /* LED/vibro/sound notifications */
 
     /* Worker thread for non-blocking operations */
     FuriThread* worker_thread;
@@ -128,6 +145,9 @@ struct EthTesterApp {
     uint8_t link_speed;   /* 0 = 10M, 1 = 100M */
     uint8_t link_duplex;  /* 0 = half, 1 = full */
     uint8_t mac_addr[6];
+
+    /* Frame receive buffer (heap-allocated, shared by worker thread) */
+    uint8_t* frame_buf;
 
     /* DHCP timer (1 second periodic for DHCP_time_handler) */
     FuriTimer* dhcp_timer;
@@ -161,6 +181,7 @@ struct EthTesterApp {
     /* Port scanner state */
     char port_scan_ip_input[16]; /* text input buffer */
     uint8_t port_scan_target[4]; /* parsed target IP */
+    bool port_scan_top100;       /* false=Top20, true=Top100 */
 
     /* MAC changer state */
     uint8_t mac_changer_input[6]; /* byte input buffer for custom MAC */
