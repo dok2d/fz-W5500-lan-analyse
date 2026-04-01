@@ -1152,6 +1152,11 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemPing:
+        /* Pre-populate with gateway if DHCP available and no custom target set */
+        if(app->dhcp_valid && strcmp(app->ping_ip_input, "8.8.8.8") == 0) {
+            snprintf(app->ping_ip_input, sizeof(app->ping_ip_input),
+                "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+        }
         text_input_reset(app->text_input_ping);
         text_input_set_header_text(app->text_input_ping, "Ping target IP:");
         text_input_set_result_callback(
@@ -1235,6 +1240,10 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemTraceroute:
+        if(app->dhcp_valid && strcmp(app->traceroute_ip_input, "8.8.8.8") == 0) {
+            snprintf(app->traceroute_ip_input, sizeof(app->traceroute_ip_input),
+                "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+        }
         text_input_reset(app->text_input_traceroute);
         text_input_set_header_text(app->text_input_traceroute, "Traceroute target IP:");
         text_input_set_result_callback(
@@ -1285,6 +1294,10 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
         break;
 
     case EthTesterMenuItemContPing:
+        if(app->dhcp_valid && strcmp(app->cont_ping_ip_input, "8.8.8.8") == 0) {
+            snprintf(app->cont_ping_ip_input, sizeof(app->cont_ping_ip_input),
+                "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+        }
         text_input_reset(app->text_input_cont_ping);
         text_input_set_header_text(app->text_input_cont_ping, "Ping target IP:");
         text_input_set_result_callback(
