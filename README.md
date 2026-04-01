@@ -12,6 +12,8 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 
 **[English docs](docs/en/README.md)** | **[Документация на русском](docs/ru/README.md)**
 
+![Main menu](docs/screenshots/main_menu.png)
+
 ---
 
 ## Features

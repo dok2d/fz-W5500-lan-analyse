@@ -10,6 +10,8 @@
 4. The menu header shows link status: `LAN [UP 100M FD]` or `LAN [DOWN]`
 5. Select a category and then a feature
 
+![Main menu](../screenshots/main_menu.png)
+
 The menu is organized into four categories: **Network Info**, **Discovery**, **Diagnostics**, and **Tools**. Most features that need an IP address will run DHCP automatically on first use, then cache the result for all subsequent operations.
 
 ### Navigation
@@ -129,6 +131,8 @@ Passive listener for switch neighbor discovery protocols.
 - Management IP
 - Software version
 - Native VLAN
+
+![LLDP neighbor result](../screenshots/lldp_result.png)
 
 Press **Back** to stop listening early.
 
@@ -271,6 +275,8 @@ Press **OK** to start/stop recording. Press **Back** to exit.
 ## Interactive Host List
 
 When ARP Scan or Ping Sweep discovers hosts, they are saved to an interactive list. Select any host to perform actions:
+
+![Discovered hosts list](../screenshots/discovered_hosts.png)
 
 - **Ping** -- quick 4-ping test to that host
 - **Continuous Ping** -- live RTT graph to that host

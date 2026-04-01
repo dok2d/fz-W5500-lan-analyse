@@ -40,6 +40,8 @@ ETH Bridge превращает Flipper Zero в USB-Ethernet сетевой ад
 - **LAN → USB**: счётчик фреймов (из Ethernet в USB)
 - **Errors**: счётчик ошибок SPI/USB
 
+![Экран ETH Bridge](../screenshots/ETH_Bridge.png)
+
 ### Управление
 
 - **OK**: включить/выключить запись PCAP

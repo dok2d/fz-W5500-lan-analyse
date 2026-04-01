@@ -40,6 +40,8 @@ While the bridge is running, the screen shows:
 - **LAN → USB**: frame counter (frames forwarded from Ethernet to USB)
 - **Errors**: SPI/USB error counter
 
+![ETH Bridge screen](../screenshots/ETH_Bridge.png)
+
 ### Controls
 
 - **OK**: toggle PCAP recording on/off
