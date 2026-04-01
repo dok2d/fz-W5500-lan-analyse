@@ -8,7 +8,7 @@ App(
     fap_icon="assets/icon.png",
     fap_icon_assets="assets",
     fap_author="dok2d",
-    fap_version="0.1",
+    fap_version="0.2",
     requires=[
         "gui",
     ],
