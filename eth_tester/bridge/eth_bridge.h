@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "pcap_dump.h"
 
 /**
  * Ethernet Bridge Engine
@@ -11,6 +12,9 @@
  *
  * Operates at Layer 2 — transparently forwards all Ethernet frames.
  * The phone gets an IP from the LAN's DHCP server.
+ *
+ * Optional PCAP dump: when enabled, all forwarded frames are written
+ * to a .pcap file on the SD card (Wireshark-compatible).
  */
 
 typedef struct {
@@ -22,6 +26,8 @@ typedef struct {
     uint32_t errors;              /* Total forwarding errors */
     bool usb_connected;           /* Last known USB connection state */
     bool lan_link_up;             /* Last known LAN link state */
+    bool dump_enabled;            /* PCAP dump toggle */
+    PcapDumpState pcap;           /* PCAP dump state */
 } EthBridgeState;
 
 /**
