@@ -617,6 +617,10 @@ static EthTesterApp* eth_tester_app_alloc(void) {
     view_set_previous_callback(text_box_get_view(app->text_box_traceroute), eth_tester_nav_back_diag);
     view_dispatcher_add_view(app->view_dispatcher, EthTesterViewTraceroute, text_box_get_view(app->text_box_traceroute));
 
+    app->text_input_traceroute = text_input_alloc();
+    view_set_previous_callback(text_input_get_view(app->text_input_traceroute), eth_tester_nav_back_diag);
+    view_dispatcher_add_view(app->view_dispatcher, EthTesterViewTracerouteInput, text_input_get_view(app->text_input_traceroute));
+
     /* Default traceroute target */
     strncpy(app->traceroute_ip_input, "8.8.8.8", sizeof(app->traceroute_ip_input));
 
@@ -729,6 +733,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChanger);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewMacChangerInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTraceroute);
+    view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewTracerouteInput);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewPingSweep);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewIpKeyboard);
     view_dispatcher_remove_view(app->view_dispatcher, EthTesterViewDiscovery);
@@ -766,6 +771,7 @@ static void eth_tester_app_free(EthTesterApp* app) {
     view_free(app->view_bridge);
     if(app->bridge_state) free(app->bridge_state);
     text_box_free(app->text_box_traceroute);
+    text_input_free(app->text_input_traceroute);
     text_box_free(app->text_box_ping_sweep);
     ip_keyboard_free(app->ip_keyboard);
     text_box_free(app->text_box_discovery);
@@ -1445,17 +1451,16 @@ static void eth_tester_submenu_callback(void* context, uint32_t index) {
             snprintf(app->traceroute_ip_input, sizeof(app->traceroute_ip_input),
                 "%d.%d.%d.%d", app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
         }
-        ip_keyboard_setup(
-            app->ip_keyboard,
-            "Traceroute target:",
-            app->traceroute_ip_input,
-            false,
+        text_input_reset(app->text_input_traceroute);
+        text_input_set_header_text(app->text_input_traceroute, "Traceroute target (IP/host):");
+        text_input_set_result_callback(
+            app->text_input_traceroute,
             eth_tester_traceroute_ip_input_callback,
             app,
             app->traceroute_ip_input,
             sizeof(app->traceroute_ip_input),
-            eth_tester_nav_back_diag);
-        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewIpKeyboard);
+            false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, EthTesterViewTracerouteInput);
         break;
 
     case EthTesterMenuItemMacChanger:
