@@ -1622,10 +1622,10 @@ static void eth_tester_do_arp_scan(EthTesterApp* app) {
 
     for(uint16_t i = 0; i < scan->count; i++) {
         ArpHost* h = &scan->hosts[i];
-        char ip_buf[16], mac_buf[18];
+        char ip_buf[16];
         pkt_format_ip(h->ip, ip_buf);
-        pkt_format_mac(h->mac, mac_buf);
-        furi_string_cat_printf(app->arp_text, "%s\n %s\n %s\n", ip_buf, mac_buf, h->vendor);
+        furi_string_cat_printf(app->arp_text, "%s ..%02X:%02X:%02X\n %s\n",
+            ip_buf, h->mac[3], h->mac[4], h->mac[5], h->vendor);
     }
 
     if(scan->count == 0) {
@@ -2835,27 +2835,22 @@ static void eth_tester_do_stats(EthTesterApp* app) {
         w5500_hal_close_macraw();
     }
 
-    /* Format statistics */
+    /* Format statistics with compact layout */
     PacketStats* s = &app->stats;
+    uint32_t t = s->total_frames ? s->total_frames : 1; /* avoid div by 0 */
     furi_string_printf(
         app->stats_text,
-        "[Packet Stats]\n"
-        "Total: %lu\n"
-        "Unicast: %lu\n"
-        "Broadcast: %lu\n"
-        "Multicast: %lu\n"
-        "\n[By EtherType]\n"
-        "IPv4: %lu\n"
-        "ARP: %lu\n"
-        "IPv6: %lu\n"
-        "LLDP: %lu\n"
-        "CDP: %lu\n"
-        "Other: %lu\n",
+        "[Stats] %lu frames\n"
+        "Uni:%lu Bcast:%lu Mcast:%lu\n"
+        "\nIPv4:%lu(%lu%%) ARP:%lu\n"
+        "IPv6:%lu LLDP:%lu CDP:%lu\n"
+        "Other:%lu\n",
         (unsigned long)s->total_frames,
         (unsigned long)s->unicast_frames,
         (unsigned long)s->broadcast_frames,
         (unsigned long)s->multicast_frames,
         (unsigned long)s->ipv4_frames,
+        (unsigned long)(s->ipv4_frames * 100 / t),
         (unsigned long)s->arp_frames,
         (unsigned long)s->ipv6_frames,
         (unsigned long)s->lldp_frames,
