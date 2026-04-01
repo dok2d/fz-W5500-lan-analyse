@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.1] - 2026
+## [1.1.0] - 2026
 
 ### Added
 - **Custom DNS Server**: configurable DNS server in Settings (default: 8.8.8.8), overrides DHCP-provided DNS
@@ -19,7 +19,7 @@
 - **Settings**: added Custom DNS, DNS Server IP, Ping Count, Ping Timeout, Continuous Ping Interval items
 - **Traceroute**: replaced IP-only keyboard with TextInput supporting both IPs and hostnames
 
-## [1.0] - 2025
+## [1.0.0] - 2025
 
 ### Added
 - **File Manager**: web-based file manager for Flipper's microSD card in Tools category
