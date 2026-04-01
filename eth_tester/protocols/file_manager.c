@@ -8,7 +8,6 @@
 
 #include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 #define TAG "FILEMGR"
 
@@ -318,9 +317,17 @@ static void handle_list_dir(uint8_t sn, const char* sd_path, const char* web_pat
         }
         storage_dir_close(dir);
 
-        /* Sort: directories first, then alphabetical */
-        if(entry_count > 1) {
-            qsort(entries, entry_count, sizeof(FmDirEntry), fm_entry_cmp);
+        /* Insertion sort: directories first, then alphabetical.
+         * qsort is disabled in Flipper FAP SDK; insertion sort is
+         * fine for <=128 entries and uses no extra memory. */
+        for(uint16_t i = 1; i < entry_count; i++) {
+            FmDirEntry tmp = entries[i];
+            uint16_t j = i;
+            while(j > 0 && fm_entry_cmp(&tmp, &entries[j - 1]) < 0) {
+                entries[j] = entries[j - 1];
+                j--;
+            }
+            entries[j] = tmp;
         }
 
         /* Stream each row directly — no HTML accumulation */
