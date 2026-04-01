@@ -2458,12 +2458,16 @@ static void eth_tester_history_file_callback(void* context, uint32_t index) {
     app->history_selected = index;
     const char* filename = app->history_state->files[index].filename;
 
-    char buf[2048];
-    if(history_read_file(filename, buf, sizeof(buf))) {
+    char* buf = malloc(2048);
+    if(!buf) {
+        furi_string_set(app->history_file_text, "Memory alloc failed!\n");
+    } else if(history_read_file(filename, buf, 2048)) {
         furi_string_set(app->history_file_text, buf);
         furi_string_cat_str(app->history_file_text, "\n[Hold OK to delete]\n");
+        free(buf);
     } else {
         furi_string_printf(app->history_file_text, "Failed to read:\n%s\n", filename);
+        free(buf);
     }
 
     text_box_reset(app->text_box_history_file);
