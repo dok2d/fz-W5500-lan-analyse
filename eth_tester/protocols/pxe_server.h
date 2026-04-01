@@ -79,6 +79,15 @@ typedef struct {
     bool dhcp_enabled;          /* Run built-in DHCP server? */
 } PxeConfig;
 
+/* Maximum number of detected boot files */
+#define PXE_MAX_BOOT_FILES 8
+
+/* Single boot file entry */
+typedef struct {
+    char filename[64];
+    uint32_t file_size;
+} PxeBootFile;
+
 /* PXE server overall state */
 typedef struct {
     volatile bool running;
@@ -93,10 +102,14 @@ typedef struct {
     uint32_t tftp_blocks_sent;
     uint32_t tftp_errors;
 
-    /* Boot file info */
+    /* Boot file info (selected) */
     char boot_filename[64];
     uint32_t boot_file_size;
     bool boot_file_found;
+
+    /* All detected boot files */
+    PxeBootFile boot_files[PXE_MAX_BOOT_FILES];
+    uint8_t boot_file_count;
 
     /* Client info (for display) */
     uint8_t client_mac[6];

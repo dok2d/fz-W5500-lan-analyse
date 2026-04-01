@@ -472,32 +472,38 @@ static bool pxe_is_boot_extension(const char* name) {
             strcmp(ext, ".0") == 0);
 }
 
-bool pxe_detect_boot_file(PxeServerState* state) {
-    Storage* storage = furi_record_open(RECORD_STORAGE);
+static void pxe_add_boot_file(PxeServerState* state, const char* name, uint32_t size) {
+    if(state->boot_file_count >= PXE_MAX_BOOT_FILES) return;
+    /* Skip duplicates */
+    for(uint8_t i = 0; i < state->boot_file_count; i++) {
+        if(strcmp(state->boot_files[i].filename, name) == 0) return;
+    }
+    PxeBootFile* bf = &state->boot_files[state->boot_file_count];
+    strncpy(bf->filename, name, sizeof(bf->filename) - 1);
+    bf->file_size = size;
+    state->boot_file_count++;
+}
 
-    /* Create PXE directory if it doesn't exist */
+bool pxe_detect_boot_file(PxeServerState* state) {
+    state->boot_file_count = 0;
+    state->boot_file_found = false;
+
+    Storage* storage = furi_record_open(RECORD_STORAGE);
     storage_simply_mkdir(storage, PXE_BOOT_DIR);
 
-    /* Try preferred files first */
+    /* Check preferred files first (these get priority ordering) */
     for(int i = 0; pxe_preferred_files[i] != NULL; i++) {
         char path[128];
         snprintf(path, sizeof(path), "%s/%s", PXE_BOOT_DIR, pxe_preferred_files[i]);
-
         File* file = storage_file_alloc(storage);
         if(storage_file_open(file, path, FSAM_READ, FSOM_OPEN_EXISTING)) {
-            state->boot_file_size = (uint32_t)storage_file_size(file);
-            strncpy(state->boot_filename, pxe_preferred_files[i], sizeof(state->boot_filename) - 1);
-            state->boot_file_found = true;
+            pxe_add_boot_file(state, pxe_preferred_files[i], (uint32_t)storage_file_size(file));
             storage_file_close(file);
-            storage_file_free(file);
-            furi_record_close(RECORD_STORAGE);
-            FURI_LOG_I(TAG, "Boot file found: %s (%lu bytes)", state->boot_filename, state->boot_file_size);
-            return true;
         }
         storage_file_free(file);
     }
 
-    /* Scan directory for any valid boot file */
+    /* Scan directory for all valid boot files */
     File* dir = storage_file_alloc(storage);
     if(storage_dir_open(dir, PXE_BOOT_DIR)) {
         FileInfo info;
@@ -505,14 +511,7 @@ bool pxe_detect_boot_file(PxeServerState* state) {
         while(storage_dir_read(dir, &info, name, sizeof(name))) {
             if(info.flags & FSF_DIRECTORY) continue;
             if(pxe_is_boot_extension(name)) {
-                state->boot_file_size = (uint32_t)info.size;
-                strncpy(state->boot_filename, name, sizeof(state->boot_filename) - 1);
-                state->boot_file_found = true;
-                storage_dir_close(dir);
-                storage_file_free(dir);
-                furi_record_close(RECORD_STORAGE);
-                FURI_LOG_I(TAG, "Boot file found: %s (%lu bytes)", state->boot_filename, state->boot_file_size);
-                return true;
+                pxe_add_boot_file(state, name, (uint32_t)info.size);
             }
         }
         storage_dir_close(dir);
@@ -520,7 +519,17 @@ bool pxe_detect_boot_file(PxeServerState* state) {
     storage_file_free(dir);
     furi_record_close(RECORD_STORAGE);
 
-    state->boot_file_found = false;
+    if(state->boot_file_count > 0) {
+        /* Select first file as default */
+        strncpy(state->boot_filename, state->boot_files[0].filename,
+            sizeof(state->boot_filename) - 1);
+        state->boot_file_size = state->boot_files[0].file_size;
+        state->boot_file_found = true;
+        FURI_LOG_I(TAG, "Found %d boot file(s), selected: %s (%lu bytes)",
+            state->boot_file_count, state->boot_filename, state->boot_file_size);
+        return true;
+    }
+
     FURI_LOG_I(TAG, "No boot file found in %s", PXE_BOOT_DIR);
     return false;
 }
