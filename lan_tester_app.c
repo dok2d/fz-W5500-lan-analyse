@@ -2402,9 +2402,8 @@ static bool lan_tester_ensure_dhcp(LanTesterApp* app) {
         return true;
     }
 
-    /* Run DHCP */
-    uint8_t* dhcp_buffer = malloc(1024);
-    if(!dhcp_buffer) return false;
+    /* Run DHCP — reuse frame_buf (1600 bytes, already allocated by ensure_w5500) */
+    uint8_t* dhcp_buffer = app->frame_buf;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -2441,7 +2440,6 @@ static bool lan_tester_ensure_dhcp(LanTesterApp* app) {
         furi_delay_ms(10);
     }
     DHCP_stop();
-    free(dhcp_buffer);
 
     if(!got_ip && app->setting_sound) {
         notification_message(app->notifications, &sequence_error);
@@ -3801,21 +3799,14 @@ static void lan_tester_do_dhcp_analyze(LanTesterApp* app) {
         return;
     }
 
-    /* Build DHCP Discover (heap to save stack) */
-    uint8_t* dhcp_pkt = malloc(548);
-    if(!dhcp_pkt) {
-        furi_string_set(app->tool_text, "Memory alloc failed!\n");
-        close(dhcp_socket);
-        return;
-    }
+    /* Build DHCP Discover — reuse frame_buf (1600 bytes) */
     uint32_t xid;
     furi_hal_random_fill_buf((uint8_t*)&xid, sizeof(xid));
-    uint16_t pkt_len = dhcp_build_discover(dhcp_pkt, app->mac_addr, xid);
+    uint16_t pkt_len = dhcp_build_discover(app->frame_buf, app->mac_addr, xid);
 
     /* Send to broadcast 255.255.255.255:67 */
     uint8_t bcast_ip[4] = {255, 255, 255, 255};
-    int32_t sent = sendto(dhcp_socket, dhcp_pkt, pkt_len, bcast_ip, DHCP_SERVER_PORT);
-    free(dhcp_pkt);
+    int32_t sent = sendto(dhcp_socket, app->frame_buf, pkt_len, bcast_ip, DHCP_SERVER_PORT);
     if(sent <= 0) {
         furi_string_set(app->tool_text, "Failed to send\nDHCP Discover!\n");
         close(dhcp_socket);
@@ -3830,21 +3821,15 @@ static void lan_tester_do_dhcp_analyze(LanTesterApp* app) {
     DhcpAnalyzeResult dhcp_result;
     bool got_offer = false;
     uint32_t start_tick = furi_get_tick();
-    uint8_t* recv_buf = malloc(1024);
-    if(!recv_buf) {
-        furi_string_set(app->tool_text, "Memory alloc failed!\n");
-        close(dhcp_socket);
-        return;
-    }
-
-    while(furi_get_tick() - start_tick < 10000 && app->worker_running) { /* 10 sec timeout */
+    /* Reuse frame_buf for receiving DHCP Offer */
+    while(furi_get_tick() - start_tick < 10000 && app->worker_running) {
         uint16_t rx_size = getSn_RX_RSR(dhcp_socket);
         if(rx_size > 0) {
             uint8_t from_ip[4];
             uint16_t from_port;
-            int32_t received = recvfrom(dhcp_socket, recv_buf, 1024, from_ip, &from_port);
+            int32_t received = recvfrom(dhcp_socket, app->frame_buf, FRAME_BUF_SIZE, from_ip, &from_port);
             if(received > 0) {
-                if(dhcp_parse_offer(recv_buf, (uint16_t)received, xid, &dhcp_result)) {
+                if(dhcp_parse_offer(app->frame_buf, (uint16_t)received, xid, &dhcp_result)) {
                     got_offer = true;
                     break;
                 }
@@ -3853,7 +3838,6 @@ static void lan_tester_do_dhcp_analyze(LanTesterApp* app) {
         furi_delay_ms(50);
     }
 
-    free(recv_buf);
     close(dhcp_socket);
 
     /* Restore network settings */
@@ -3866,12 +3850,9 @@ static void lan_tester_do_dhcp_analyze(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     if(got_offer) {
-        char* result_buf = malloc(768);
-        if(result_buf) {
-            dhcp_format_result(&dhcp_result, result_buf, 768);
-            furi_string_set(app->tool_text, result_buf);
-            free(result_buf);
-        }
+        /* Reuse frame_buf as temporary formatting buffer */
+        dhcp_format_result(&dhcp_result, (char*)app->frame_buf, FRAME_BUF_SIZE);
+        furi_string_set(app->tool_text, (char*)app->frame_buf);
     } else {
         furi_string_set(app->tool_text, "No DHCP server found.\n(waited 10 sec)\n");
     }
@@ -4407,8 +4388,8 @@ static void lan_tester_do_discovery(LanTesterApp* app) {
     furi_string_set(app->tool_text, "Listening for responses...\n(5 seconds)\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    /* Listen for responses */
-    uint8_t recv_buf[512];
+    /* Listen for responses — reuse frame_buf */
+    uint8_t* recv_buf = app->frame_buf;
     uint32_t start_tick = furi_get_tick();
 
     while(furi_get_tick() - start_tick < DISCOVERY_TIMEOUT_MS &&
@@ -4420,7 +4401,7 @@ static void lan_tester_do_discovery(LanTesterApp* app) {
                 uint8_t from_ip[4];
                 uint16_t from_port;
                 int32_t received =
-                    recvfrom(W5500_MDNS_SOCKET, recv_buf, sizeof(recv_buf), from_ip, &from_port);
+                    recvfrom(W5500_MDNS_SOCKET, recv_buf, FRAME_BUF_SIZE, from_ip, &from_port);
                 if(received > 0) {
                     DiscoveryDevice dev;
                     if(mdns_parse_response(recv_buf, (uint16_t)received, from_ip, &dev)) {
@@ -4448,7 +4429,7 @@ static void lan_tester_do_discovery(LanTesterApp* app) {
                 uint8_t from_ip[4];
                 uint16_t from_port;
                 int32_t received =
-                    recvfrom(W5500_SSDP_SOCKET, recv_buf, sizeof(recv_buf), from_ip, &from_port);
+                    recvfrom(W5500_SSDP_SOCKET, recv_buf, FRAME_BUF_SIZE, from_ip, &from_port);
                 if(received > 0) {
                     DiscoveryDevice dev;
                     if(ssdp_parse_response(recv_buf, (uint16_t)received, from_ip, &dev)) {
