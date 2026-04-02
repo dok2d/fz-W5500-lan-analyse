@@ -1419,7 +1419,10 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         app->submenu_cat_security, "802.1X Probe", LanTesterMenuItemEapolProbe,
         lan_tester_submenu_callback, app);
     submenu_add_item(
-        app->submenu_cat_security, "VLAN Hopping", LanTesterMenuItemVlanHop,
+        app->submenu_cat_security, "VLAN Hop Top10", LanTesterMenuItemVlanHopTop10,
+        lan_tester_submenu_callback, app);
+    submenu_add_item(
+        app->submenu_cat_security, "VLAN Hop Custom", LanTesterMenuItemVlanHopCustom,
         lan_tester_submenu_callback, app);
     submenu_add_item(
         app->submenu_cat_security, "RADIUS Test", LanTesterMenuItemRadiusClient,
@@ -1722,6 +1725,8 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     strncpy(app->radius_user_input, "test", sizeof(app->radius_user_input));
     strncpy(app->radius_pass_input, "test", sizeof(app->radius_pass_input));
     app->radius_input_step = 0;
+    app->vlan_hop_custom = false;
+    strncpy(app->vlan_hop_input, "1,10,20,50,100", sizeof(app->vlan_hop_input));
 
     /* Auto Test defaults */
     strncpy(app->autotest_dns_host, "google.com", sizeof(app->autotest_dns_host));
@@ -2239,7 +2244,8 @@ static int32_t lan_tester_worker_fn(void* context) {
         lan_tester_do_eapol_probe(app);
         lan_tester_update_view(app->text_box_tool, app->tool_text);
         break;
-    case LanTesterMenuItemVlanHop:
+    case LanTesterMenuItemVlanHopTop10:
+    case LanTesterMenuItemVlanHopCustom:
         lan_tester_do_vlan_hop(app);
         lan_tester_update_view(app->text_box_tool, app->tool_text);
         break;
@@ -2774,6 +2780,20 @@ static void lan_tester_dns_poison_input_callback(void* context) {
     }
 }
 
+/* ==================== VLAN Hop custom input callback ==================== */
+
+static void lan_tester_vlan_hop_custom_input_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    if(app->vlan_hop_input[0] != '\0') {
+        app->vlan_hop_custom = true;
+        lan_tester_show_view(
+            app, app->text_box_tool, LanTesterViewToolResult,
+            app->tool_text, "Testing VLANs...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemVlanHopCustom, LanTesterViewToolResult);
+    }
+}
+
 /* ==================== TFTP/IPMI/RADIUS input callbacks ==================== */
 
 static void lan_tester_tftp_filename_input_callback(void* context) {
@@ -3300,12 +3320,23 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         lan_tester_worker_start(app, LanTesterMenuItemEapolProbe, LanTesterViewToolResult);
         break;
 
-    case LanTesterMenuItemVlanHop:
+    case LanTesterMenuItemVlanHopTop10:
         app->tool_back_view = LanTesterViewCatSecurity;
+        app->vlan_hop_custom = false;
         lan_tester_show_view(
             app, app->text_box_tool, LanTesterViewToolResult,
             app->tool_text, "Testing VLAN isolation...\n");
-        lan_tester_worker_start(app, LanTesterMenuItemVlanHop, LanTesterViewToolResult);
+        lan_tester_worker_start(app, LanTesterMenuItemVlanHopTop10, LanTesterViewToolResult);
+        break;
+
+    case LanTesterMenuItemVlanHopCustom:
+        app->tool_back_view = LanTesterViewCatSecurity;
+        text_input_reset(app->text_input_tool);
+        text_input_set_header_text(app->text_input_tool, "VLANs (comma sep):");
+        text_input_set_result_callback(
+            app->text_input_tool, lan_tester_vlan_hop_custom_input_callback, app,
+            app->vlan_hop_input, sizeof(app->vlan_hop_input), false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
         break;
 
     case LanTesterMenuItemTftpClient:
@@ -6120,7 +6151,6 @@ static void lan_tester_do_vlan_hop(LanTesterApp* app) {
         return;
     }
 
-    /* Use DHCP gateway as target, or 0.0.0.0 */
     uint8_t target_ip[4] = {0, 0, 0, 0};
     uint8_t our_ip[4] = {0, 0, 0, 0};
     if(app->dhcp_valid) {
@@ -6128,38 +6158,101 @@ static void lan_tester_do_vlan_hop(LanTesterApp* app) {
         memcpy(our_ip, app->dhcp_ip, 4);
     }
 
-    furi_string_cat(app->tool_text, "[VLAN Hopping Test]\n\n");
+    /* Build VLAN list */
+    uint16_t test_vlans[32];
+    uint8_t num_tests = 0;
 
-    /* Test multiple VLANs */
-    uint16_t test_vlans[] = {1, 10, 20, 100, 200};
-    uint8_t num_tests = 5;
-
-    for(uint8_t t = 0; t < num_tests && app->worker_running; t++) {
-        uint16_t vlan = test_vlans[t];
-        furi_string_cat_printf(
-            app->tool_text, "Testing VLAN %d...\n", vlan);
-        lan_tester_update_view(app->text_box_tool, app->tool_text);
-
-        VlanHopResult result;
-        vlan_hop_test(app->mac_addr, our_ip, target_ip, vlan, &result);
-
-        if(result.tagged_reply) {
-            furi_string_cat_printf(
-                app->tool_text, "  VLAN %d: REPLY!\n  Isolation FAILED!\n", vlan);
-        } else if(result.native_reply) {
-            furi_string_cat_printf(
-                app->tool_text, "  VLAN %d: native reply\n  (tag stripped)\n", vlan);
-        } else {
-            furi_string_cat_printf(
-                app->tool_text, "  VLAN %d: no reply\n  (isolated OK)\n", vlan);
+    if(app->vlan_hop_custom) {
+        /* Parse comma-separated VLAN IDs from user input */
+        const char* p = app->vlan_hop_input;
+        while(*p && num_tests < 32) {
+            while(*p == ' ' || *p == ',') p++;
+            if(!*p) break;
+            int v = atoi(p);
+            if(v >= 1 && v <= 4094) {
+                test_vlans[num_tests++] = (uint16_t)v;
+            }
+            while(*p && *p != ',') p++;
         }
-
-        furi_string_cat_printf(
-            app->tool_text, "  Tagged: %d  Untagged: %d\n\n",
-            result.tagged_frames_seen, result.untagged_frames_seen);
+    } else {
+        /* Top 10 common VLANs */
+        static const uint16_t top10[] = {1, 2, 10, 20, 50, 100, 150, 200, 300, 999};
+        num_tests = 10;
+        memcpy(test_vlans, top10, sizeof(top10));
     }
 
-    furi_string_cat(app->tool_text, "Test complete.\n");
+    if(num_tests == 0) {
+        furi_string_set(app->tool_text, "No valid VLAN IDs.\n");
+        return;
+    }
+
+    furi_string_cat_printf(
+        app->tool_text, "[VLAN Hop] %d VLANs\n\n", num_tests);
+    furi_string_cat(app->tool_text, "Scanning...\n");
+    lan_tester_update_view(app->text_box_tool, app->tool_text);
+
+    /* Collect results */
+    uint16_t failed_vlans[32];
+    uint8_t failed_count = 0;
+    uint16_t stripped_vlans[32];
+    uint8_t stripped_count = 0;
+    uint16_t isolated_vlans[32];
+    uint8_t isolated_count = 0;
+
+    for(uint8_t t = 0; t < num_tests && app->worker_running; t++) {
+        VlanHopResult result;
+        vlan_hop_test(app->mac_addr, our_ip, target_ip, test_vlans[t], &result);
+
+        if(result.tagged_reply) {
+            if(failed_count < 32) failed_vlans[failed_count++] = test_vlans[t];
+        } else if(result.native_reply) {
+            if(stripped_count < 32) stripped_vlans[stripped_count++] = test_vlans[t];
+        } else {
+            if(isolated_count < 32) isolated_vlans[isolated_count++] = test_vlans[t];
+        }
+    }
+
+    /* Compact output */
+    furi_string_reset(app->tool_text);
+    furi_string_cat_printf(
+        app->tool_text, "[VLAN Hop] %d tested\n\n", num_tests);
+
+    if(failed_count > 0) {
+        furi_string_cat(app->tool_text, "FAILED (reply): ");
+        for(uint8_t i = 0; i < failed_count; i++) {
+            furi_string_cat_printf(
+                app->tool_text, "%s%d", i > 0 ? "," : "", failed_vlans[i]);
+        }
+        furi_string_cat(app->tool_text, "\n");
+    }
+
+    if(stripped_count > 0) {
+        furi_string_cat(app->tool_text, "Stripped: ");
+        for(uint8_t i = 0; i < stripped_count; i++) {
+            furi_string_cat_printf(
+                app->tool_text, "%s%d", i > 0 ? "," : "", stripped_vlans[i]);
+        }
+        furi_string_cat(app->tool_text, "\n");
+    }
+
+    if(isolated_count > 0) {
+        furi_string_cat(app->tool_text, "OK: ");
+        for(uint8_t i = 0; i < isolated_count; i++) {
+            furi_string_cat_printf(
+                app->tool_text, "%s%d", i > 0 ? "," : "", isolated_vlans[i]);
+        }
+        furi_string_cat(app->tool_text, "\n");
+    }
+
+    furi_string_cat(app->tool_text, "\n");
+    if(failed_count > 0) {
+        furi_string_cat(app->tool_text, "VLAN isolation BROKEN!\n");
+    } else if(stripped_count > 0) {
+        furi_string_cat(app->tool_text, "Tags stripped by switch.\n");
+    } else {
+        furi_string_cat(app->tool_text, "All VLANs isolated OK.\n");
+    }
+
     lan_tester_save_and_notify(app, "vlan_hop.txt", app->tool_text);
 }
 

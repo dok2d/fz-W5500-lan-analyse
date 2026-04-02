@@ -83,7 +83,8 @@ typedef enum {
     LanTesterMenuItemRogueRa,
     LanTesterMenuItemDhcpFingerprint,
     LanTesterMenuItemEapolProbe,
-    LanTesterMenuItemVlanHop,
+    LanTesterMenuItemVlanHopTop10,
+    LanTesterMenuItemVlanHopCustom,
     LanTesterMenuItemTftpClient,
     LanTesterMenuItemIpmiClient,
     LanTesterMenuItemRadiusClient,
@@ -288,6 +289,10 @@ struct LanTesterApp {
     char ipmi_ip_input[16];
     uint8_t radius_target[4];
     char radius_ip_input[16];
+    /* VLAN Hop state */
+    bool vlan_hop_custom;
+    char vlan_hop_input[32]; /* comma-separated VLAN IDs */
+
     char radius_secret_input[32];
     char radius_user_input[32];
     char radius_pass_input[32];
