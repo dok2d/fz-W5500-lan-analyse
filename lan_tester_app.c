@@ -6131,8 +6131,14 @@ static void lan_tester_do_pxe_download(LanTesterApp* app) {
     storage_simply_mkdir(storage, PXE_BOOT_DIR);
     furi_record_close(RECORD_STORAGE);
 
-    /* Step 5: Download each boot file */
+    /* Step 5: Download each boot file.
+     * EFI files are in arch-specific subdirectories on boot.ipxe.org. */
     static const char* filenames[] = {"undionly.kpxe", "ipxe.efi", "snponly.efi"};
+    static const char* url_paths[] = {
+        "/undionly.kpxe",
+        "/x86_64-efi/ipxe.efi",
+        "/x86_64-efi/snponly.efi",
+    };
     static const uint8_t file_count = 3;
     uint8_t ok_count = 0;
     uint8_t skip_count = 0;
@@ -6165,16 +6171,13 @@ static void lan_tester_do_pxe_download(LanTesterApp* app) {
         furi_string_cat_printf(out, "%s: connecting...\n", filenames[i]);
         lan_tester_update_view(app->text_box_tool, out);
 
-        char url_path[32];
-        snprintf(url_path, sizeof(url_path), "/%s", filenames[i]);
-
         HttpDownloadResult result;
         bool ok = http_download_file(
             W5500_DNS_SOCKET,
             HTTP_CLIENT_SOCKET,
             app->dhcp_dns,
             "boot.ipxe.org",
-            url_path,
+            url_paths[i],
             save_path,
             app->frame_buf,
             1024,
