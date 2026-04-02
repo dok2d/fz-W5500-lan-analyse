@@ -50,21 +50,13 @@ static void w5500_spi_write_burst(uint8_t* buf, uint16_t len) {
 bool w5500_hal_init(void) {
     FURI_LOG_I(TAG, "Initializing W5500 HAL");
 
-    /*
-     * Ensure clean state: reset GPIO pins to analog first, in case
-     * a previous crashed instance left them configured as outputs.
-     * This is safe to call unconditionally.
-     */
-    furi_hal_gpio_init(&gpio_cs, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
-    furi_hal_gpio_init(&gpio_reset, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
-
-    /* Enable OTG power for the W5500 module */
-    furi_hal_power_enable_otg();
-    furi_delay_ms(300);
-
-    /* Acquire the external SPI bus */
+    /* Acquire SPI bus first — if it hangs here, no resources are leaked */
     furi_hal_spi_acquire(&furi_hal_spi_bus_handle_external);
     spi_acquired = true;
+
+    /* Enable OTG power for the W5500 module (after SPI, so deinit can clean up) */
+    furi_hal_power_enable_otg();
+    furi_delay_ms(300);
 
     /* Configure CS pin: output open-drain, default high (deselected) */
     furi_hal_gpio_write(&gpio_cs, true);
