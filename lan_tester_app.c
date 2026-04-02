@@ -5940,9 +5940,9 @@ static void lan_tester_do_tftp_client(LanTesterApp* app) {
         app->tftp_target[0], app->tftp_target[1],
         app->tftp_target[2], app->tftp_target[3]);
 
-    furi_string_cat_printf(app->tool_text, "[TFTP Client]\n\n");
+    furi_string_cat(app->tool_text, "[TFTP] ");
     furi_string_cat_printf(app->tool_text, "Server: %s\n", ip_str);
-    furi_string_cat_printf(app->tool_text, "File: %s\n\n", app->tftp_filename_input);
+    furi_string_cat_printf(app->tool_text, "File: %s\n", app->tftp_filename_input);
     furi_string_cat(app->tool_text, "Downloading...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
@@ -5957,7 +5957,7 @@ static void lan_tester_do_tftp_client(LanTesterApp* app) {
             app->tool_text, "\nSuccess!\n%lu bytes, %d blocks\n",
             (unsigned long)result.bytes_received, result.blocks_received);
         if(result.saved_to_sd) {
-            furi_string_cat_printf(app->tool_text, "\nSaved to:\n%s\n", result.save_path);
+            furi_string_cat_printf(app->tool_text, "-> %s\n", result.save_path);
         }
     } else {
         furi_string_cat_printf(
@@ -5988,7 +5988,7 @@ static void lan_tester_do_ipmi_client(LanTesterApp* app) {
         app->ipmi_target[0], app->ipmi_target[1],
         app->ipmi_target[2], app->ipmi_target[3]);
 
-    furi_string_cat_printf(app->tool_text, "[IPMI v1.5] %s\n\n", ip_str);
+    furi_string_cat_printf(app->tool_text, "[IPMI] %s\n", ip_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     IpmiResult result;
@@ -6051,9 +6051,9 @@ static void lan_tester_do_radius_client(LanTesterApp* app) {
         app->radius_target[0], app->radius_target[1],
         app->radius_target[2], app->radius_target[3]);
 
-    furi_string_cat_printf(app->tool_text, "[RADIUS Test]\n\n");
+    furi_string_cat(app->tool_text, "[RADIUS] ");
     furi_string_cat_printf(app->tool_text, "Server: %s\n", ip_str);
-    furi_string_cat_printf(app->tool_text, "User: %s\n\n", app->radius_user_input);
+    furi_string_cat_printf(app->tool_text, "User: %s\n", app->radius_user_input);
     furi_string_cat(app->tool_text, "Sending Access-Request...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
@@ -6095,47 +6095,35 @@ static void lan_tester_do_eapol_probe(LanTesterApp* app) {
         return;
     }
 
-    furi_string_cat(app->tool_text, "[802.1X Probe]\n\n");
-    furi_string_cat(app->tool_text, "Sending EAPOL-Start...\n");
-    furi_string_cat(app->tool_text, "Listening 5 sec...\n\n");
+    furi_string_cat(app->tool_text, "[802.1X] Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     EapolProbeResult result;
     eapol_probe_test(app->mac_addr, &result);
 
+    furi_string_reset(app->tool_text);
     if(!result.eapol_response) {
-        furi_string_cat(app->tool_text, "No EAPOL response.\n\n");
-        furi_string_cat(app->tool_text, "802.1X is likely NOT\nenabled on this port.\n");
+        furi_string_cat(app->tool_text, "[802.1X] No response\n802.1X likely disabled.\n");
     } else {
-        furi_string_cat(app->tool_text, "802.1X DETECTED!\n\n");
+        furi_string_cat(app->tool_text, "[802.1X] DETECTED!\n");
         furi_string_cat_printf(
-            app->tool_text, "Authenticator MAC:\n  %02X:%02X:%02X:%02X:%02X:%02X\n\n",
+            app->tool_text, "Auth: %02X:%02X:%02X:%02X:%02X:%02X\n",
             result.auth_mac[0], result.auth_mac[1], result.auth_mac[2],
             result.auth_mac[3], result.auth_mac[4], result.auth_mac[5]);
-
         if(result.eap_request) {
-            furi_string_cat(app->tool_text, "EAP-Request received.\n");
-            const char* eap_type_str = "Unknown";
+            const char* t = "Unknown";
             switch(result.eap_type) {
-            case 1: eap_type_str = "Identity"; break;
-            case 4: eap_type_str = "MD5-Challenge"; break;
-            case 13: eap_type_str = "EAP-TLS"; break;
-            case 21: eap_type_str = "EAP-TTLS"; break;
-            case 25: eap_type_str = "PEAP"; break;
+            case 1: t = "Identity"; break;
+            case 4: t = "MD5"; break;
+            case 13: t = "TLS"; break;
+            case 21: t = "TTLS"; break;
+            case 25: t = "PEAP"; break;
             }
-            furi_string_cat_printf(
-                app->tool_text, "EAP Type: %s (%d)\n", eap_type_str, result.eap_type);
+            furi_string_cat_printf(app->tool_text, "EAP: %s (%d)\n", t, result.eap_type);
         }
-
-        if(result.eap_success) {
-            furi_string_cat(app->tool_text, "EAP-Success (open!)\n");
-        }
-        if(result.eap_failure) {
-            furi_string_cat(app->tool_text, "EAP-Failure received.\n");
-        }
-
-        furi_string_cat_printf(
-            app->tool_text, "\nEAPOL frames: %d\n", result.frames_seen);
+        if(result.eap_success) furi_string_cat(app->tool_text, "EAP-Success (open!)\n");
+        if(result.eap_failure) furi_string_cat(app->tool_text, "EAP-Failure\n");
+        furi_string_cat_printf(app->tool_text, "Frames: %d\n", result.frames_seen);
     }
 
     lan_tester_save_and_notify(app, "eapol.txt", app->tool_text);
@@ -6253,7 +6241,7 @@ static void lan_tester_do_arp_watch(LanTesterApp* app) {
         return;
     }
 
-    furi_string_cat(app->tool_text, "[ARP Watch]\nListening 15 sec...\n\n");
+    furi_string_cat(app->tool_text, "[ARP Watch] Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!w5500_hal_open_macraw()) {
@@ -6300,17 +6288,17 @@ static void lan_tester_do_arp_watch(LanTesterApp* app) {
     }
 
     if(watch.storm_detected) {
-        furi_string_cat(app->tool_text, "\nARP STORM detected!\n");
+        furi_string_cat(app->tool_text, "ARP STORM!\n");
     }
 
     if(watch.duplicate_count == 0 && !watch.storm_detected) {
-        furi_string_cat(app->tool_text, "\nNo anomalies detected.\n");
+        furi_string_cat(app->tool_text, "No anomalies.\n");
     }
 
     /* Show some entries */
     if(watch.entry_count > 0) {
         uint16_t show = watch.entry_count < 10 ? watch.entry_count : 10;
-        furi_string_cat(app->tool_text, "\nHosts seen:\n");
+        furi_string_cat(app->tool_text, "Hosts:\n");
         for(uint16_t i = 0; i < show; i++) {
             furi_string_cat_printf(
                 app->tool_text,
@@ -6395,7 +6383,7 @@ static void lan_tester_do_rogue_ra(LanTesterApp* app) {
         return;
     }
 
-    furi_string_cat(app->tool_text, "[Rogue RA Detection]\nListening 15 sec...\n\n");
+    furi_string_cat(app->tool_text, "[Rogue RA] Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!w5500_hal_open_macraw()) {
@@ -6420,38 +6408,24 @@ static void lan_tester_do_rogue_ra(LanTesterApp* app) {
     w5500_hal_close_macraw();
 
     furi_string_cat_printf(
-        app->tool_text, "RA packets: %d\nRouters: %d\n\n",
+        app->tool_text, "RA:%d Routers:%d\n",
         state.total_ra_seen, state.router_count);
 
     if(state.router_count == 0) {
-        furi_string_cat(app->tool_text, "No IPv6 routers found.\n(Normal if IPv6 disabled)\n");
+        furi_string_cat(app->tool_text, "No IPv6 routers.\n");
     } else {
         for(uint8_t i = 0; i < state.router_count; i++) {
             RogueRaRouter* r = &state.routers[i];
             furi_string_cat_printf(
-                app->tool_text, "Router %d:\n", i + 1);
-            furi_string_cat_printf(
-                app->tool_text, "  MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                r->src_mac[0], r->src_mac[1], r->src_mac[2],
+                app->tool_text, "#%d %02X:%02X:%02X:%02X:%02X:%02X\n",
+                i + 1, r->src_mac[0], r->src_mac[1], r->src_mac[2],
                 r->src_mac[3], r->src_mac[4], r->src_mac[5]);
-
-            /* Show IPv6 link-local in abbreviated form */
             furi_string_cat_printf(
-                app->tool_text, "  IPv6: %02x%02x::%02x%02x:%02x%02x:%02x%02x\n",
-                r->src_ip[0], r->src_ip[1],
-                r->src_ip[8], r->src_ip[9], r->src_ip[10],
-                r->src_ip[11], r->src_ip[12], r->src_ip[13]);
-
-            furi_string_cat_printf(
-                app->tool_text, "  Lifetime: %d s\n", r->router_lifetime);
-            furi_string_cat_printf(
-                app->tool_text, "  Flags: %s%s\n",
-                r->managed_flag ? "M " : "", r->other_flag ? "O" : "");
-
-            if(r->prefix_len > 0) {
-                furi_string_cat_printf(
-                    app->tool_text, "  Prefix: /%d\n", r->prefix_len);
-            }
+                app->tool_text, " TTL:%ds %s%s",
+                r->router_lifetime,
+                r->managed_flag ? "M" : "", r->other_flag ? "O" : "");
+            if(r->prefix_len > 0)
+                furi_string_cat_printf(app->tool_text, " /%d", r->prefix_len);
             furi_string_cat(app->tool_text, "\n");
         }
 
@@ -6473,7 +6447,7 @@ static void lan_tester_do_dhcp_fingerprint(LanTesterApp* app) {
         return;
     }
 
-    furi_string_cat(app->tool_text, "[DHCP Fingerprinting]\nListening 30 sec...\n\n");
+    furi_string_cat(app->tool_text, "[DHCP FP] Listening...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!w5500_hal_open_macraw()) {
@@ -6494,21 +6468,15 @@ static void lan_tester_do_dhcp_fingerprint(LanTesterApp* app) {
                 /* Update display when new client found */
                 furi_string_reset(app->tool_text);
                 furi_string_cat_printf(
-                    app->tool_text, "[DHCP Fingerprinting]\nClients: %d  DHCP msgs: %d\n\n",
-                    state.client_count, state.total_discovers);
+                    app->tool_text, "[DHCP FP] %d clients\n",
+                    state.client_count);
                 for(uint16_t i = 0; i < state.client_count; i++) {
                     DhcpFpClient* c = &state.clients[i];
                     furi_string_cat_printf(
                         app->tool_text,
-                        "%02X:%02X:%02X:%02X:%02X:%02X\n  %s\n  Opts(%d): ",
-                        c->mac[0], c->mac[1], c->mac[2],
+                        "..%02X:%02X:%02X %s\n",
                         c->mac[3], c->mac[4], c->mac[5],
-                        c->os_guess, c->option_count);
-                    for(uint8_t j = 0; j < c->option_count && j < 8; j++) {
-                        furi_string_cat_printf(app->tool_text, "%d ", c->options[j]);
-                    }
-                    if(c->option_count > 8) furi_string_cat(app->tool_text, "...");
-                    furi_string_cat(app->tool_text, "\n\n");
+                        c->os_guess);
                 }
                 lan_tester_update_view(app->text_box_tool, app->tool_text);
             }
@@ -6540,56 +6508,40 @@ static void lan_tester_do_snmp_get(LanTesterApp* app) {
         ip_str, sizeof(ip_str), "%d.%d.%d.%d",
         app->snmp_target[0], app->snmp_target[1],
         app->snmp_target[2], app->snmp_target[3]);
-    furi_string_cat_printf(app->tool_text, "[SNMP GET] %s\n\n", ip_str);
+    furi_string_cat_printf(app->tool_text, "[SNMP] %s\n", ip_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     SnmpGetResult result;
-
-    /* Try v2c first, fall back to v1 */
-    furi_string_cat(app->tool_text, "Trying SNMPv2c...\n");
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
-
     bool ok = snmp_client_get(app->snmp_target, "public", true, &result);
-    if(!ok) {
-        furi_string_cat(app->tool_text, "v2c failed, trying v1...\n");
-        lan_tester_update_view(app->text_box_tool, app->tool_text);
-        ok = snmp_client_get(app->snmp_target, "public", false, &result);
-    }
+    if(!ok) ok = snmp_client_get(app->snmp_target, "public", false, &result);
 
     if(!ok || !result.valid) {
-        furi_string_cat(app->tool_text, "\nNo SNMP response.\nCheck community string\nor SNMP config.\n");
+        furi_string_cat(app->tool_text, "No SNMP response.\n");
         return;
     }
 
-    furi_string_cat(app->tool_text, "\n");
-    if(result.has_sys_name) {
-        furi_string_cat_printf(app->tool_text, "sysName:\n  %s\n", result.sys_name);
-    }
-    if(result.has_sys_descr) {
-        furi_string_cat_printf(app->tool_text, "sysDescr:\n  %s\n", result.sys_descr);
-    }
+    furi_string_reset(app->tool_text);
+    furi_string_cat_printf(app->tool_text, "[SNMP] %s\n", ip_str);
+    if(result.has_sys_name)
+        furi_string_cat_printf(app->tool_text, "Name: %s\n", result.sys_name);
+    if(result.has_sys_descr)
+        furi_string_cat_printf(app->tool_text, "Desc: %s\n", result.sys_descr);
     if(result.has_sys_uptime) {
-        uint32_t sec = result.sys_uptime / 100;
-        uint32_t days = sec / 86400;
-        uint32_t hours = (sec % 86400) / 3600;
-        uint32_t mins = (sec % 3600) / 60;
-        furi_string_cat_printf(
-            app->tool_text, "sysUpTime:\n  %lud %luh %lum\n",
-            (unsigned long)days, (unsigned long)hours, (unsigned long)mins);
+        uint32_t s = result.sys_uptime / 100;
+        furi_string_cat_printf(app->tool_text, "Up: %lud %luh %lum\n",
+            (unsigned long)(s / 86400), (unsigned long)((s % 86400) / 3600),
+            (unsigned long)((s % 3600) / 60));
     }
     if(result.has_if_status) {
-        const char* status_str = "unknown";
+        const char* st = "?";
         switch(result.if_oper_status) {
-        case 1: status_str = "up"; break;
-        case 2: status_str = "down"; break;
-        case 3: status_str = "testing"; break;
-        case 4: status_str = "unknown"; break;
-        case 5: status_str = "dormant"; break;
-        case 6: status_str = "notPresent"; break;
-        case 7: status_str = "lowerLayerDown"; break;
+        case 1: st = "up"; break;
+        case 2: st = "down"; break;
+        case 3: st = "testing"; break;
+        case 5: st = "dormant"; break;
+        case 7: st = "lowerDown"; break;
         }
-        furi_string_cat_printf(app->tool_text, "ifOperStatus.1:\n  %s (%ld)\n",
-            status_str, (long)result.if_oper_status);
+        furi_string_cat_printf(app->tool_text, "ifStatus: %s\n", st);
     }
 
     lan_tester_save_and_notify(app, "snmp.txt", app->tool_text);
@@ -6610,7 +6562,7 @@ static void lan_tester_do_ntp_diag(LanTesterApp* app) {
         ip_str, sizeof(ip_str), "%d.%d.%d.%d",
         app->ntp_target[0], app->ntp_target[1],
         app->ntp_target[2], app->ntp_target[3]);
-    furi_string_cat_printf(app->tool_text, "[NTP Diag] %s\n\n", ip_str);
+    furi_string_cat_printf(app->tool_text, "[NTP] %s\n", ip_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     NtpDiagResult result;
@@ -6619,7 +6571,7 @@ static void lan_tester_do_ntp_diag(LanTesterApp* app) {
         return;
     }
 
-    furi_string_cat_printf(app->tool_text, "Stratum: %d\n  %s\n", result.stratum, result.stratum_name);
+    furi_string_cat_printf(app->tool_text, "Stratum: %d (%s)\n", result.stratum, result.stratum_name);
 
     const char* leap_str = "none";
     if(result.leap == 1) leap_str = "+1 sec";
@@ -6640,11 +6592,8 @@ static void lan_tester_do_ntp_diag(LanTesterApp* app) {
     uint32_t root_disp_us = (result.root_disp >> 16) * 1000000 +
                             ((result.root_disp & 0xFFFF) * 1000000 / 65536);
 
-    furi_string_cat_printf(app->tool_text, "Root delay: %lu us\n", (unsigned long)root_delay_us);
-    furi_string_cat_printf(app->tool_text, "Root disp:  %lu us\n", (unsigned long)root_disp_us);
-    furi_string_cat_printf(app->tool_text, "RTT: %lu us\n", (unsigned long)result.rtt_us);
-    furi_string_cat_printf(app->tool_text, "Precision: 2^%d s\n", result.precision);
-    furi_string_cat_printf(app->tool_text, "Poll: 2^%d s\n", result.poll);
+    furi_string_cat_printf(app->tool_text, "Delay:%lu Disp:%lu us\n", (unsigned long)root_delay_us, (unsigned long)root_disp_us);
+    furi_string_cat_printf(app->tool_text, "RTT:%lu us Prec:2^%d\n", (unsigned long)result.rtt_us, result.precision);
 
     lan_tester_save_and_notify(app, "ntp.txt", app->tool_text);
 }
@@ -6664,7 +6613,7 @@ static void lan_tester_do_netbios_query(LanTesterApp* app) {
         ip_str, sizeof(ip_str), "%d.%d.%d.%d",
         app->netbios_target[0], app->netbios_target[1],
         app->netbios_target[2], app->netbios_target[3]);
-    furi_string_cat_printf(app->tool_text, "[NetBIOS] %s\n\n", ip_str);
+    furi_string_cat_printf(app->tool_text, "[NetBIOS] %s\n", ip_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     NetbiosQueryResult result;
@@ -6686,7 +6635,7 @@ static void lan_tester_do_netbios_query(LanTesterApp* app) {
             result.unit_id[3], result.unit_id[4], result.unit_id[5]);
     }
 
-    furi_string_cat_printf(app->tool_text, "\nRegistered names (%d):\n", result.name_count);
+    furi_string_cat_printf(app->tool_text, "Names(%d):\n", result.name_count);
     for(uint8_t i = 0; i < result.name_count; i++) {
         NetbiosName* n = &result.names[i];
         furi_string_cat_printf(
@@ -6708,7 +6657,7 @@ static void lan_tester_do_dns_poison_check(LanTesterApp* app) {
     }
 
     furi_string_cat_printf(
-        app->tool_text, "[DNS Poison Check]\nHost: %s\n\n", app->dns_poison_host_input);
+        app->tool_text, "[DNS Check] %s\n", app->dns_poison_host_input);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     /* Use DHCP DNS as local, 8.8.8.8 as public */
@@ -6725,10 +6674,10 @@ static void lan_tester_do_dns_poison_check(LanTesterApp* app) {
     uint8_t public_dns[4] = {8, 8, 8, 8};
 
     furi_string_cat_printf(
-        app->tool_text, "Local DNS: %d.%d.%d.%d\n",
+        app->tool_text, "Local: %d.%d.%d.%d\n",
         local_dns[0], local_dns[1], local_dns[2], local_dns[3]);
     furi_string_cat_printf(
-        app->tool_text, "Public DNS: %d.%d.%d.%d\n\n",
+        app->tool_text, "Public: %d.%d.%d.%d\n",
         public_dns[0], public_dns[1], public_dns[2], public_dns[3]);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
@@ -6736,39 +6685,31 @@ static void lan_tester_do_dns_poison_check(LanTesterApp* app) {
     dns_poison_check(app->dns_poison_host_input, local_dns, public_dns, &result);
 
     if(result.local_ok) {
-        furi_string_cat(app->tool_text, "Local DNS result:\n");
+        furi_string_cat(app->tool_text, "L: ");
         for(uint8_t i = 0; i < result.local_count; i++) {
-            furi_string_cat_printf(
-                app->tool_text, "  %d.%d.%d.%d\n",
-                result.local_addrs[i][0], result.local_addrs[i][1],
+            furi_string_cat_printf(app->tool_text, "%s%d.%d.%d.%d",
+                i ? "," : "", result.local_addrs[i][0], result.local_addrs[i][1],
                 result.local_addrs[i][2], result.local_addrs[i][3]);
         }
+        furi_string_cat(app->tool_text, "\n");
     } else {
-        furi_string_cat(app->tool_text, "Local DNS: no response\n");
+        furi_string_cat(app->tool_text, "L: no response\n");
     }
-
     if(result.public_ok) {
-        furi_string_cat(app->tool_text, "Public DNS result:\n");
+        furi_string_cat(app->tool_text, "P: ");
         for(uint8_t i = 0; i < result.public_count; i++) {
-            furi_string_cat_printf(
-                app->tool_text, "  %d.%d.%d.%d\n",
-                result.public_addrs[i][0], result.public_addrs[i][1],
+            furi_string_cat_printf(app->tool_text, "%s%d.%d.%d.%d",
+                i ? "," : "", result.public_addrs[i][0], result.public_addrs[i][1],
                 result.public_addrs[i][2], result.public_addrs[i][3]);
         }
+        furi_string_cat(app->tool_text, "\n");
     } else {
-        furi_string_cat(app->tool_text, "Public DNS: no response\n");
+        furi_string_cat(app->tool_text, "P: no response\n");
     }
-
-    furi_string_cat(app->tool_text, "\n");
-    if(result.local_ok && result.public_ok) {
-        if(result.match) {
-            furi_string_cat(app->tool_text, "Result: MATCH\nDNS appears clean.\n");
-        } else {
-            furi_string_cat(app->tool_text, "Result: MISMATCH!\nPossible DNS poisoning\nor split-horizon DNS.\n");
-        }
-    } else {
-        furi_string_cat(app->tool_text, "Could not compare:\nmissing DNS response.\n");
-    }
+    if(result.local_ok && result.public_ok)
+        furi_string_cat(app->tool_text, result.match ? "MATCH - clean\n" : "MISMATCH! Poisoned?\n");
+    else
+        furi_string_cat(app->tool_text, "Incomplete comparison.\n");
 
     lan_tester_save_and_notify(app, "dns_poison.txt", app->tool_text);
 }
