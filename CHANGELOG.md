@@ -48,7 +48,7 @@
   - Tests: Link Info → DHCP → Ping Gateway → DNS Resolve → Internet Ping → LLDP/CDP → ARP Host Count
   - LLDP listener runs in a parallel thread (Socket 0) alongside DHCP/Ping/DNS (Sockets 1-3)
   - ARP scan runs only after LLDP thread completes (Socket 0 shared, sequential access)
-  - Verdict: [Auto Test] OK if DHCP + GW ping + DNS all pass; internet ping is informational only
+  - Verdict: Auto Test OK if DHCP + GW ping + DNS all pass; internet ping is informational only
   - Auto-cycles: cable removed → "Waiting for link..." → cable inserted → new test
   - Settings: AT DNS host (default: google.com), AT LLDP wait (10/20/30/60s), AT ARP scan (On/Off)
 

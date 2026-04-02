@@ -72,7 +72,7 @@ The app is published via [flipper-application-catalog](https://github.com/flippe
 - **Bold** and *italic*
 - Lists (bulleted)
 - Links (inline and automatic)
-- **Everything else is forbidden**: no backticks, no code blocks, no tables, no images, no blockquotes, no horizontal rules
+- **Everything else is forbidden**: no backticks, no code blocks, no tables, no images, no blockquotes, no horizontal rules, no bare square brackets (parser treats `[text]` as broken reference links)
 
 ### application.fam
 - `fap_version` must be unique per submission (increment on every release)
