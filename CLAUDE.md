@@ -68,22 +68,37 @@ When adding features, update ALL of:
 The app is published via [flipper-application-catalog](https://github.com/flipperdevices/flipper-application-catalog). The catalog CI validates `CHANGELOG.md` and `application.fam` — broken formatting blocks the release.
 
 ### CHANGELOG.md — allowed Markdown subset
+
+The catalog bundler parses `CHANGELOG.md` and rejects any Markdown element outside this whitelist:
+
 - Headers `#` and `##` only (no `###` or deeper)
 - **Bold** and *italic*
 - Lists (bulleted)
 - Links (inline and automatic)
 - **Everything else is forbidden**: no backticks, no code blocks, no tables, no images, no blockquotes, no horizontal rules
+- **No bare square brackets** — parser treats `[text]` as `Short_reference` (broken link). Write plain text instead.
+- Common errors that break the catalog build:
+  - `Backtick` — any use of backtick characters
+  - `Short_reference` — bare `[text]` without a link target
+  - `CodeBlock` / `FencedCodeBlock` — triple-backtick blocks
+  - `ThematicBreak` — horizontal rules (`---`, `***`)
+  - `BlockQuote` — lines starting with `>`
+  - `Image` — `![alt](url)` syntax
 
 ### application.fam
-- `fap_version` must be unique per submission (increment on every release)
-- `appid` must be globally unique across the catalog
-- `fap_category` must match a valid catalog category (e.g. `"GPIO"`)
+- `fap_version` must be unique per submission — each update must use a higher version than the previous one, otherwise the catalog rejects it
+- `fap_version` format: `"major.minor.patch"` (e.g. `"2.2.1"`)
+- `appid` must be globally unique across the entire catalog
+- `fap_category` must match a valid catalog category: Sub-GHz, RFID, NFC, Infrared, **GPIO**, iButton, USB, Games, Media, Tools, Bluetooth
 
 ### Source repository requirements
 - App must build with `ufbt` against the latest Release or RC firmware
 - App icon: 10x10 px, 1-bit `.png` (`assets/icon.png`)
-- Screenshots: taken via qFlipper, original resolution, no edits
+- Screenshots: taken via qFlipper, original resolution, no edits — first screenshot is used as app preview
 - `README.md` must exist (shown on the app page in the catalog)
+- `CHANGELOG.md` must exist (included by manifest.yml via `changelog: "@CHANGELOG.md"`)
+- Must be open source with a license permitting binary distribution
+- No malicious code, no bypassing Flipper Zero intentional limits
 
 ### CI workflows (`.github/workflows/`)
 - `ci.yml` — runs on PR to `main`: version consistency check + `ufbt build` + `ufbt lint`
