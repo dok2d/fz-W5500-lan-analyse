@@ -63,6 +63,10 @@ typedef enum {
     LanTesterViewHostList,
     LanTesterViewHostActions,
     LanTesterViewAutoTest,
+    LanTesterViewSnmpGet,
+    LanTesterViewNtpDiag,
+    LanTesterViewNetbiosQuery,
+    LanTesterViewDnsPoisonCheck,
     LanTesterViewCount,
 } LanTesterView;
 
@@ -92,6 +96,10 @@ typedef enum {
     LanTesterMenuItemPxeServer,
     LanTesterMenuItemFileManager,
     LanTesterMenuItemPacketCapture,
+    LanTesterMenuItemSnmpGet,
+    LanTesterMenuItemNtpDiag,
+    LanTesterMenuItemNetbiosQuery,
+    LanTesterMenuItemDnsPoisonCheck,
 } LanTesterMenuItem;
 
 /* Packet statistics counters */
@@ -313,4 +321,27 @@ struct LanTesterApp {
     FuriString* discovery_text;
     FuriString* stp_vlan_text;
     FuriString* history_file_text;
+
+    /* SNMP GET state */
+    TextBox* text_box_snmp;
+    FuriString* snmp_text;
+    uint8_t snmp_target[4];
+    char snmp_ip_input[16];
+
+    /* NTP Diagnostics state */
+    TextBox* text_box_ntp;
+    FuriString* ntp_text;
+    uint8_t ntp_target[4];
+    char ntp_ip_input[16];
+
+    /* NetBIOS Query state */
+    TextBox* text_box_netbios;
+    FuriString* netbios_text;
+    uint8_t netbios_target[4];
+    char netbios_ip_input[16];
+
+    /* DNS Poisoning Check state */
+    TextBox* text_box_dns_poison;
+    FuriString* dns_poison_text;
+    char dns_poison_host_input[64];
 };

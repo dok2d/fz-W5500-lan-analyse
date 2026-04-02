@@ -16,6 +16,10 @@
 #include "protocols/history.h"
 #include "protocols/pxe_server.h"
 #include "protocols/file_manager.h"
+#include "protocols/snmp_client.h"
+#include "protocols/ntp_diag.h"
+#include "protocols/netbios_query.h"
+#include "protocols/dns_poison.h"
 #include "bridge/eth_bridge.h"
 #include "usb_eth/usb_eth.h"
 #include "utils/packet_utils.h"
@@ -264,6 +268,10 @@ static void lan_tester_do_pxe_server(LanTesterApp* app);
 static void lan_tester_do_file_manager(LanTesterApp* app);
 static void lan_tester_do_packet_capture(LanTesterApp* app);
 static void lan_tester_do_autotest(LanTesterApp* app);
+static void lan_tester_do_snmp_get(LanTesterApp* app);
+static void lan_tester_do_ntp_diag(LanTesterApp* app);
+static void lan_tester_do_netbios_query(LanTesterApp* app);
+static void lan_tester_do_dns_poison_check(LanTesterApp* app);
 static void lan_tester_history_populate(LanTesterApp* app);
 static void lan_tester_history_file_callback(void* context, uint32_t index);
 static void lan_tester_history_delete_callback(void* context, uint32_t index);
@@ -1178,6 +1186,10 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->ping_sweep_text = furi_string_alloc();
     app->discovery_text = furi_string_alloc();
     app->stp_vlan_text = furi_string_alloc();
+    app->snmp_text = furi_string_alloc();
+    app->ntp_text = furi_string_alloc();
+    app->netbios_text = furi_string_alloc();
+    app->dns_poison_text = furi_string_alloc();
     /* history_text removed — history now uses submenu */
     app->history_file_text = furi_string_alloc();
 
@@ -1255,6 +1267,12 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         LanTesterMenuItemStpVlan,
         lan_tester_submenu_callback,
         app);
+    submenu_add_item(
+        app->submenu_cat_portinfo,
+        "SNMP GET",
+        LanTesterMenuItemSnmpGet,
+        lan_tester_submenu_callback,
+        app);
     view_set_previous_callback(
         submenu_get_view(app->submenu_cat_portinfo), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
@@ -1280,6 +1298,12 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         app->submenu_cat_scan,
         "mDNS/SSDP",
         LanTesterMenuItemDiscovery,
+        lan_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_scan,
+        "NetBIOS Query",
+        LanTesterMenuItemNetbiosQuery,
         lan_tester_submenu_callback,
         app);
     submenu_add_item(
@@ -1309,6 +1333,18 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         app->submenu_cat_diag,
         "Traceroute",
         LanTesterMenuItemTraceroute,
+        lan_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_diag,
+        "NTP Diagnostics",
+        LanTesterMenuItemNtpDiag,
+        lan_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_diag,
+        "DNS Poison Check",
+        LanTesterMenuItemDnsPoisonCheck,
         lan_tester_submenu_callback,
         app);
     view_set_previous_callback(
@@ -1768,6 +1804,42 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         LanTesterViewAutoTest,
         text_box_get_view(app->text_box_autotest));
 
+    /* SNMP GET view */
+    app->text_box_snmp = text_box_alloc();
+    text_box_set_font(app->text_box_snmp, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_snmp), lan_tester_nav_back_portinfo);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewSnmpGet, text_box_get_view(app->text_box_snmp));
+    strncpy(app->snmp_ip_input, "192.168.1.1", sizeof(app->snmp_ip_input));
+
+    /* NTP Diagnostics view */
+    app->text_box_ntp = text_box_alloc();
+    text_box_set_font(app->text_box_ntp, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_ntp), lan_tester_nav_back_diag);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewNtpDiag, text_box_get_view(app->text_box_ntp));
+    strncpy(app->ntp_ip_input, "pool.ntp.org", sizeof(app->ntp_ip_input));
+
+    /* NetBIOS Query view */
+    app->text_box_netbios = text_box_alloc();
+    text_box_set_font(app->text_box_netbios, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_netbios), lan_tester_nav_back_scan);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewNetbiosQuery, text_box_get_view(app->text_box_netbios));
+    strncpy(app->netbios_ip_input, "192.168.1.1", sizeof(app->netbios_ip_input));
+
+    /* DNS Poisoning Check view */
+    app->text_box_dns_poison = text_box_alloc();
+    text_box_set_font(app->text_box_dns_poison, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_dns_poison), lan_tester_nav_back_diag);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewDnsPoisonCheck, text_box_get_view(app->text_box_dns_poison));
+    strncpy(app->dns_poison_host_input, "google.com", sizeof(app->dns_poison_host_input));
+
     /* Auto Test defaults */
     strncpy(app->autotest_dns_host, "google.com", sizeof(app->autotest_dns_host));
     app->autotest_lldp_wait_s = 30;
@@ -2001,6 +2073,10 @@ static void lan_tester_app_free(LanTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHostList);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHostActions);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewAutoTest);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewSnmpGet);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewNtpDiag);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewNetbiosQuery);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewDnsPoisonCheck);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_portinfo);
@@ -2045,6 +2121,10 @@ static void lan_tester_app_free(LanTesterApp* app) {
     if(app->history_state) free(app->history_state);
     text_box_free(app->text_box_about);
     text_box_free(app->text_box_autotest);
+    text_box_free(app->text_box_snmp);
+    text_box_free(app->text_box_ntp);
+    text_box_free(app->text_box_netbios);
+    text_box_free(app->text_box_dns_poison);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -2063,6 +2143,10 @@ static void lan_tester_app_free(LanTesterApp* app) {
     furi_string_free(app->ping_sweep_text);
     furi_string_free(app->discovery_text);
     furi_string_free(app->stp_vlan_text);
+    furi_string_free(app->snmp_text);
+    furi_string_free(app->ntp_text);
+    furi_string_free(app->netbios_text);
+    furi_string_free(app->dns_poison_text);
     /* history_text removed — history now uses submenu */
     furi_string_free(app->history_file_text);
     furi_string_free(app->pxe_text);
@@ -2350,6 +2434,22 @@ static int32_t lan_tester_worker_fn(void* context) {
         break;
     case LanTesterMenuItemPacketCapture:
         lan_tester_do_packet_capture(app);
+        break;
+    case LanTesterMenuItemSnmpGet:
+        lan_tester_do_snmp_get(app);
+        lan_tester_update_view(app->text_box_snmp, app->snmp_text);
+        break;
+    case LanTesterMenuItemNtpDiag:
+        lan_tester_do_ntp_diag(app);
+        lan_tester_update_view(app->text_box_ntp, app->ntp_text);
+        break;
+    case LanTesterMenuItemNetbiosQuery:
+        lan_tester_do_netbios_query(app);
+        lan_tester_update_view(app->text_box_netbios, app->netbios_text);
+        break;
+    case LanTesterMenuItemDnsPoisonCheck:
+        lan_tester_do_dns_poison_check(app);
+        lan_tester_update_view(app->text_box_dns_poison, app->dns_poison_text);
         break;
     case LanTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
@@ -2782,6 +2882,63 @@ static void lan_tester_wol_input_callback(void* context) {
     lan_tester_worker_start(app, LanTesterMenuItemWol, LanTesterViewWol);
 }
 
+/* ==================== SNMP/NTP/NetBIOS/DNS Poison input callbacks ==================== */
+
+static void lan_tester_snmp_ip_input_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    if(lan_tester_parse_ip(app->snmp_ip_input, app->snmp_target)) {
+        lan_tester_show_view(
+            app, app->text_box_snmp, LanTesterViewSnmpGet, app->snmp_text, "Querying SNMP...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemSnmpGet, LanTesterViewSnmpGet);
+    } else {
+        furi_string_set(app->snmp_text, "Invalid IP address!\n");
+        text_box_set_text(app->text_box_snmp, furi_string_get_cstr(app->snmp_text));
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewSnmpGet);
+    }
+}
+
+static void lan_tester_ntp_ip_input_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    if(lan_tester_parse_ip(app->ntp_ip_input, app->ntp_target)) {
+        lan_tester_show_view(
+            app, app->text_box_ntp, LanTesterViewNtpDiag, app->ntp_text, "Querying NTP...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemNtpDiag, LanTesterViewNtpDiag);
+    } else {
+        furi_string_set(app->ntp_text, "Invalid IP address!\n");
+        text_box_set_text(app->text_box_ntp, furi_string_get_cstr(app->ntp_text));
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewNtpDiag);
+    }
+}
+
+static void lan_tester_netbios_ip_input_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    if(lan_tester_parse_ip(app->netbios_ip_input, app->netbios_target)) {
+        lan_tester_show_view(
+            app, app->text_box_netbios, LanTesterViewNetbiosQuery, app->netbios_text,
+            "Querying NetBIOS...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemNetbiosQuery, LanTesterViewNetbiosQuery);
+    } else {
+        furi_string_set(app->netbios_text, "Invalid IP address!\n");
+        text_box_set_text(app->text_box_netbios, furi_string_get_cstr(app->netbios_text));
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewNetbiosQuery);
+    }
+}
+
+static void lan_tester_dns_poison_input_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    if(app->dns_poison_host_input[0] != '\0') {
+        lan_tester_show_view(
+            app, app->text_box_dns_poison, LanTesterViewDnsPoisonCheck, app->dns_poison_text,
+            "Checking DNS...\n");
+        lan_tester_worker_start(
+            app, LanTesterMenuItemDnsPoisonCheck, LanTesterViewDnsPoisonCheck);
+    }
+}
+
 /* ==================== Submenu callback ==================== */
 
 static void lan_tester_submenu_callback(void* context, uint32_t index) {
@@ -3081,6 +3238,59 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
 
     case LanTesterMenuItemAbout:
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewAbout);
+        break;
+
+    case LanTesterMenuItemSnmpGet:
+        if(app->dhcp_valid) {
+            snprintf(
+                app->snmp_ip_input, sizeof(app->snmp_ip_input), "%d.%d.%d.%d",
+                app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+        }
+        ip_keyboard_setup(
+            app->ip_keyboard, "SNMP target IP:", app->snmp_ip_input, false,
+            lan_tester_snmp_ip_input_callback, app,
+            app->snmp_ip_input, sizeof(app->snmp_ip_input),
+            lan_tester_nav_back_portinfo);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
+        break;
+
+    case LanTesterMenuItemNtpDiag:
+        if(app->dhcp_valid) {
+            snprintf(
+                app->ntp_ip_input, sizeof(app->ntp_ip_input), "%d.%d.%d.%d",
+                app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+        }
+        ip_keyboard_setup(
+            app->ip_keyboard, "NTP server IP:", app->ntp_ip_input, false,
+            lan_tester_ntp_ip_input_callback, app,
+            app->ntp_ip_input, sizeof(app->ntp_ip_input),
+            lan_tester_nav_back_diag);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
+        break;
+
+    case LanTesterMenuItemNetbiosQuery:
+        if(app->dhcp_valid) {
+            snprintf(
+                app->netbios_ip_input, sizeof(app->netbios_ip_input), "%d.%d.%d.%d",
+                app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+        }
+        ip_keyboard_setup(
+            app->ip_keyboard, "NetBIOS target IP:", app->netbios_ip_input, false,
+            lan_tester_netbios_ip_input_callback, app,
+            app->netbios_ip_input, sizeof(app->netbios_ip_input),
+            lan_tester_nav_back_scan);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
+        break;
+
+    case LanTesterMenuItemDnsPoisonCheck:
+        text_input_reset(app->text_input_dns);
+        text_input_set_header_text(app->text_input_dns, "Hostname to check:");
+        text_input_set_result_callback(
+            app->text_input_dns, lan_tester_dns_poison_input_callback, app,
+            app->dns_poison_host_input, sizeof(app->dns_poison_host_input), false);
+        view_set_previous_callback(
+            text_input_get_view(app->text_input_dns), lan_tester_nav_back_diag);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewDnsInput);
         break;
 
     case 100: /* Port Info category */
@@ -5647,6 +5857,254 @@ static void lan_tester_do_file_manager(LanTesterApp* app) {
         (unsigned long)fm_state.bytes_sent,
         (unsigned long)fm_state.bytes_received);
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
+}
+
+/* ==================== SNMP GET ==================== */
+
+static void lan_tester_do_snmp_get(LanTesterApp* app) {
+    furi_string_reset(app->snmp_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->snmp_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    char ip_str[16];
+    snprintf(
+        ip_str, sizeof(ip_str), "%d.%d.%d.%d",
+        app->snmp_target[0], app->snmp_target[1],
+        app->snmp_target[2], app->snmp_target[3]);
+    furi_string_cat_printf(app->snmp_text, "[SNMP GET] %s\n\n", ip_str);
+    lan_tester_update_view(app->text_box_snmp, app->snmp_text);
+
+    SnmpGetResult result;
+
+    /* Try v2c first, fall back to v1 */
+    furi_string_cat(app->snmp_text, "Trying SNMPv2c...\n");
+    lan_tester_update_view(app->text_box_snmp, app->snmp_text);
+
+    bool ok = snmp_client_get(app->snmp_target, "public", true, &result);
+    if(!ok) {
+        furi_string_cat(app->snmp_text, "v2c failed, trying v1...\n");
+        lan_tester_update_view(app->text_box_snmp, app->snmp_text);
+        ok = snmp_client_get(app->snmp_target, "public", false, &result);
+    }
+
+    if(!ok || !result.valid) {
+        furi_string_cat(app->snmp_text, "\nNo SNMP response.\nCheck community string\nor SNMP config.\n");
+        return;
+    }
+
+    furi_string_cat(app->snmp_text, "\n");
+    if(result.has_sys_name) {
+        furi_string_cat_printf(app->snmp_text, "sysName:\n  %s\n", result.sys_name);
+    }
+    if(result.has_sys_descr) {
+        furi_string_cat_printf(app->snmp_text, "sysDescr:\n  %s\n", result.sys_descr);
+    }
+    if(result.has_sys_uptime) {
+        uint32_t sec = result.sys_uptime / 100;
+        uint32_t days = sec / 86400;
+        uint32_t hours = (sec % 86400) / 3600;
+        uint32_t mins = (sec % 3600) / 60;
+        furi_string_cat_printf(
+            app->snmp_text, "sysUpTime:\n  %lud %luh %lum\n",
+            (unsigned long)days, (unsigned long)hours, (unsigned long)mins);
+    }
+    if(result.has_if_status) {
+        const char* status_str = "unknown";
+        switch(result.if_oper_status) {
+        case 1: status_str = "up"; break;
+        case 2: status_str = "down"; break;
+        case 3: status_str = "testing"; break;
+        case 4: status_str = "unknown"; break;
+        case 5: status_str = "dormant"; break;
+        case 6: status_str = "notPresent"; break;
+        case 7: status_str = "lowerLayerDown"; break;
+        }
+        furi_string_cat_printf(app->snmp_text, "ifOperStatus.1:\n  %s (%ld)\n",
+            status_str, (long)result.if_oper_status);
+    }
+
+    lan_tester_save_and_notify(app, "snmp.txt", app->snmp_text);
+}
+
+/* ==================== NTP Diagnostics ==================== */
+
+static void lan_tester_do_ntp_diag(LanTesterApp* app) {
+    furi_string_reset(app->ntp_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->ntp_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    char ip_str[16];
+    snprintf(
+        ip_str, sizeof(ip_str), "%d.%d.%d.%d",
+        app->ntp_target[0], app->ntp_target[1],
+        app->ntp_target[2], app->ntp_target[3]);
+    furi_string_cat_printf(app->ntp_text, "[NTP Diag] %s\n\n", ip_str);
+    lan_tester_update_view(app->text_box_ntp, app->ntp_text);
+
+    NtpDiagResult result;
+    if(!ntp_diag_query(app->ntp_target, &result)) {
+        furi_string_cat(app->ntp_text, "No NTP response.\nCheck server IP.\n");
+        return;
+    }
+
+    furi_string_cat_printf(app->ntp_text, "Stratum: %d\n  %s\n", result.stratum, result.stratum_name);
+
+    const char* leap_str = "none";
+    if(result.leap == 1) leap_str = "+1 sec";
+    else if(result.leap == 2) leap_str = "-1 sec";
+    else if(result.leap == 3) leap_str = "unsync";
+    furi_string_cat_printf(app->ntp_text, "Leap: %s\n", leap_str);
+
+    furi_string_cat_printf(app->ntp_text, "Version: NTPv%d\n", result.version);
+
+    if(result.stratum <= 1) {
+        furi_string_cat_printf(app->ntp_text, "Ref ID: %s\n", result.ref_id_str);
+    } else {
+        furi_string_cat_printf(app->ntp_text, "Ref Clock: %s\n", result.ref_id_str);
+    }
+
+    uint32_t root_delay_us = (result.root_delay >> 16) * 1000000 +
+                             ((result.root_delay & 0xFFFF) * 1000000 / 65536);
+    uint32_t root_disp_us = (result.root_disp >> 16) * 1000000 +
+                            ((result.root_disp & 0xFFFF) * 1000000 / 65536);
+
+    furi_string_cat_printf(app->ntp_text, "Root delay: %lu us\n", (unsigned long)root_delay_us);
+    furi_string_cat_printf(app->ntp_text, "Root disp:  %lu us\n", (unsigned long)root_disp_us);
+    furi_string_cat_printf(app->ntp_text, "RTT: %lu us\n", (unsigned long)result.rtt_us);
+    furi_string_cat_printf(app->ntp_text, "Precision: 2^%d s\n", result.precision);
+    furi_string_cat_printf(app->ntp_text, "Poll: 2^%d s\n", result.poll);
+
+    lan_tester_save_and_notify(app, "ntp.txt", app->ntp_text);
+}
+
+/* ==================== NetBIOS Query ==================== */
+
+static void lan_tester_do_netbios_query(LanTesterApp* app) {
+    furi_string_reset(app->netbios_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->netbios_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    char ip_str[16];
+    snprintf(
+        ip_str, sizeof(ip_str), "%d.%d.%d.%d",
+        app->netbios_target[0], app->netbios_target[1],
+        app->netbios_target[2], app->netbios_target[3]);
+    furi_string_cat_printf(app->netbios_text, "[NetBIOS] %s\n\n", ip_str);
+    lan_tester_update_view(app->text_box_netbios, app->netbios_text);
+
+    NetbiosQueryResult result;
+    if(!netbios_node_status(app->netbios_target, &result)) {
+        furi_string_cat(app->netbios_text, "No NetBIOS response.\nHost may not run SMB/CIFS.\n");
+        return;
+    }
+
+    if(result.computer_name[0]) {
+        furi_string_cat_printf(app->netbios_text, "Computer: %s\n", result.computer_name);
+    }
+    if(result.workgroup[0]) {
+        furi_string_cat_printf(app->netbios_text, "Workgroup: %s\n", result.workgroup);
+    }
+    if(result.has_unit_id) {
+        furi_string_cat_printf(
+            app->netbios_text, "MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+            result.unit_id[0], result.unit_id[1], result.unit_id[2],
+            result.unit_id[3], result.unit_id[4], result.unit_id[5]);
+    }
+
+    furi_string_cat_printf(app->netbios_text, "\nRegistered names (%d):\n", result.name_count);
+    for(uint8_t i = 0; i < result.name_count; i++) {
+        NetbiosName* n = &result.names[i];
+        furi_string_cat_printf(
+            app->netbios_text, "  %-15s <%02X> %s\n",
+            n->name, n->suffix, n->is_group ? "GROUP" : "UNIQUE");
+    }
+
+    lan_tester_save_and_notify(app, "netbios.txt", app->netbios_text);
+}
+
+/* ==================== DNS Poisoning Check ==================== */
+
+static void lan_tester_do_dns_poison_check(LanTesterApp* app) {
+    furi_string_reset(app->dns_poison_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->dns_poison_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    furi_string_cat_printf(
+        app->dns_poison_text, "[DNS Poison Check]\nHost: %s\n\n", app->dns_poison_host_input);
+    lan_tester_update_view(app->text_box_dns_poison, app->dns_poison_text);
+
+    /* Use DHCP DNS as local, 8.8.8.8 as public */
+    uint8_t local_dns[4];
+    if(app->dhcp_valid && (app->dhcp_dns[0] | app->dhcp_dns[1] | app->dhcp_dns[2] | app->dhcp_dns[3])) {
+        memcpy(local_dns, app->dhcp_dns, 4);
+    } else if(app->dns_custom_enabled) {
+        memcpy(local_dns, app->dns_custom_server, 4);
+    } else {
+        furi_string_cat(app->dns_poison_text, "No local DNS available.\nRun DHCP first.\n");
+        return;
+    }
+
+    uint8_t public_dns[4] = {8, 8, 8, 8};
+
+    furi_string_cat_printf(
+        app->dns_poison_text, "Local DNS: %d.%d.%d.%d\n",
+        local_dns[0], local_dns[1], local_dns[2], local_dns[3]);
+    furi_string_cat_printf(
+        app->dns_poison_text, "Public DNS: %d.%d.%d.%d\n\n",
+        public_dns[0], public_dns[1], public_dns[2], public_dns[3]);
+    lan_tester_update_view(app->text_box_dns_poison, app->dns_poison_text);
+
+    DnsPoisonResult result;
+    dns_poison_check(app->dns_poison_host_input, local_dns, public_dns, &result);
+
+    if(result.local_ok) {
+        furi_string_cat(app->dns_poison_text, "Local DNS result:\n");
+        for(uint8_t i = 0; i < result.local_count; i++) {
+            furi_string_cat_printf(
+                app->dns_poison_text, "  %d.%d.%d.%d\n",
+                result.local_addrs[i][0], result.local_addrs[i][1],
+                result.local_addrs[i][2], result.local_addrs[i][3]);
+        }
+    } else {
+        furi_string_cat(app->dns_poison_text, "Local DNS: no response\n");
+    }
+
+    if(result.public_ok) {
+        furi_string_cat(app->dns_poison_text, "Public DNS result:\n");
+        for(uint8_t i = 0; i < result.public_count; i++) {
+            furi_string_cat_printf(
+                app->dns_poison_text, "  %d.%d.%d.%d\n",
+                result.public_addrs[i][0], result.public_addrs[i][1],
+                result.public_addrs[i][2], result.public_addrs[i][3]);
+        }
+    } else {
+        furi_string_cat(app->dns_poison_text, "Public DNS: no response\n");
+    }
+
+    furi_string_cat(app->dns_poison_text, "\n");
+    if(result.local_ok && result.public_ok) {
+        if(result.match) {
+            furi_string_cat(app->dns_poison_text, "Result: MATCH\nDNS appears clean.\n");
+        } else {
+            furi_string_cat(app->dns_poison_text, "Result: MISMATCH!\nPossible DNS poisoning\nor split-horizon DNS.\n");
+        }
+    } else {
+        furi_string_cat(app->dns_poison_text, "Could not compare:\nmissing DNS response.\n");
+    }
+
+    lan_tester_save_and_notify(app, "dns_poison.txt", app->dns_poison_text);
 }
 
 /* ==================== Entry point ==================== */
