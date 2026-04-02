@@ -180,7 +180,7 @@ struct LanTesterApp {
     PacketStats stats;
 
     /* DNS lookup state */
-    char dns_hostname_input[64]; /* text input buffer for hostname */
+    char dns_hostname_input[32]; /* text input buffer for hostname */
     uint8_t dns_server_ip[4]; /* DNS server from DHCP */
 
     /* Wake-on-LAN state */
@@ -207,7 +207,7 @@ struct LanTesterApp {
     /* Traceroute state */
     char traceroute_ip_input[16]; /* text input buffer (kept for compat) */
     uint8_t traceroute_target[4]; /* parsed target IP */
-    char traceroute_host_input[64]; /* text input for IP or hostname */
+    char traceroute_host_input[32]; /* text input for IP or hostname */
     bool traceroute_is_hostname; /* true if input is hostname, not IP */
 
     /* Ping sweep state */
@@ -243,7 +243,7 @@ struct LanTesterApp {
     /* Discovered hosts from scans */
     Submenu* submenu_host_list;
     Submenu* submenu_host_actions;
-    DiscoveredHost discovered_hosts[MAX_DISCOVERED_HOSTS];
+    DiscoveredHost* discovered_hosts; /* heap-allocated on first scan */
     uint16_t discovered_host_count;
     uint16_t selected_host_idx;
 
@@ -264,7 +264,7 @@ struct LanTesterApp {
     volatile bool autotest_lldp_done;
 
     /* Auto Test settings */
-    char autotest_dns_host[64];
+    char autotest_dns_host[32];
     uint8_t autotest_lldp_wait_s;
     bool autotest_arp_enabled;
 
@@ -282,7 +282,7 @@ struct LanTesterApp {
     char ntp_ip_input[16];
     uint8_t netbios_target[4];
     char netbios_ip_input[16];
-    char dns_poison_host_input[64];
+    char dns_poison_host_input[32];
     uint8_t tftp_target[4];
     char tftp_ip_input[16];
     char tftp_filename_input[64];

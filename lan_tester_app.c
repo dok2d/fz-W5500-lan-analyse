@@ -1645,7 +1645,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         },
         false);
     view_dispatcher_add_view(app->view_dispatcher, LanTesterViewEthBridge, app->view_bridge);
-    app->bridge_state = malloc(sizeof(EthBridgeState));
+    app->bridge_state = NULL;
 
     /* PXE Server views */
 
@@ -1796,6 +1796,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         LanTesterViewHostActions,
         submenu_get_view(app->submenu_host_actions));
 
+    app->discovered_hosts = NULL;
     app->discovered_host_count = 0;
 
     /* Traceroute views */
@@ -2087,6 +2088,7 @@ static void lan_tester_app_free(LanTesterApp* app) {
     furi_record_close(RECORD_GUI);
     furi_record_close(RECORD_NOTIFICATION);
 
+    if(app->discovered_hosts) free(app->discovered_hosts);
     free(app->frame_buf);
     g_app = NULL;
     free(app);
@@ -3737,17 +3739,18 @@ static void lan_tester_do_lldp_cdp(LanTesterApp* app) {
     /* Format results */
     furi_string_reset(app->tool_text);
 
+    /* Reuse single 512-byte buffer for both (never needed simultaneously) */
+    char fmt_buf[512];
+
     if(lldp_neighbor.valid) {
-        char lldp_buf[512];
-        lldp_format_neighbor(&lldp_neighbor, lldp_buf, sizeof(lldp_buf));
-        furi_string_cat_str(app->tool_text, lldp_buf);
+        lldp_format_neighbor(&lldp_neighbor, fmt_buf, sizeof(fmt_buf));
+        furi_string_cat_str(app->tool_text, fmt_buf);
     }
 
     if(cdp_neighbor.valid) {
-        char cdp_buf[512];
-        cdp_format_neighbor(&cdp_neighbor, cdp_buf, sizeof(cdp_buf));
+        cdp_format_neighbor(&cdp_neighbor, fmt_buf, sizeof(fmt_buf));
         if(lldp_neighbor.valid) furi_string_cat_str(app->tool_text, "\n");
-        furi_string_cat_str(app->tool_text, cdp_buf);
+        furi_string_cat_str(app->tool_text, fmt_buf);
     }
 
     if(!found) {
@@ -3949,6 +3952,10 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
 
     /* Populate discovered hosts for interactive list */
     app->discovered_host_count = 0;
+    if(!app->discovered_hosts) {
+        app->discovered_hosts = malloc(sizeof(DiscoveredHost) * MAX_DISCOVERED_HOSTS);
+    }
+    if(!app->discovered_hosts) goto skip_hosts;
     for(uint16_t i = 0; i < scan->count && i < MAX_DISCOVERED_HOSTS; i++) {
         DiscoveredHost* dh = &app->discovered_hosts[i];
         memcpy(dh->ip, scan->hosts[i].ip, 4);
@@ -3956,6 +3963,7 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
         dh->has_mac = true;
         app->discovered_host_count++;
     }
+skip_hosts:
 
     free(scan->hosts);
     free(scan);
@@ -4480,6 +4488,9 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app) {
     uint16_t scanned = 0;
     uint16_t alive = 0;
     app->discovered_host_count = 0;
+    if(!app->discovered_hosts) {
+        app->discovered_hosts = malloc(sizeof(DiscoveredHost) * MAX_DISCOVERED_HOSTS);
+    }
     FuriString* results = furi_string_alloc();
 
     while(current <= last && scanned < num_hosts && app->worker_running) {
@@ -4499,7 +4510,7 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app) {
             alive++;
 
             /* Store for interactive host list */
-            if(app->discovered_host_count < MAX_DISCOVERED_HOSTS) {
+            if(app->discovered_hosts && app->discovered_host_count < MAX_DISCOVERED_HOSTS) {
                 DiscoveredHost* dh = &app->discovered_hosts[app->discovered_host_count];
                 memcpy(dh->ip, target, 4);
                 memset(dh->mac, 0, 6);
@@ -4724,6 +4735,7 @@ static void lan_tester_do_stp_vlan(LanTesterApp* app) {
 
     VlanState vlan_state;
     vlan_state_init(&vlan_state);
+    char bpdu_buf[256]; /* reused for both live and final formatting */
 
     uint32_t start_tick = furi_get_tick();
     uint32_t timeout_ms = 30000;
@@ -4771,7 +4783,6 @@ static void lan_tester_do_stp_vlan(LanTesterApp* app) {
                 (unsigned long)(timeout_ms / 1000));
 
             if(bpdu.valid) {
-                char bpdu_buf[256];
                 stp_format_bpdu(&bpdu, bpdu_buf, sizeof(bpdu_buf));
                 furi_string_cat_str(app->tool_text, bpdu_buf);
             } else {
@@ -4803,7 +4814,6 @@ static void lan_tester_do_stp_vlan(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     if(bpdu.valid) {
-        char bpdu_buf[256];
         stp_format_bpdu(&bpdu, bpdu_buf, sizeof(bpdu_buf));
         furi_string_cat_str(app->tool_text, bpdu_buf);
     } else {
@@ -5312,6 +5322,13 @@ static void lan_tester_do_eth_bridge(LanTesterApp* app) {
     }
 
     /* Step 5: Initialize bridge state and activate the view */
+    if(!app->bridge_state) {
+        app->bridge_state = malloc(sizeof(EthBridgeState));
+        if(!app->bridge_state) {
+            furi_string_set(app->tool_text, "[Bridge] Memory alloc failed!\n");
+            return;
+        }
+    }
     eth_bridge_init(app->bridge_state);
 
     with_view_model(

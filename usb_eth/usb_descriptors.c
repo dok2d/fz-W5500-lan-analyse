@@ -240,6 +240,7 @@ static void ecm_build_mac_string(const uint8_t mac[6]) {
         free(ecm_str_mac);
     }
     ecm_str_mac = malloc(2 + 12 * 2);
+    if(!ecm_str_mac) return;
     ecm_str_mac->bLength = 2 + 12 * 2;
     ecm_str_mac->bDescriptorType = USB_DTYPE_STRING;
 
