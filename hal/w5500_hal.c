@@ -116,8 +116,8 @@ bool w5500_hal_chip_init(void) {
 
     /*
      * FIFO buffer sizes for 8 sockets (TX/RX in KB each).
-     * Socket 0 gets 16KB RX for MACRAW, rest get 2KB.
-     * Total TX = 16KB, Total RX = 16KB.
+     * Must be powers of 2 (0,1,2,4,8,16). Total = 16KB each.
+     * Socket 0: 8KB MACRAW, 1-2: 2KB, 3-5: 1KB tools+HTTP DL.
      */
     uint8_t rx_sizes[8] = {8, 2, 2, 2, 1, 1, 0, 0};
     uint8_t tx_sizes[8] = {8, 2, 2, 2, 1, 1, 0, 0};

@@ -63,9 +63,17 @@ static uint16_t asn_read_length(const uint8_t* buf, uint16_t* out_len) {
     return 1;
 }
 
+/* Return how many bytes asn_write_length() would produce */
+static uint16_t asn_length_size(uint16_t len) {
+    if(len < 0x80) return 1;
+    if(len <= 0xFF) return 2;
+    return 3;
+}
+
 /**
  * Build SNMP v1/v2c GET-Request for a single OID.
- * Returns total packet length.
+ * Writes directly into pkt (no intermediate stack arrays).
+ * Returns total packet length, or 0 on overflow.
  */
 static uint16_t snmp_build_get(
     uint8_t* pkt,
@@ -75,111 +83,75 @@ static uint16_t snmp_build_get(
     uint32_t request_id,
     const uint8_t* oid,
     uint8_t oid_len) {
-    /*
-     * SEQUENCE {
-     *   INTEGER version (0=v1, 1=v2c)
-     *   OCTET STRING community
-     *   GetRequest-PDU [0] {
-     *     INTEGER request-id
-     *     INTEGER error-status (0)
-     *     INTEGER error-index (0)
-     *     SEQUENCE OF {        -- varbind list
-     *       SEQUENCE {         -- varbind
-     *         OID
-     *         NULL
-     *       }
-     *     }
-     *   }
-     * }
-     */
     uint8_t comm_len = (uint8_t)strlen(community);
+
+    /* Pre-compute all content lengths bottom-up */
+    uint16_t varbind_len = (2 + oid_len) + 2; /* OID TLV + NULL TLV */
+    uint16_t vb_seq_len = 1 + asn_length_size(varbind_len) + varbind_len;
+    uint16_t vb_list_len = 1 + asn_length_size(vb_seq_len) + vb_seq_len;
+    uint16_t pdu_content_len = 6 + 3 + 3 + vb_list_len; /* reqid+err_s+err_i+vblist */
+    uint16_t pdu_len = 1 + asn_length_size(pdu_content_len) + pdu_content_len;
+    uint16_t msg_content_len = 3 + (2 + comm_len) + pdu_len; /* ver+comm+pdu */
+    uint16_t total = 1 + asn_length_size(msg_content_len) + msg_content_len;
+
+    if(total > pkt_size) return 0;
+
     uint16_t idx = 0;
 
-    /* Build from inside out: varbind first */
-    /* OID TLV: type + length + oid */
-    uint8_t varbind[64];
-    uint16_t vb_idx = 0;
-    varbind[vb_idx++] = ASN_OBJ_ID;
-    varbind[vb_idx++] = oid_len;
-    memcpy(&varbind[vb_idx], oid, oid_len);
-    vb_idx += oid_len;
-    /* NULL value */
-    varbind[vb_idx++] = ASN_NULL;
-    varbind[vb_idx++] = 0x00;
-
-    /* Varbind SEQUENCE */
-    uint8_t vb_seq[68];
-    uint16_t vbs_idx = 0;
-    vb_seq[vbs_idx++] = ASN_SEQUENCE;
-    vbs_idx += asn_write_length(&vb_seq[vbs_idx], vb_idx);
-    memcpy(&vb_seq[vbs_idx], varbind, vb_idx);
-    vbs_idx += vb_idx;
-
-    /* Varbind list SEQUENCE */
-    uint8_t vb_list[72];
-    uint16_t vbl_idx = 0;
-    vb_list[vbl_idx++] = ASN_SEQUENCE;
-    vbl_idx += asn_write_length(&vb_list[vbl_idx], vbs_idx);
-    memcpy(&vb_list[vbl_idx], vb_seq, vbs_idx);
-    vbl_idx += vbs_idx;
-
-    /* Request ID (INTEGER, 4 bytes) */
-    uint8_t reqid_tlv[6];
-    reqid_tlv[0] = ASN_INTEGER;
-    reqid_tlv[1] = 4;
-    reqid_tlv[2] = (uint8_t)(request_id >> 24);
-    reqid_tlv[3] = (uint8_t)(request_id >> 16);
-    reqid_tlv[4] = (uint8_t)(request_id >> 8);
-    reqid_tlv[5] = (uint8_t)(request_id);
-
-    /* Error status = 0 */
-    uint8_t err_status[] = {ASN_INTEGER, 0x01, 0x00};
-    /* Error index = 0 */
-    uint8_t err_index[] = {ASN_INTEGER, 0x01, 0x00};
-
-    /* PDU content length */
-    uint16_t pdu_content_len = 6 + 3 + 3 + vbl_idx;
-
-    /* PDU */
-    uint8_t pdu[160];
-    uint16_t pdu_idx = 0;
-    pdu[pdu_idx++] = ASN_GET_REQ;
-    pdu_idx += asn_write_length(&pdu[pdu_idx], pdu_content_len);
-    memcpy(&pdu[pdu_idx], reqid_tlv, 6);
-    pdu_idx += 6;
-    memcpy(&pdu[pdu_idx], err_status, 3);
-    pdu_idx += 3;
-    memcpy(&pdu[pdu_idx], err_index, 3);
-    pdu_idx += 3;
-    memcpy(&pdu[pdu_idx], vb_list, vbl_idx);
-    pdu_idx += vbl_idx;
-
-    /* Version INTEGER */
-    uint8_t ver_tlv[] = {ASN_INTEGER, 0x01, use_v2c ? 0x01 : 0x00};
-
-    /* Community OCTET STRING */
-    /* comm_tlv: type(1) + len(1) + data */
-    uint16_t msg_content_len = 3 + (2 + comm_len) + pdu_idx;
-
     /* Top-level SEQUENCE */
-    if(idx + 4 + msg_content_len > pkt_size) return 0;
-
     pkt[idx++] = ASN_SEQUENCE;
     idx += asn_write_length(&pkt[idx], msg_content_len);
 
-    /* Version */
-    memcpy(&pkt[idx], ver_tlv, 3);
-    idx += 3;
+    /* Version INTEGER */
+    pkt[idx++] = ASN_INTEGER;
+    pkt[idx++] = 0x01;
+    pkt[idx++] = use_v2c ? 0x01 : 0x00;
 
-    /* Community */
+    /* Community OCTET STRING */
     pkt[idx++] = ASN_OCTET_STR;
     pkt[idx++] = comm_len;
     memcpy(&pkt[idx], community, comm_len);
     idx += comm_len;
 
-    /* PDU */
-    memcpy(&pkt[idx], pdu, pdu_idx);
-    idx += pdu_idx;
+    /* GetRequest PDU */
+    pkt[idx++] = ASN_GET_REQ;
+    idx += asn_write_length(&pkt[idx], pdu_content_len);
+
+    /* Request ID (INTEGER, 4 bytes) */
+    pkt[idx++] = ASN_INTEGER;
+    pkt[idx++] = 4;
+    pkt[idx++] = (uint8_t)(request_id >> 24);
+    pkt[idx++] = (uint8_t)(request_id >> 16);
+    pkt[idx++] = (uint8_t)(request_id >> 8);
+    pkt[idx++] = (uint8_t)(request_id);
+
+    /* Error status = 0 */
+    pkt[idx++] = ASN_INTEGER;
+    pkt[idx++] = 0x01;
+    pkt[idx++] = 0x00;
+
+    /* Error index = 0 */
+    pkt[idx++] = ASN_INTEGER;
+    pkt[idx++] = 0x01;
+    pkt[idx++] = 0x00;
+
+    /* Varbind list SEQUENCE */
+    pkt[idx++] = ASN_SEQUENCE;
+    idx += asn_write_length(&pkt[idx], vb_seq_len);
+
+    /* Varbind SEQUENCE */
+    pkt[idx++] = ASN_SEQUENCE;
+    idx += asn_write_length(&pkt[idx], varbind_len);
+
+    /* OID */
+    pkt[idx++] = ASN_OBJ_ID;
+    pkt[idx++] = oid_len;
+    memcpy(&pkt[idx], oid, oid_len);
+    idx += oid_len;
+
+    /* NULL value */
+    pkt[idx++] = ASN_NULL;
+    pkt[idx++] = 0x00;
 
     return idx;
 }

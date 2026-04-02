@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 /* History file storage path */
-#define HISTORY_DIR APP_DATA_PATH("")
+#define HISTORY_DIR APP_DATA_PATH("history")
 
 /* Max files to list (16 × 68 = 1088 bytes) */
 #define HISTORY_MAX_FILES 16

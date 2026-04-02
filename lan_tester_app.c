@@ -29,6 +29,7 @@
 #include "protocols/tftp_client.h"
 #include "protocols/ipmi_client.h"
 #include "protocols/radius_client.h"
+#include "protocols/http_download.h"
 #include "bridge/eth_bridge.h"
 #include "usb_eth/usb_eth.h"
 #include "utils/packet_utils.h"
@@ -287,6 +288,7 @@ static void lan_tester_do_vlan_hop(LanTesterApp* app);
 static void lan_tester_do_tftp_client(LanTesterApp* app);
 static void lan_tester_do_ipmi_client(LanTesterApp* app);
 static void lan_tester_do_radius_client(LanTesterApp* app);
+static void lan_tester_do_pxe_download(LanTesterApp* app);
 static uint32_t lan_tester_nav_back_security(void* context);
 static uint32_t lan_tester_nav_back_tool(void* context);
 static void lan_tester_history_populate(LanTesterApp* app);
@@ -1170,6 +1172,12 @@ static void pxe_settings_enter_callback(void* context, uint32_t index) {
     case 6: /* ? Help */
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPxeHelp);
         break;
+    case 7: /* Download Boot Files */
+        app->tool_back_view = LanTesterViewPxeSettings;
+        furi_string_set(app->tool_text, "[PXE Download]\nStarting...\n");
+        text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
+        lan_tester_worker_start(app, LanTesterMenuItemPxeDownload, LanTesterViewToolResult);
+        break;
     }
 }
 
@@ -1752,6 +1760,9 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* Index 6: Help */
     variable_item_list_add(app->pxe_settings_list, "? Help", 0, NULL, app);
 
+    /* Index 7: Download Boot Files */
+    variable_item_list_add(app->pxe_settings_list, "Download Files", 0, NULL, app);
+
     variable_item_list_set_enter_callback(
         app->pxe_settings_list, pxe_settings_enter_callback, app);
 
@@ -1855,12 +1866,13 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "Ethernet analyzer &\n"
         "security toolkit for\n"
         "Flipper Zero + W5500.\n"
-        "33 tools: scan, ping,\n"
+        "34 tools: scan, ping,\n"
         "SNMP, DHCP, LLDP/CDP,\n"
         "802.1X, VLAN, IPMI,\n"
         "RADIUS, TFTP, NTP,\n"
+        "PXE boot/download,\n"
         "rogue DHCP/RA detect.\n"
-        "v2.2.1 | by dok2d\n"
+        "v2.4.0 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
@@ -2303,6 +2315,10 @@ static int32_t lan_tester_worker_fn(void* context) {
     case LanTesterMenuItemPxeServer:
         lan_tester_do_pxe_server(app);
         break;
+    case LanTesterMenuItemPxeDownload:
+        lan_tester_do_pxe_download(app);
+        lan_tester_update_view(app->text_box_tool, app->tool_text);
+        break;
     case LanTesterMenuItemFileManager:
         lan_tester_do_file_manager(app);
         break;
@@ -2376,9 +2392,12 @@ static int32_t lan_tester_worker_fn(void* context) {
 static void lan_tester_worker_stop(LanTesterApp* app) {
     if(app->worker_thread) {
         app->worker_running = false;
-        /* Force-close file manager socket to unblock blocking send/recv */
+        /* Force-close sockets to unblock blocking send/recv */
         if(app->worker_op == LanTesterMenuItemFileManager) {
             close(FILEMGR_HTTP_SOCKET);
+        }
+        if(app->worker_op == LanTesterMenuItemPxeDownload) {
+            close(HTTP_CLIENT_SOCKET);
         }
         furi_thread_join(app->worker_thread);
         furi_thread_free(app->worker_thread);
@@ -2392,6 +2411,9 @@ static void lan_tester_worker_start(LanTesterApp* app, uint32_t op, LanTesterVie
         app->worker_running = false;
         if(app->worker_op == LanTesterMenuItemFileManager) {
             close(FILEMGR_HTTP_SOCKET);
+        }
+        if(app->worker_op == LanTesterMenuItemPxeDownload) {
+            close(HTTP_CLIENT_SOCKET);
         }
         if(furi_thread_get_state(app->worker_thread) == FuriThreadStateStopped) {
             furi_thread_join(app->worker_thread);
@@ -5396,7 +5418,7 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
             out,
             "[PXE] No boot file!\n"
             "Place .kpxe or .efi in:\n"
-            "%s/\n\n"
+            "%s/\n"
             "Recommended:\n"
             "undionly.kpxe from\n"
             "netboot.xyz (~70KB)\n",
@@ -5435,7 +5457,7 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
         "[PXE Server]\n"
         "IP: %d.%d.%d.%d\n"
         "DHCP: %s\n"
-        "Boot: %s (%lu B)\n\n"
+        "Boot: %s (%lu B)\n"
         "Waiting for client...\n",
         state.config.server_ip[0],
         state.config.server_ip[1],
@@ -5475,13 +5497,13 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
 
             switch(state.state) {
             case PxeStateIdle:
-                furi_string_cat(out, "\nWaiting for client...\n");
+                furi_string_cat(out, "Waiting for client...\n");
                 break;
             case PxeStateDhcpOfferSent:
             case PxeStateDhcpAckSent:
                 furi_string_cat_printf(
                     out,
-                    "\nClient: %02X:%02X:%02X:%02X:%02X:%02X\n"
+                    "Client: %02X:%02X:%02X:%02X:%02X:%02X\n"
                     "DHCP handshake...\n",
                     state.client_mac[0],
                     state.client_mac[1],
@@ -5501,7 +5523,7 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
                     bar[i + 1] = (i < filled) ? '#' : '.';
                 bar[21] = ']';
                 bar[22] = 0;
-                furi_string_cat_printf(out, "\n%s %d%%\n", bar, pct);
+                furi_string_cat_printf(out, "%s %d%%\n", bar, pct);
                 furi_string_cat_printf(
                     out,
                     "Blk %d/%d (%lu/%lu B)\n",
@@ -5514,12 +5536,12 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
             case PxeStateDone:
                 furi_string_cat_printf(
                     out,
-                    "\nCOMPLETE! %lu B in %lu blk\n",
+                    "COMPLETE! %lu B in %lu blk\n",
                     state.tftp.bytes_sent,
                     state.tftp_blocks_sent);
                 break;
             case PxeStateError:
-                furi_string_cat_printf(out, "\nERROR! Errs: %lu\n", state.tftp_errors);
+                furi_string_cat_printf(out, "ERROR! Errs: %lu\n", state.tftp_errors);
                 break;
             }
             lan_tester_update_view(app->text_box_tool, out);
@@ -6004,7 +6026,6 @@ static void lan_tester_do_file_manager(LanTesterApp* app) {
         "[File Manager] Running\n"
         "http://%d.%d.%d.%d/?t=%s\n"
         "Req:0 Tx:0 Rx:0\n"
-        "\n"
         "Press BACK to stop.",
         app->dhcp_ip[0],
         app->dhcp_ip[1],
@@ -6051,6 +6072,142 @@ static void lan_tester_do_file_manager(LanTesterApp* app) {
         (unsigned long)fm_state.requests_served,
         (unsigned long)fm_state.bytes_sent,
         (unsigned long)fm_state.bytes_received);
+    if(app->setting_sound) notification_message(app->notifications, &sequence_success);
+}
+
+/* ==================== PXE Boot File Download ==================== */
+
+/* Progress callback context */
+typedef struct {
+    LanTesterApp* app;
+    const char* filename;
+    size_t base_len; /* length of tool_text before "downloading..." line */
+} PxeDownloadCtx;
+
+static void pxe_download_progress_cb(uint32_t bytes_received, void* ctx) {
+    PxeDownloadCtx* pctx = ctx;
+    /* Truncate back to base text, then append progress line */
+    furi_string_left(pctx->app->tool_text, pctx->base_len);
+    if(bytes_received < 1024) {
+        furi_string_cat_printf(
+            pctx->app->tool_text, "%s: %lu B\n", pctx->filename, (unsigned long)bytes_received);
+    } else {
+        furi_string_cat_printf(
+            pctx->app->tool_text,
+            "%s: %lu KB\n",
+            pctx->filename,
+            (unsigned long)(bytes_received / 1024));
+    }
+    lan_tester_update_view(pctx->app->text_box_tool, pctx->app->tool_text);
+}
+
+static void lan_tester_do_pxe_download(LanTesterApp* app) {
+    FuriString* out = app->tool_text;
+    furi_string_reset(out);
+
+    /* Step 1: Init W5500 */
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(out, "[PXE Download] W5500 Not Found!\nCheck SPI wiring.\n");
+        return;
+    }
+
+    /* Step 2: Check link */
+    if(!w5500_hal_get_link_status()) {
+        furi_string_set(out, "[PXE Download] No LAN link!\nConnect Ethernet cable.\n");
+        return;
+    }
+
+    /* Step 3: Run DHCP */
+    furi_string_set(out, "[PXE Download]\nRunning DHCP...\n");
+    lan_tester_update_view(app->text_box_tool, out);
+
+    if(!lan_tester_ensure_dhcp(app)) {
+        furi_string_set(out, "[PXE Download]\nDHCP failed!\n");
+        return;
+    }
+
+    /* Step 4: Create pxe directory */
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    storage_simply_mkdir(storage, PXE_BOOT_DIR);
+    furi_record_close(RECORD_STORAGE);
+
+    /* Step 5: Download each boot file.
+     * EFI files are in arch-specific subdirectories on boot.ipxe.org. */
+    static const char* filenames[] = {"undionly.kpxe", "ipxe.efi", "snponly.efi"};
+    static const char* url_paths[] = {
+        "/undionly.kpxe",
+        "/x86_64-efi/ipxe.efi",
+        "/x86_64-efi/snponly.efi",
+    };
+    static const uint8_t file_count = 3;
+    uint8_t ok_count = 0;
+    uint8_t skip_count = 0;
+
+    furi_string_set(out, "[PXE Download]\n");
+    lan_tester_update_view(app->text_box_tool, out);
+
+    for(uint8_t i = 0; i < file_count && app->worker_running; i++) {
+        char save_path[128];
+        snprintf(save_path, sizeof(save_path), PXE_BOOT_DIR "/%s", filenames[i]);
+
+        /* Check if file already exists */
+        Storage* st = furi_record_open(RECORD_STORAGE);
+        bool exists = (storage_common_stat(st, save_path, NULL) == FSE_OK);
+        furi_record_close(RECORD_STORAGE);
+
+        if(exists) {
+            furi_string_cat_printf(out, "%s: exists\n", filenames[i]);
+            lan_tester_update_view(app->text_box_tool, out);
+            skip_count++;
+            continue;
+        }
+
+        /* Set up progress callback */
+        PxeDownloadCtx pctx = {
+            .app = app,
+            .filename = filenames[i],
+            .base_len = furi_string_size(out),
+        };
+        furi_string_cat_printf(out, "%s: connecting...\n", filenames[i]);
+        lan_tester_update_view(app->text_box_tool, out);
+
+        HttpDownloadResult result;
+        bool ok = http_download_file(
+            W5500_DNS_SOCKET,
+            HTTP_CLIENT_SOCKET,
+            app->dhcp_dns,
+            "boot.ipxe.org",
+            url_paths[i],
+            save_path,
+            app->frame_buf,
+            1024,
+            &result,
+            &app->worker_running,
+            pxe_download_progress_cb,
+            &pctx);
+
+        /* Replace progress line with final status */
+        furi_string_left(out, pctx.base_len);
+        if(ok) {
+            if(result.bytes_received < 1024) {
+                furi_string_cat_printf(
+                    out, "%s: OK %lu B\n", filenames[i], (unsigned long)result.bytes_received);
+            } else {
+                furi_string_cat_printf(
+                    out,
+                    "%s: OK %lu KB\n",
+                    filenames[i],
+                    (unsigned long)(result.bytes_received / 1024));
+            }
+            ok_count++;
+        } else {
+            furi_string_cat_printf(out, "%s: %s\n", filenames[i], result.error_msg);
+        }
+        lan_tester_update_view(app->text_box_tool, out);
+    }
+
+    furi_string_cat_printf(out, "Done: %d OK, %d skipped\n", ok_count, skip_count);
+
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 }
 
@@ -6717,8 +6874,6 @@ static void lan_tester_do_snmp_get(LanTesterApp* app) {
         return;
     }
 
-    furi_string_reset(app->tool_text);
-    furi_string_cat_printf(app->tool_text, "[SNMP] %s\n", ip_str);
     if(result.has_sys_name) furi_string_cat_printf(app->tool_text, "Name: %s\n", result.sys_name);
     if(result.has_sys_descr)
         furi_string_cat_printf(app->tool_text, "Desc: %s\n", result.sys_descr);

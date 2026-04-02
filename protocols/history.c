@@ -34,7 +34,7 @@ bool history_save(const char* type, const char* content) {
 
     File* file = storage_file_alloc(storage);
     char filepath[128];
-    snprintf(filepath, sizeof(filepath), APP_DATA_PATH("%s"), filename);
+    snprintf(filepath, sizeof(filepath), HISTORY_DIR "/%s", filename);
 
     bool ok = false;
     if(storage_file_open(file, filepath, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
@@ -119,7 +119,7 @@ bool history_read_file(const char* filename, char* out, uint16_t out_size) {
     File* file = storage_file_alloc(storage);
 
     char filepath[128];
-    snprintf(filepath, sizeof(filepath), APP_DATA_PATH("%s"), filename);
+    snprintf(filepath, sizeof(filepath), HISTORY_DIR "/%s", filename);
 
     bool ok = false;
     if(storage_file_open(file, filepath, FSAM_READ, FSOM_OPEN_EXISTING)) {
@@ -138,7 +138,7 @@ bool history_delete_file(const char* filename) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
 
     char filepath[128];
-    snprintf(filepath, sizeof(filepath), APP_DATA_PATH("%s"), filename);
+    snprintf(filepath, sizeof(filepath), HISTORY_DIR "/%s", filename);
 
     bool ok = storage_simply_remove(storage, filepath);
     furi_record_close(RECORD_STORAGE);

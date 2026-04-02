@@ -11,6 +11,78 @@
 #define TFTP_TIMEOUT_MS  5000
 #define TFTP_BLOCK_SIZE  512
 
+#define TFTP_HELP_PATH APP_DATA_PATH("tftp/help.txt")
+
+/* Write help.txt on first TFTP use. Text lives in flash (static const),
+ * file existence check is a single syscall — near-zero cost. */
+static void tftp_ensure_help_file(Storage* storage) {
+    if(storage_common_stat(storage, TFTP_HELP_PATH, NULL) == FSE_OK) return;
+
+    File* file = storage_file_alloc(storage);
+    if(storage_file_open(file, TFTP_HELP_PATH, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
+        static const char help[] =
+            "PXE Boot & TFTP — LAN Tester for Flipper Zero\n"
+            "\n"
+            "== PXE Server Setup ==\n"
+            "\n"
+            "1. Place boot file on SD card:\n"
+            "   /ext/apps_data/lan_tester/pxe/\n"
+            "\n"
+            "   Supported formats:\n"
+            "   .kpxe  — Legacy BIOS (PXE)\n"
+            "   .efi   — UEFI boot\n"
+            "   .pxe   — PXE bootstrap\n"
+            "   .0     — PXELinux\n"
+            "\n"
+            "   Recommended: undionly.kpxe (~70 KB)\n"
+            "   You can download boot files from PXE\n"
+            "   settings menu: Download Files.\n"
+            "\n"
+            "2. Connect W5500 SPI module to Flipper Zero\n"
+            "3. Connect RJ45 cable to target machine\n"
+            "4. Open LAN Tester > Utilities > PXE Server\n"
+            "\n"
+            "== PXE Modes ==\n"
+            "\n"
+            "DHCP ON (default):\n"
+            "  Flipper assigns IP to client and provides\n"
+            "  TFTP server address + boot filename via\n"
+            "  DHCP options 66/67. Use with direct cable.\n"
+            "\n"
+            "DHCP OFF (TFTP only):\n"
+            "  Flipper only serves files via TFTP.\n"
+            "  Use when external DHCP is available or\n"
+            "  target has a static IP configured.\n"
+            "\n"
+            "== Default Network ==\n"
+            "\n"
+            "Server IP:  192.168.77.1\n"
+            "Client IP:  192.168.77.10\n"
+            "Subnet:     255.255.255.0\n"
+            "All addresses are configurable in settings.\n"
+            "\n"
+            "== Target BIOS/UEFI ==\n"
+            "\n"
+            "Enable Network/PXE Boot in BIOS settings.\n"
+            "Set boot order to Network first.\n"
+            "\n"
+            "== TFTP Client ==\n"
+            "\n"
+            "Downloaded files are saved to this directory:\n"
+            "/ext/apps_data/lan_tester/tftp/\n"
+            "\n"
+            "== Links ==\n"
+            "\n"
+            "Project:  https://github.com/dok2d/fz-W5500-lan-analyse\n"
+            "iPXE:     https://boot.ipxe.org\n"
+            "netboot:  https://boot.netboot.xyz\n"
+            "W5500:    https://docs.wiznet.io/Product/iEthernet/W5500/overview\n";
+        storage_file_write(file, help, sizeof(help) - 1);
+        storage_file_close(file);
+    }
+    storage_file_free(file);
+}
+
 /* TFTP opcodes */
 #define TFTP_OP_RRQ   1
 #define TFTP_OP_DATA  3
@@ -77,6 +149,7 @@ bool tftp_client_get(
     /* Open file for writing */
     Storage* storage = furi_record_open(RECORD_STORAGE);
     storage_simply_mkdir(storage, APP_DATA_PATH("tftp"));
+    tftp_ensure_help_file(storage);
     File* file = storage_file_alloc(storage);
     if(!storage_file_open(file, save_path, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
         strncpy(result->error_msg, "Cannot create file", sizeof(result->error_msg));

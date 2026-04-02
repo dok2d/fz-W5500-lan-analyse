@@ -16,7 +16,7 @@
 
 /* Max single file/folder name */
 #define FM_NAME_MAX    64
-#define FM_MAX_ENTRIES 128 /* max directory entries to sort */
+#define FM_MAX_ENTRIES 48 /* max directory entries to sort (48×80≈3.8KB) */
 
 /* Directory entry for sorting */
 typedef struct {
@@ -356,7 +356,11 @@ static void
     uint16_t entry_count = 0;
 
     File* dir = storage_file_alloc(storage);
-    if(entries && storage_dir_open(dir, sd_path)) {
+    if(!entries) {
+        http_send_str(sn, "<tr><td colspan='3'>Not enough memory</td></tr>");
+    } else if(!storage_dir_open(dir, sd_path)) {
+        http_send_str(sn, "<tr><td colspan='3'>Failed to open directory</td></tr>");
+    } else {
         FileInfo info;
         char name[FM_NAME_MAX];
         while(storage_dir_read(dir, &info, name, sizeof(name)) && entry_count < FM_MAX_ENTRIES) {
@@ -370,7 +374,7 @@ static void
 
         /* Insertion sort: directories first, then alphabetical.
          * qsort is disabled in Flipper FAP SDK; insertion sort is
-         * fine for <=128 entries and uses no extra memory. */
+         * fine for <=48 entries and uses no extra memory. */
         for(uint16_t i = 1; i < entry_count; i++) {
             FmDirEntry tmp = entries[i];
             uint16_t j = i;
@@ -434,8 +438,6 @@ static void
                     "Del</a></td></tr>");
             }
         }
-    } else {
-        http_send_str(sn, "<tr><td colspan='3'>Failed to open directory</td></tr>");
     }
     storage_file_free(dir);
     if(entries) free(entries);
@@ -1152,14 +1154,14 @@ bool file_manager_start(FileManagerState* state) {
     strncpy(state->current_path, "/ext", sizeof(state->current_path));
     state->running = true;
 
-    /* Generate random 4-char hex auth token */
-    static const char hex[] = "0123456789abcdef";
-    uint8_t rnd[2];
-    furi_hal_random_fill_buf(rnd, 2);
-    state->auth_token[0] = hex[(rnd[0] >> 4) & 0x0F];
-    state->auth_token[1] = hex[rnd[0] & 0x0F];
-    state->auth_token[2] = hex[(rnd[1] >> 4) & 0x0F];
-    state->auth_token[3] = hex[rnd[1] & 0x0F];
+    /* Generate random 4-digit numeric auth token */
+    static const char digits[] = "0123456789";
+    uint8_t rnd[4];
+    furi_hal_random_fill_buf(rnd, 4);
+    state->auth_token[0] = digits[rnd[0] % 10];
+    state->auth_token[1] = digits[rnd[1] % 10];
+    state->auth_token[2] = digits[rnd[2] % 10];
+    state->auth_token[3] = digits[rnd[3] % 10];
     state->auth_token[4] = '\0';
     FURI_LOG_I(TAG, "File Manager token: %s", state->auth_token);
 
@@ -1186,19 +1188,22 @@ void file_manager_poll(FileManagerState* state, uint8_t* buf, uint16_t buf_size)
     switch(status) {
     case SOCK_ESTABLISHED:
         handle_connection(FILEMGR_HTTP_SOCKET, buf, buf_size, state);
-        /* Data already flushed inside handlers. Now close gracefully. */
+        /* Graceful close: FIN lets the browser read the full response.
+         * RST (close) would discard unread data in the browser's buffer. */
         disconnect(FILEMGR_HTTP_SOCKET);
-        /* Wait for disconnect to complete, then immediately re-listen
-         * so the next request (e.g. redirect follow) doesn't get refused */
+        /* Brief wait for FIN handshake (typically <5ms on LAN) */
         {
             uint32_t dstart = furi_get_tick();
-            while(furi_get_tick() - dstart < 2000) {
+            while(furi_get_tick() - dstart < 100) {
                 uint8_t dsr = getSn_SR(FILEMGR_HTTP_SOCKET);
                 if(dsr == SOCK_CLOSED) break;
-                furi_delay_ms(5);
+                furi_delay_ms(1);
             }
         }
-        /* Re-open and listen immediately */
+        /* Force close if FIN handshake didn't complete in time */
+        if(getSn_SR(FILEMGR_HTTP_SOCKET) != SOCK_CLOSED) {
+            close(FILEMGR_HTTP_SOCKET);
+        }
         socket(FILEMGR_HTTP_SOCKET, Sn_MR_TCP, FILEMGR_HTTP_PORT, 0);
         listen(FILEMGR_HTTP_SOCKET);
         break;
@@ -1216,6 +1221,11 @@ void file_manager_poll(FileManagerState* state, uint8_t* buf, uint16_t buf_size)
         break;
 
     default:
+        /* Socket stuck in transition (FIN_WAIT, TIME_WAIT, etc.)
+         * — force reset and re-listen */
+        close(FILEMGR_HTTP_SOCKET);
+        socket(FILEMGR_HTTP_SOCKET, Sn_MR_TCP, FILEMGR_HTTP_PORT, 0);
+        listen(FILEMGR_HTTP_SOCKET);
         break;
     }
 
