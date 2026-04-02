@@ -291,7 +291,6 @@ static uint32_t lan_tester_nav_back_security(void* context);
 static uint32_t lan_tester_nav_back_tool(void* context);
 static void lan_tester_history_populate(LanTesterApp* app);
 static void lan_tester_history_file_callback(void* context, uint32_t index);
-static void lan_tester_history_delete_callback(void* context, uint32_t index);
 static void lan_tester_mac_changer_input_callback(void* context);
 static void lan_tester_stop_worker_on_back(void);
 static void lan_tester_count_frame(LanTesterApp* app, const uint8_t* frame, uint16_t len);
@@ -912,14 +911,29 @@ static void settings_enter_callback(void* context, uint32_t index) {
             lan_tester_nav_back_settings);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
     } else if(index == LanTesterSettingsItemClearHistory) {
-        HistoryState* hs = malloc(sizeof(HistoryState));
-        if(hs) {
-            uint16_t count = history_list(hs);
-            for(uint16_t i = 0; i < count; i++) {
-                history_delete_file(hs->files[i].filename);
+        /* Delete all .txt files from history dir without loading full list into RAM */
+        Storage* storage = furi_record_open(RECORD_STORAGE);
+        File* dir = storage_file_alloc(storage);
+        char dir_path[128];
+        snprintf(dir_path, sizeof(dir_path), "%s", HISTORY_DIR);
+        size_t plen = strlen(dir_path);
+        if(plen > 1 && dir_path[plen - 1] == '/') dir_path[plen - 1] = '\0';
+        if(storage_dir_open(dir, dir_path)) {
+            FileInfo finfo;
+            char name[HISTORY_FILENAME_LEN];
+            char fpath[128];
+            while(storage_dir_read(dir, &finfo, name, sizeof(name))) {
+                if(finfo.flags & FSF_DIRECTORY) continue;
+                uint16_t nlen = strlen(name);
+                if(nlen > 4 && strcmp(&name[nlen - 4], ".txt") == 0) {
+                    snprintf(fpath, sizeof(fpath), APP_DATA_PATH("%s"), name);
+                    storage_simply_remove(storage, fpath);
+                }
             }
-            free(hs);
+            storage_dir_close(dir);
         }
+        storage_file_free(dir);
+        furi_record_close(RECORD_STORAGE);
         if(app->setting_sound) {
             notification_message(app->notifications, &sequence_success);
         }
@@ -4649,35 +4663,8 @@ static void lan_tester_history_populate(LanTesterApp* app) {
 
     for(uint16_t i = 0; i < count; i++) {
         HistoryEntry* e = &app->history_state->files[i];
-
-        /* Build display label via temp buffer to avoid restrict overlap */
-        char tmp[HISTORY_FILENAME_LEN];
-        if(strlen(e->filename) > 15 && e->filename[8] == '_') {
-            snprintf(
-                tmp,
-                sizeof(tmp),
-                "[%s] %.2s-%.2s %.2s:%.2s",
-                e->type,
-                e->filename + 4,
-                e->filename + 6,
-                e->filename + 9,
-                e->filename + 11);
-        } else {
-            snprintf(tmp, sizeof(tmp), "%s", e->filename);
-        }
-        memcpy(e->label, tmp, sizeof(e->label));
-
-        /* View entry */
+        /* Label already built by history_list() */
         submenu_add_item(app->submenu_history, e->label, i, lan_tester_history_file_callback, app);
-        /* Delete entry (index offset by HISTORY_MAX_FILES) */
-        char del_label[HISTORY_FILENAME_LEN];
-        snprintf(del_label, sizeof(del_label), "  DEL %s", e->label);
-        submenu_add_item(
-            app->submenu_history,
-            del_label,
-            HISTORY_MAX_FILES + i,
-            lan_tester_history_delete_callback,
-            app);
     }
 }
 
@@ -4691,35 +4678,20 @@ static void lan_tester_history_file_callback(void* context, uint32_t index) {
     app->tool_back_view = LanTesterViewHistory;
     const char* filename = app->history_state->files[index].filename;
 
-    char* buf = malloc(2048);
+    char* buf = malloc(1024);
     if(!buf) {
-        furi_string_set(app->tool_text, "Memory alloc failed!\n");
-    } else if(history_read_file(filename, buf, 2048)) {
+        furi_string_set(app->tool_text, "Out of memory!\n");
+    } else if(history_read_file(filename, buf, 1024)) {
         furi_string_set(app->tool_text, buf);
         free(buf);
     } else {
-        furi_string_printf(app->tool_text, "Failed to read:\n%s\n", filename);
+        furi_string_printf(app->tool_text, "Read failed: %s\n", filename);
         free(buf);
     }
 
     text_box_reset(app->text_box_tool);
     text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
     view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolResult);
-}
-
-static void lan_tester_history_delete_callback(void* context, uint32_t index) {
-    LanTesterApp* app = context;
-    furi_assert(app);
-
-    uint16_t file_idx = index - HISTORY_MAX_FILES;
-    if(!app->history_state || file_idx >= app->history_state->file_count) return;
-
-    const char* filename = app->history_state->files[file_idx].filename;
-    history_delete_file(filename);
-    if(app->setting_sound) notification_message(app->notifications, &sequence_success);
-
-    /* Refresh list */
-    lan_tester_history_populate(app);
 }
 
 /* ==================== Port Scanner ==================== */
