@@ -63,6 +63,33 @@ When adding features, update ALL of:
 - `lan_tester_app.c` About view (if version bumped)
 - `application.fam` (version, description)
 
+## Flipper Application Catalog Rules
+
+The app is published via [flipper-application-catalog](https://github.com/flipperdevices/flipper-application-catalog). The catalog CI validates `CHANGELOG.md` and `application.fam` — broken formatting blocks the release.
+
+### CHANGELOG.md — allowed Markdown subset
+- Headers `#` and `##` only (no `###` or deeper)
+- **Bold** and *italic*
+- Lists (bulleted)
+- Links (inline and automatic)
+- **Everything else is forbidden**: no backticks, no code blocks, no tables, no images, no blockquotes, no horizontal rules
+
+### application.fam
+- `fap_version` must be unique per submission (increment on every release)
+- `appid` must be globally unique across the catalog
+- `fap_category` must match a valid catalog category (e.g. `"GPIO"`)
+
+### Source repository requirements
+- App must build with `ufbt` against the latest Release or RC firmware
+- App icon: 10x10 px, 1-bit `.png` (`assets/icon.png`)
+- Screenshots: taken via qFlipper, original resolution, no edits
+- `README.md` must exist (shown on the app page in the catalog)
+
+### CI workflows (`.github/workflows/`)
+- `ci.yml` — runs on PR to `main`: version consistency check + `ufbt build` + `ufbt lint`
+- `release.yml` — runs on `v*.*.*` tag push: builds `.fap`, extracts release notes from `CHANGELOG.md`, creates GitHub Release
+- Both workflows parse `CHANGELOG.md` with `# X.Y.Z` header format (no brackets)
+
 ## Don't
 
 - Don't add `\n\n` to output — screen is tiny
