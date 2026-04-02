@@ -1,3 +1,23 @@
+# 2.4.0
+
+## Added
+- **PXE Download** — download iPXE and EFI boot files from the internet directly to SD card for PXE Server
+
+## Improved
+- File Manager auth token is now digits-only for easier entry on mobile devices
+- History files organized into a dedicated subdirectory
+- Cleaner output: removed unnecessary blank lines in PXE Server, File Manager, and PXE Download screens
+
+## Fixed
+- **File Manager** out-of-memory crash when browsing directories with many files
+- **File Manager** "Unable to connect" error after delete or redirect operations
+- **File Manager** disconnect race condition during HTTP downloads
+- **W5500 socket buffers** not powers of 2 — caused mDNS discovery failures
+- **PXE Download** hang on large files, missing progress display, broken Back button
+- **PXE Download** incorrect URLs for EFI boot files
+- **SNMP** stack overflow in packet builder (379 bytes on stack, limit 128)
+- **SNMP** redundant header output reset
+
 # 2.2.1
 
 ## Added

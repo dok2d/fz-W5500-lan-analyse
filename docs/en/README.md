@@ -46,6 +46,7 @@ Turn your **Flipper Zero + W5500** Ethernet module into a professional-grade por
 | RADIUS Test | Security | Access-Request with PAP/MD5, check Accept/Reject |
 | Wake-on-LAN | Utilities | Magic packet sender |
 | PXE Server | Utilities | Network boot server with DHCP + TFTP |
+| PXE Download | Utilities | Download iPXE/EFI boot files from the internet to SD card |
 | File Manager | Utilities | Web-based SD card manager via HTTP |
 | TFTP Client | Utilities | Download config files from network equipment |
 | IPMI Query | Utilities | BMC chassis status, device ID, firmware version |

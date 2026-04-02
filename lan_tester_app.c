@@ -1866,12 +1866,13 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "Ethernet analyzer &\n"
         "security toolkit for\n"
         "Flipper Zero + W5500.\n"
-        "33 tools: scan, ping,\n"
+        "34 tools: scan, ping,\n"
         "SNMP, DHCP, LLDP/CDP,\n"
         "802.1X, VLAN, IPMI,\n"
         "RADIUS, TFTP, NTP,\n"
+        "PXE boot/download,\n"
         "rogue DHCP/RA detect.\n"
-        "v2.2.1 | by dok2d\n"
+        "v2.4.0 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(

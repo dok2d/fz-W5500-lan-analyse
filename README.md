@@ -8,7 +8,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Build](https://img.shields.io/badge/build-ufbt-yellow)
-![Version](https://img.shields.io/badge/version-2.2.1-brightgreen)
+![Version](https://img.shields.io/badge/version-2.4.0-brightgreen)
 
 **[English docs](docs/en/README.md)** | **[Документация на русском](docs/ru/README.md)**
 
@@ -38,6 +38,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | **Packet Capture** | Standalone PCAP traffic dump — capture raw Ethernet frames to .pcap file on SD card |
 | **ETH Bridge** | USB-to-Ethernet bridge: phone/PC gets LAN access via Flipper (CDC-ECM), optional PCAP traffic dump to SD card |
 | **PXE Server** | Minimal PXE boot server with built-in DHCP + TFTP, boots .kpxe/.efi files from SD card |
+| **PXE Download** | Download iPXE and EFI boot files from the internet directly to SD card for PXE Server |
 | **File Manager** | Web-based file manager: browse, download, upload, delete files on microSD via HTTP from any browser on the LAN |
 | **SNMP GET** | Query device info via SNMPv1/v2c: sysName, sysDescr, sysUpTime, ifOperStatus |
 | **NTP Diagnostics** | NTP server analysis: stratum, root delay/dispersion, reference ID, RTT |
@@ -156,6 +157,9 @@ The compiled `.fap` file will appear in `dist/`. You can also copy it manually t
 │   ├── wol.c / .h              # Wake-on-LAN magic packet
 │   ├── ping_graph.c / .h       # Ring buffer RTT graph for continuous ping
 │   ├── mac_changer.c / .h      # Random/custom MAC with SD persistence
+│   ├── lldp.c / .h             # IEEE 802.1AB LLDP parser
+│   ├── cdp.c / .h              # Cisco Discovery Protocol parser
+│   ├── http_download.c / .h    # HTTP file downloader (for PXE boot files)
 │   ├── pxe_server.c / .h      # PXE boot server (DHCP + TFTP)
 │   ├── file_manager.c / .h    # Web-based SD card file manager (HTTP server)
 │   └── history.c / .h          # Timestamped result storage on SD card
@@ -286,6 +290,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 | **Wake-on-LAN** | Отправка magic-пакетов на любой MAC-адрес |
 | **ETH Bridge** | USB-Ethernet мост: телефон/ПК получает доступ в LAN через Flipper (CDC-ECM), опциональный PCAP-дамп трафика на SD |
 | **PXE Server** | Минимальный PXE-сервер с DHCP + TFTP, загрузка .kpxe/.efi файлов с SD-карты |
+| **PXE Download** | Скачивание iPXE и EFI boot-файлов из интернета на SD-карту для PXE Server |
 | **File Manager** | Веб-менеджер файлов: просмотр, скачивание, загрузка, удаление файлов на microSD через HTTP из любого браузера в сети |
 | **SNMP GET** | Запрос информации об устройстве по SNMPv1/v2c: sysName, sysDescr, sysUpTime, ifStatus |
 | **NTP Diagnostics** | Анализ NTP-сервера: stratum, root delay/dispersion, reference ID, RTT |
