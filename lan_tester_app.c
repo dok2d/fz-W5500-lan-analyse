@@ -29,6 +29,7 @@
 #include "protocols/tftp_client.h"
 #include "protocols/ipmi_client.h"
 #include "protocols/radius_client.h"
+#include "protocols/http_download.h"
 #include "bridge/eth_bridge.h"
 #include "usb_eth/usb_eth.h"
 #include "utils/packet_utils.h"
@@ -287,6 +288,7 @@ static void lan_tester_do_vlan_hop(LanTesterApp* app);
 static void lan_tester_do_tftp_client(LanTesterApp* app);
 static void lan_tester_do_ipmi_client(LanTesterApp* app);
 static void lan_tester_do_radius_client(LanTesterApp* app);
+static void lan_tester_do_pxe_download(LanTesterApp* app);
 static uint32_t lan_tester_nav_back_security(void* context);
 static uint32_t lan_tester_nav_back_tool(void* context);
 static void lan_tester_history_populate(LanTesterApp* app);
@@ -1170,6 +1172,12 @@ static void pxe_settings_enter_callback(void* context, uint32_t index) {
     case 6: /* ? Help */
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPxeHelp);
         break;
+    case 7: /* Download Boot Files */
+        app->tool_back_view = LanTesterViewPxeSettings;
+        furi_string_set(app->tool_text, "[PXE Download]\nStarting...\n");
+        text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
+        lan_tester_worker_start(app, LanTesterMenuItemPxeDownload, LanTesterViewToolResult);
+        break;
     }
 }
 
@@ -1752,6 +1760,9 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* Index 6: Help */
     variable_item_list_add(app->pxe_settings_list, "? Help", 0, NULL, app);
 
+    /* Index 7: Download Boot Files */
+    variable_item_list_add(app->pxe_settings_list, "Download Files", 0, NULL, app);
+
     variable_item_list_set_enter_callback(
         app->pxe_settings_list, pxe_settings_enter_callback, app);
 
@@ -2302,6 +2313,10 @@ static int32_t lan_tester_worker_fn(void* context) {
         break; /* Uses custom view, not TextBox */
     case LanTesterMenuItemPxeServer:
         lan_tester_do_pxe_server(app);
+        break;
+    case LanTesterMenuItemPxeDownload:
+        lan_tester_do_pxe_download(app);
+        lan_tester_update_view(app->text_box_tool, app->tool_text);
         break;
     case LanTesterMenuItemFileManager:
         lan_tester_do_file_manager(app);
@@ -6051,6 +6066,97 @@ static void lan_tester_do_file_manager(LanTesterApp* app) {
         (unsigned long)fm_state.requests_served,
         (unsigned long)fm_state.bytes_sent,
         (unsigned long)fm_state.bytes_received);
+    if(app->setting_sound) notification_message(app->notifications, &sequence_success);
+}
+
+/* ==================== PXE Boot File Download ==================== */
+
+static void lan_tester_do_pxe_download(LanTesterApp* app) {
+    FuriString* out = app->tool_text;
+    furi_string_reset(out);
+
+    /* Step 1: Init W5500 */
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(out, "[PXE Download] W5500 Not Found!\nCheck SPI wiring.\n");
+        return;
+    }
+
+    /* Step 2: Check link */
+    if(!w5500_hal_get_link_status()) {
+        furi_string_set(out, "[PXE Download] No LAN link!\nConnect Ethernet cable.\n");
+        return;
+    }
+
+    /* Step 3: Run DHCP */
+    furi_string_set(out, "[PXE Download]\nRunning DHCP...\n");
+    lan_tester_update_view(app->text_box_tool, out);
+
+    if(!lan_tester_ensure_dhcp(app)) {
+        furi_string_set(out, "[PXE Download]\nDHCP failed!\n");
+        return;
+    }
+
+    /* Step 4: Create pxe directory */
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    storage_simply_mkdir(storage, PXE_BOOT_DIR);
+    furi_record_close(RECORD_STORAGE);
+
+    /* Step 5: Download each boot file */
+    static const char* filenames[] = {"undionly.kpxe", "ipxe.efi", "snponly.efi"};
+    static const uint8_t file_count = 3;
+    uint8_t ok_count = 0;
+    uint8_t skip_count = 0;
+
+    furi_string_set(out, "[PXE Download]\n");
+    lan_tester_update_view(app->text_box_tool, out);
+
+    for(uint8_t i = 0; i < file_count && app->worker_running; i++) {
+        char save_path[128];
+        snprintf(save_path, sizeof(save_path), PXE_BOOT_DIR "/%s", filenames[i]);
+
+        /* Check if file already exists */
+        Storage* st = furi_record_open(RECORD_STORAGE);
+        bool exists = (storage_common_stat(st, save_path, NULL) == FSE_OK);
+        furi_record_close(RECORD_STORAGE);
+
+        if(exists) {
+            furi_string_cat_printf(out, "%s: exists\n", filenames[i]);
+            lan_tester_update_view(app->text_box_tool, out);
+            skip_count++;
+            continue;
+        }
+
+        furi_string_cat_printf(out, "%s: downloading...\n", filenames[i]);
+        lan_tester_update_view(app->text_box_tool, out);
+
+        char url_path[32];
+        snprintf(url_path, sizeof(url_path), "/%s", filenames[i]);
+
+        HttpDownloadResult result;
+        bool ok = http_download_file(
+            W5500_DNS_SOCKET,
+            HTTP_CLIENT_SOCKET,
+            app->dhcp_dns,
+            "boot.ipxe.org",
+            url_path,
+            save_path,
+            app->frame_buf,
+            1024,
+            &result,
+            &app->worker_running);
+
+        if(ok) {
+            furi_string_cat_printf(
+                out, "%s: OK (%lu B)\n", filenames[i], (unsigned long)result.bytes_received);
+            ok_count++;
+        } else {
+            furi_string_cat_printf(out, "%s: %s\n", filenames[i], result.error_msg);
+        }
+        lan_tester_update_view(app->text_box_tool, out);
+    }
+
+    furi_string_cat_printf(out, "\nDone: %d downloaded, %d skipped\n", ok_count, skip_count);
+
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 }
 

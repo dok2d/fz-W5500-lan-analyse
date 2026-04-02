@@ -88,6 +88,7 @@ typedef enum {
     LanTesterMenuItemTftpClient,
     LanTesterMenuItemIpmiClient,
     LanTesterMenuItemRadiusClient,
+    LanTesterMenuItemPxeDownload,
 } LanTesterMenuItem;
 
 /* Packet statistics counters */
