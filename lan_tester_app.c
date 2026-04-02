@@ -5417,7 +5417,7 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
             out,
             "[PXE] No boot file!\n"
             "Place .kpxe or .efi in:\n"
-            "%s/\n\n"
+            "%s/\n"
             "Recommended:\n"
             "undionly.kpxe from\n"
             "netboot.xyz (~70KB)\n",
@@ -5456,7 +5456,7 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
         "[PXE Server]\n"
         "IP: %d.%d.%d.%d\n"
         "DHCP: %s\n"
-        "Boot: %s (%lu B)\n\n"
+        "Boot: %s (%lu B)\n"
         "Waiting for client...\n",
         state.config.server_ip[0],
         state.config.server_ip[1],
@@ -5496,13 +5496,13 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
 
             switch(state.state) {
             case PxeStateIdle:
-                furi_string_cat(out, "\nWaiting for client...\n");
+                furi_string_cat(out, "Waiting for client...\n");
                 break;
             case PxeStateDhcpOfferSent:
             case PxeStateDhcpAckSent:
                 furi_string_cat_printf(
                     out,
-                    "\nClient: %02X:%02X:%02X:%02X:%02X:%02X\n"
+                    "Client: %02X:%02X:%02X:%02X:%02X:%02X\n"
                     "DHCP handshake...\n",
                     state.client_mac[0],
                     state.client_mac[1],
@@ -5522,7 +5522,7 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
                     bar[i + 1] = (i < filled) ? '#' : '.';
                 bar[21] = ']';
                 bar[22] = 0;
-                furi_string_cat_printf(out, "\n%s %d%%\n", bar, pct);
+                furi_string_cat_printf(out, "%s %d%%\n", bar, pct);
                 furi_string_cat_printf(
                     out,
                     "Blk %d/%d (%lu/%lu B)\n",
@@ -5535,12 +5535,12 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
             case PxeStateDone:
                 furi_string_cat_printf(
                     out,
-                    "\nCOMPLETE! %lu B in %lu blk\n",
+                    "COMPLETE! %lu B in %lu blk\n",
                     state.tftp.bytes_sent,
                     state.tftp_blocks_sent);
                 break;
             case PxeStateError:
-                furi_string_cat_printf(out, "\nERROR! Errs: %lu\n", state.tftp_errors);
+                furi_string_cat_printf(out, "ERROR! Errs: %lu\n", state.tftp_errors);
                 break;
             }
             lan_tester_update_view(app->text_box_tool, out);
