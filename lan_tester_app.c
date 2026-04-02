@@ -26,6 +26,9 @@
 #include "protocols/dhcp_fingerprint.h"
 #include "protocols/eapol_probe.h"
 #include "protocols/vlan_hop.h"
+#include "protocols/tftp_client.h"
+#include "protocols/ipmi_client.h"
+#include "protocols/radius_client.h"
 #include "bridge/eth_bridge.h"
 #include "usb_eth/usb_eth.h"
 #include "utils/packet_utils.h"
@@ -284,6 +287,9 @@ static void lan_tester_do_rogue_ra(LanTesterApp* app);
 static void lan_tester_do_dhcp_fingerprint(LanTesterApp* app);
 static void lan_tester_do_eapol_probe(LanTesterApp* app);
 static void lan_tester_do_vlan_hop(LanTesterApp* app);
+static void lan_tester_do_tftp_client(LanTesterApp* app);
+static void lan_tester_do_ipmi_client(LanTesterApp* app);
+static void lan_tester_do_radius_client(LanTesterApp* app);
 static uint32_t lan_tester_nav_back_security(void* context);
 static void lan_tester_history_populate(LanTesterApp* app);
 static void lan_tester_history_file_callback(void* context, uint32_t index);
@@ -1209,6 +1215,9 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->dhcp_fp_text = furi_string_alloc();
     app->eapol_text = furi_string_alloc();
     app->vlan_hop_text = furi_string_alloc();
+    app->tftp_text = furi_string_alloc();
+    app->ipmi_text = furi_string_alloc();
+    app->radius_text = furi_string_alloc();
     /* history_text removed — history now uses submenu */
     app->history_file_text = furi_string_alloc();
 
@@ -1419,6 +1428,18 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         LanTesterMenuItemFileManager,
         lan_tester_submenu_callback,
         app);
+    submenu_add_item(
+        app->submenu_cat_utilities,
+        "TFTP Client",
+        LanTesterMenuItemTftpClient,
+        lan_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_utilities,
+        "IPMI Query",
+        LanTesterMenuItemIpmiClient,
+        lan_tester_submenu_callback,
+        app);
     view_set_previous_callback(
         submenu_get_view(app->submenu_cat_utilities), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
@@ -1445,6 +1466,9 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         lan_tester_submenu_callback, app);
     submenu_add_item(
         app->submenu_cat_security, "VLAN Hopping", LanTesterMenuItemVlanHop,
+        lan_tester_submenu_callback, app);
+    submenu_add_item(
+        app->submenu_cat_security, "RADIUS Test", LanTesterMenuItemRadiusClient,
         lan_tester_submenu_callback, app);
     view_set_previous_callback(
         submenu_get_view(app->submenu_cat_security), lan_tester_navigation_submenu_callback);
@@ -1934,6 +1958,49 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewVlanHop, text_box_get_view(app->text_box_vlan_hop));
 
+    /* TFTP Client views */
+    app->text_box_tftp = text_box_alloc();
+    text_box_set_font(app->text_box_tftp, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_tftp), lan_tester_nav_back_utilities);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewTftpClient, text_box_get_view(app->text_box_tftp));
+    app->text_input_tftp = text_input_alloc();
+    view_set_previous_callback(
+        text_input_get_view(app->text_input_tftp), lan_tester_nav_back_utilities);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewTftpInput, text_input_get_view(app->text_input_tftp));
+    strncpy(app->tftp_ip_input, "192.168.1.1", sizeof(app->tftp_ip_input));
+    strncpy(app->tftp_filename_input, "config.cfg", sizeof(app->tftp_filename_input));
+
+    /* IPMI Client view */
+    app->text_box_ipmi = text_box_alloc();
+    text_box_set_font(app->text_box_ipmi, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_ipmi), lan_tester_nav_back_utilities);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewIpmiClient, text_box_get_view(app->text_box_ipmi));
+    strncpy(app->ipmi_ip_input, "192.168.1.1", sizeof(app->ipmi_ip_input));
+
+    /* RADIUS Client views */
+    app->text_box_radius = text_box_alloc();
+    text_box_set_font(app->text_box_radius, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_radius), lan_tester_nav_back_security);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewRadiusClient, text_box_get_view(app->text_box_radius));
+    app->text_input_radius = text_input_alloc();
+    view_set_previous_callback(
+        text_input_get_view(app->text_input_radius), lan_tester_nav_back_security);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewRadiusInput,
+        text_input_get_view(app->text_input_radius));
+    strncpy(app->radius_ip_input, "192.168.1.1", sizeof(app->radius_ip_input));
+    strncpy(app->radius_secret_input, "testing123", sizeof(app->radius_secret_input));
+    strncpy(app->radius_user_input, "test", sizeof(app->radius_user_input));
+    strncpy(app->radius_pass_input, "test", sizeof(app->radius_pass_input));
+    app->radius_input_step = 0;
+
     /* Auto Test defaults */
     strncpy(app->autotest_dns_host, "google.com", sizeof(app->autotest_dns_host));
     app->autotest_lldp_wait_s = 30;
@@ -2178,6 +2245,11 @@ static void lan_tester_app_free(LanTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatSecurity);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewEapolProbe);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewVlanHop);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewTftpClient);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewTftpInput);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewIpmiClient);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewRadiusClient);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewRadiusInput);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_portinfo);
@@ -2233,6 +2305,11 @@ static void lan_tester_app_free(LanTesterApp* app) {
     text_box_free(app->text_box_dhcp_fp);
     text_box_free(app->text_box_eapol);
     text_box_free(app->text_box_vlan_hop);
+    text_box_free(app->text_box_tftp);
+    text_input_free(app->text_input_tftp);
+    text_box_free(app->text_box_ipmi);
+    text_box_free(app->text_box_radius);
+    text_input_free(app->text_input_radius);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -2261,6 +2338,9 @@ static void lan_tester_app_free(LanTesterApp* app) {
     furi_string_free(app->dhcp_fp_text);
     furi_string_free(app->eapol_text);
     furi_string_free(app->vlan_hop_text);
+    furi_string_free(app->tftp_text);
+    furi_string_free(app->ipmi_text);
+    furi_string_free(app->radius_text);
     /* history_text removed — history now uses submenu */
     furi_string_free(app->history_file_text);
     furi_string_free(app->pxe_text);
@@ -2588,6 +2668,18 @@ static int32_t lan_tester_worker_fn(void* context) {
     case LanTesterMenuItemVlanHop:
         lan_tester_do_vlan_hop(app);
         lan_tester_update_view(app->text_box_vlan_hop, app->vlan_hop_text);
+        break;
+    case LanTesterMenuItemTftpClient:
+        lan_tester_do_tftp_client(app);
+        lan_tester_update_view(app->text_box_tftp, app->tftp_text);
+        break;
+    case LanTesterMenuItemIpmiClient:
+        lan_tester_do_ipmi_client(app);
+        lan_tester_update_view(app->text_box_ipmi, app->ipmi_text);
+        break;
+    case LanTesterMenuItemRadiusClient:
+        lan_tester_do_radius_client(app);
+        lan_tester_update_view(app->text_box_radius, app->radius_text);
         break;
     case LanTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
@@ -3083,6 +3175,90 @@ static void lan_tester_dns_poison_input_callback(void* context) {
     }
 }
 
+/* ==================== TFTP/IPMI/RADIUS input callbacks ==================== */
+
+static void lan_tester_tftp_filename_input_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    char save_path[128];
+    snprintf(save_path, sizeof(save_path), APP_DATA_PATH("tftp/%s"), app->tftp_filename_input);
+    lan_tester_show_view(
+        app, app->text_box_tftp, LanTesterViewTftpClient, app->tftp_text, "Downloading...\n");
+    lan_tester_worker_start(app, LanTesterMenuItemTftpClient, LanTesterViewTftpClient);
+}
+
+static void lan_tester_tftp_ip_input_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    if(lan_tester_parse_ip(app->tftp_ip_input, app->tftp_target)) {
+        /* Next: ask for filename */
+        text_input_reset(app->text_input_tftp);
+        text_input_set_header_text(app->text_input_tftp, "Remote filename:");
+        text_input_set_result_callback(
+            app->text_input_tftp, lan_tester_tftp_filename_input_callback, app,
+            app->tftp_filename_input, sizeof(app->tftp_filename_input), false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewTftpInput);
+    }
+}
+
+static void lan_tester_ipmi_ip_input_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    if(lan_tester_parse_ip(app->ipmi_ip_input, app->ipmi_target)) {
+        lan_tester_show_view(
+            app, app->text_box_ipmi, LanTesterViewIpmiClient, app->ipmi_text, "Querying IPMI...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemIpmiClient, LanTesterViewIpmiClient);
+    }
+}
+
+static void lan_tester_radius_step_callback(void* context);
+
+static void lan_tester_radius_ip_input_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    if(lan_tester_parse_ip(app->radius_ip_input, app->radius_target)) {
+        /* Next: ask for shared secret */
+        app->radius_input_step = 1;
+        text_input_reset(app->text_input_radius);
+        text_input_set_header_text(app->text_input_radius, "Shared secret:");
+        text_input_set_result_callback(
+            app->text_input_radius, lan_tester_radius_step_callback, app,
+            app->radius_secret_input, sizeof(app->radius_secret_input), false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewRadiusInput);
+    }
+}
+
+static void lan_tester_radius_step_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+
+    if(app->radius_input_step == 1) {
+        /* Ask for username */
+        app->radius_input_step = 2;
+        text_input_reset(app->text_input_radius);
+        text_input_set_header_text(app->text_input_radius, "Username:");
+        text_input_set_result_callback(
+            app->text_input_radius, lan_tester_radius_step_callback, app,
+            app->radius_user_input, sizeof(app->radius_user_input), false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewRadiusInput);
+    } else if(app->radius_input_step == 2) {
+        /* Ask for password */
+        app->radius_input_step = 3;
+        text_input_reset(app->text_input_radius);
+        text_input_set_header_text(app->text_input_radius, "Password:");
+        text_input_set_result_callback(
+            app->text_input_radius, lan_tester_radius_step_callback, app,
+            app->radius_pass_input, sizeof(app->radius_pass_input), false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewRadiusInput);
+    } else {
+        /* All inputs collected, run test */
+        lan_tester_show_view(
+            app, app->text_box_radius, LanTesterViewRadiusClient,
+            app->radius_text, "Testing RADIUS...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemRadiusClient, LanTesterViewRadiusClient);
+    }
+}
+
 /* ==================== Submenu callback ==================== */
 
 static void lan_tester_submenu_callback(void* context, uint32_t index) {
@@ -3502,6 +3678,44 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
             app, app->text_box_vlan_hop, LanTesterViewVlanHop,
             app->vlan_hop_text, "Testing VLAN isolation...\n");
         lan_tester_worker_start(app, LanTesterMenuItemVlanHop, LanTesterViewVlanHop);
+        break;
+
+    case LanTesterMenuItemTftpClient:
+        if(app->dhcp_valid) {
+            snprintf(
+                app->tftp_ip_input, sizeof(app->tftp_ip_input), "%d.%d.%d.%d",
+                app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+        }
+        ip_keyboard_setup(
+            app->ip_keyboard, "TFTP server IP:", app->tftp_ip_input, false,
+            lan_tester_tftp_ip_input_callback, app,
+            app->tftp_ip_input, sizeof(app->tftp_ip_input),
+            lan_tester_nav_back_utilities);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
+        break;
+
+    case LanTesterMenuItemIpmiClient:
+        if(app->dhcp_valid) {
+            snprintf(
+                app->ipmi_ip_input, sizeof(app->ipmi_ip_input), "%d.%d.%d.%d",
+                app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+        }
+        ip_keyboard_setup(
+            app->ip_keyboard, "BMC/IPMI IP:", app->ipmi_ip_input, false,
+            lan_tester_ipmi_ip_input_callback, app,
+            app->ipmi_ip_input, sizeof(app->ipmi_ip_input),
+            lan_tester_nav_back_utilities);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
+        break;
+
+    case LanTesterMenuItemRadiusClient:
+        app->radius_input_step = 0;
+        ip_keyboard_setup(
+            app->ip_keyboard, "RADIUS server IP:", app->radius_ip_input, false,
+            lan_tester_radius_ip_input_callback, app,
+            app->radius_ip_input, sizeof(app->radius_ip_input),
+            lan_tester_nav_back_security);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
 
     default:
@@ -6046,6 +6260,167 @@ static void lan_tester_do_file_manager(LanTesterApp* app) {
         (unsigned long)fm_state.bytes_sent,
         (unsigned long)fm_state.bytes_received);
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
+}
+
+/* ==================== TFTP Client ==================== */
+
+static void lan_tester_do_tftp_client(LanTesterApp* app) {
+    furi_string_reset(app->tftp_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->tftp_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    char ip_str[16];
+    snprintf(
+        ip_str, sizeof(ip_str), "%d.%d.%d.%d",
+        app->tftp_target[0], app->tftp_target[1],
+        app->tftp_target[2], app->tftp_target[3]);
+
+    furi_string_cat_printf(app->tftp_text, "[TFTP Client]\n\n");
+    furi_string_cat_printf(app->tftp_text, "Server: %s\n", ip_str);
+    furi_string_cat_printf(app->tftp_text, "File: %s\n\n", app->tftp_filename_input);
+    furi_string_cat(app->tftp_text, "Downloading...\n");
+    lan_tester_update_view(app->text_box_tftp, app->tftp_text);
+
+    char save_path[128];
+    snprintf(save_path, sizeof(save_path), APP_DATA_PATH("tftp/%s"), app->tftp_filename_input);
+
+    TftpClientResult result;
+    tftp_client_get(app->tftp_target, app->tftp_filename_input, save_path, &result, &app->worker_running);
+
+    if(result.success) {
+        furi_string_cat_printf(
+            app->tftp_text, "\nSuccess!\n%lu bytes, %d blocks\n",
+            (unsigned long)result.bytes_received, result.blocks_received);
+        if(result.saved_to_sd) {
+            furi_string_cat_printf(app->tftp_text, "\nSaved to:\n%s\n", result.save_path);
+        }
+    } else {
+        furi_string_cat_printf(
+            app->tftp_text, "\nFailed: %s\n", result.error_msg);
+        if(result.bytes_received > 0) {
+            furi_string_cat_printf(
+                app->tftp_text, "Partial: %lu bytes\n",
+                (unsigned long)result.bytes_received);
+        }
+    }
+
+    lan_tester_save_and_notify(app, "tftp.txt", app->tftp_text);
+}
+
+/* ==================== IPMI Client ==================== */
+
+static void lan_tester_do_ipmi_client(LanTesterApp* app) {
+    furi_string_reset(app->ipmi_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->ipmi_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    char ip_str[16];
+    snprintf(
+        ip_str, sizeof(ip_str), "%d.%d.%d.%d",
+        app->ipmi_target[0], app->ipmi_target[1],
+        app->ipmi_target[2], app->ipmi_target[3]);
+
+    furi_string_cat_printf(app->ipmi_text, "[IPMI v1.5] %s\n\n", ip_str);
+    lan_tester_update_view(app->text_box_ipmi, app->ipmi_text);
+
+    IpmiResult result;
+    ipmi_query(app->ipmi_target, &result);
+
+    if(!result.valid) {
+        furi_string_cat_printf(app->ipmi_text, "%s\n", result.error_msg);
+        furi_string_cat(app->ipmi_text, "Check BMC IP and\nnetwork connectivity.\n");
+        return;
+    }
+
+    if(result.chassis_ok) {
+        furi_string_cat(app->ipmi_text, "== Chassis Status ==\n");
+        furi_string_cat_printf(
+            app->ipmi_text, "Power: %s\n",
+            (result.power_state & IPMI_CHASSIS_POWER_ON) ? "ON" : "OFF");
+        if(result.power_state & IPMI_CHASSIS_OVERLOAD)
+            furi_string_cat(app->ipmi_text, "Overload detected!\n");
+        if(result.power_state & IPMI_CHASSIS_FAULT)
+            furi_string_cat(app->ipmi_text, "Power fault!\n");
+
+        const char* policy = "Unknown";
+        uint8_t pol = (result.power_state & IPMI_CHASSIS_POWER_POLICY) >> 5;
+        if(pol == 0) policy = "Stay off";
+        else if(pol == 1) policy = "Restore prev";
+        else if(pol == 2) policy = "Always on";
+        furi_string_cat_printf(app->ipmi_text, "Policy: %s\n\n", policy);
+    }
+
+    if(result.device_ok) {
+        furi_string_cat(app->ipmi_text, "== Device Info ==\n");
+        furi_string_cat_printf(
+            app->ipmi_text, "Device ID: 0x%02X\n", result.device_id);
+        furi_string_cat_printf(
+            app->ipmi_text, "Revision: %d\n", result.device_revision);
+        furi_string_cat_printf(
+            app->ipmi_text, "Firmware: %d.%02d\n",
+            result.firmware_major, result.firmware_minor);
+        furi_string_cat_printf(
+            app->ipmi_text, "IPMI ver: %d.%d\n",
+            result.ipmi_version >> 4, result.ipmi_version & 0x0F);
+    }
+
+    lan_tester_save_and_notify(app, "ipmi.txt", app->ipmi_text);
+}
+
+/* ==================== RADIUS Client ==================== */
+
+static void lan_tester_do_radius_client(LanTesterApp* app) {
+    furi_string_reset(app->radius_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->radius_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    char ip_str[16];
+    snprintf(
+        ip_str, sizeof(ip_str), "%d.%d.%d.%d",
+        app->radius_target[0], app->radius_target[1],
+        app->radius_target[2], app->radius_target[3]);
+
+    furi_string_cat_printf(app->radius_text, "[RADIUS Test]\n\n");
+    furi_string_cat_printf(app->radius_text, "Server: %s\n", ip_str);
+    furi_string_cat_printf(app->radius_text, "User: %s\n\n", app->radius_user_input);
+    furi_string_cat(app->radius_text, "Sending Access-Request...\n");
+    lan_tester_update_view(app->text_box_radius, app->radius_text);
+
+    RadiusResult result;
+    radius_test(
+        app->radius_target, app->radius_secret_input,
+        app->radius_user_input, app->radius_pass_input, &result);
+
+    furi_string_cat_printf(
+        app->radius_text, "\nResult: %s\n", result.status_str);
+
+    if(result.response_received) {
+        furi_string_cat_printf(
+            app->radius_text, "Code: %d\n", result.code);
+        furi_string_cat_printf(
+            app->radius_text, "Length: %d bytes\n", result.length);
+
+        if(result.code == 2) {
+            furi_string_cat(app->radius_text, "\nAuthentication OK!\n");
+        } else if(result.code == 3) {
+            furi_string_cat(app->radius_text, "\nAuthentication FAILED.\nBad credentials.\n");
+        } else if(result.code == 11) {
+            furi_string_cat(app->radius_text, "\nChallenge received.\n(Multi-factor auth)\n");
+        }
+    } else {
+        furi_string_cat(app->radius_text, "\nCheck server IP,\nport 1812, and\nshared secret.\n");
+    }
+
+    lan_tester_save_and_notify(app, "radius.txt", app->radius_text);
 }
 
 /* ==================== 802.1X EAPOL Probe ==================== */

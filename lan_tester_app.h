@@ -74,6 +74,11 @@ typedef enum {
     LanTesterViewCatSecurity,
     LanTesterViewEapolProbe,
     LanTesterViewVlanHop,
+    LanTesterViewTftpClient,
+    LanTesterViewTftpInput,
+    LanTesterViewIpmiClient,
+    LanTesterViewRadiusClient,
+    LanTesterViewRadiusInput,
     LanTesterViewCount,
 } LanTesterView;
 
@@ -113,6 +118,9 @@ typedef enum {
     LanTesterMenuItemDhcpFingerprint,
     LanTesterMenuItemEapolProbe,
     LanTesterMenuItemVlanHop,
+    LanTesterMenuItemTftpClient,
+    LanTesterMenuItemIpmiClient,
+    LanTesterMenuItemRadiusClient,
 } LanTesterMenuItem;
 
 /* Packet statistics counters */
@@ -381,6 +389,31 @@ struct LanTesterApp {
     /* VLAN Hopping Test state */
     TextBox* text_box_vlan_hop;
     FuriString* vlan_hop_text;
+
+    /* TFTP Client state */
+    TextBox* text_box_tftp;
+    FuriString* tftp_text;
+    uint8_t tftp_target[4];
+    char tftp_ip_input[16];
+    char tftp_filename_input[64];
+    TextInput* text_input_tftp;
+
+    /* IPMI Client state */
+    TextBox* text_box_ipmi;
+    FuriString* ipmi_text;
+    uint8_t ipmi_target[4];
+    char ipmi_ip_input[16];
+
+    /* RADIUS Client state */
+    TextBox* text_box_radius;
+    FuriString* radius_text;
+    uint8_t radius_target[4];
+    char radius_ip_input[16];
+    char radius_secret_input[32];
+    char radius_user_input[32];
+    char radius_pass_input[32];
+    TextInput* text_input_radius;
+    uint8_t radius_input_step; /* 0=IP, 1=secret, 2=user, 3=pass */
 
     /* Security category submenu */
     Submenu* submenu_cat_security;
