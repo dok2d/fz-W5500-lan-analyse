@@ -63,22 +63,9 @@ typedef enum {
     LanTesterViewHostList,
     LanTesterViewHostActions,
     LanTesterViewAutoTest,
-    LanTesterViewSnmpGet,
-    LanTesterViewNtpDiag,
-    LanTesterViewNetbiosQuery,
-    LanTesterViewDnsPoisonCheck,
-    LanTesterViewArpWatch,
-    LanTesterViewRogueDhcp,
-    LanTesterViewRogueRa,
-    LanTesterViewDhcpFingerprint,
     LanTesterViewCatSecurity,
-    LanTesterViewEapolProbe,
-    LanTesterViewVlanHop,
-    LanTesterViewTftpClient,
-    LanTesterViewTftpInput,
-    LanTesterViewIpmiClient,
-    LanTesterViewRadiusClient,
-    LanTesterViewRadiusInput,
+    LanTesterViewToolResult,  /* shared TextBox for all new analysis tools */
+    LanTesterViewToolInput,   /* shared TextInput for tool-specific text entry */
     LanTesterViewCount,
 } LanTesterView;
 
@@ -343,77 +330,31 @@ struct LanTesterApp {
     FuriString* stp_vlan_text;
     FuriString* history_file_text;
 
-    /* SNMP GET state */
-    TextBox* text_box_snmp;
-    FuriString* snmp_text;
+    /* Shared result view for all new analysis tools (memory-efficient) */
+    TextBox* text_box_tool;
+    FuriString* tool_text;
+    TextInput* text_input_tool;
+    LanTesterView tool_back_view; /* navigation target when pressing Back */
+
+    /* Tool input buffers (small, always allocated) */
     uint8_t snmp_target[4];
     char snmp_ip_input[16];
-
-    /* NTP Diagnostics state */
-    TextBox* text_box_ntp;
-    FuriString* ntp_text;
     uint8_t ntp_target[4];
     char ntp_ip_input[16];
-
-    /* NetBIOS Query state */
-    TextBox* text_box_netbios;
-    FuriString* netbios_text;
     uint8_t netbios_target[4];
     char netbios_ip_input[16];
-
-    /* DNS Poisoning Check state */
-    TextBox* text_box_dns_poison;
-    FuriString* dns_poison_text;
     char dns_poison_host_input[64];
-
-    /* ARP Watch state */
-    TextBox* text_box_arp_watch;
-    FuriString* arp_watch_text;
-
-    /* Rogue DHCP state */
-    TextBox* text_box_rogue_dhcp;
-    FuriString* rogue_dhcp_text;
-
-    /* Rogue RA state */
-    TextBox* text_box_rogue_ra;
-    FuriString* rogue_ra_text;
-
-    /* DHCP Fingerprint state */
-    TextBox* text_box_dhcp_fp;
-    FuriString* dhcp_fp_text;
-
-    /* 802.1X EAPOL Probe state */
-    TextBox* text_box_eapol;
-    FuriString* eapol_text;
-
-    /* VLAN Hopping Test state */
-    TextBox* text_box_vlan_hop;
-    FuriString* vlan_hop_text;
-
-    /* TFTP Client state */
-    TextBox* text_box_tftp;
-    FuriString* tftp_text;
     uint8_t tftp_target[4];
     char tftp_ip_input[16];
     char tftp_filename_input[64];
-    TextInput* text_input_tftp;
-
-    /* IPMI Client state */
-    TextBox* text_box_ipmi;
-    FuriString* ipmi_text;
     uint8_t ipmi_target[4];
     char ipmi_ip_input[16];
-
-    /* RADIUS Client state */
-    TextBox* text_box_radius;
-    FuriString* radius_text;
     uint8_t radius_target[4];
     char radius_ip_input[16];
     char radius_secret_input[32];
     char radius_user_input[32];
     char radius_pass_input[32];
-    TextInput* text_input_radius;
-    uint8_t radius_input_step; /* 0=IP, 1=secret, 2=user, 3=pass */
+    uint8_t radius_input_step;
 
     /* Security category submenu */
     Submenu* submenu_cat_security;
