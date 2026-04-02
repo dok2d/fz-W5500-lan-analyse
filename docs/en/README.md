@@ -4,7 +4,7 @@ Turn your **Flipper Zero + W5500** Ethernet module into a professional-grade por
 
 ## Key Highlights
 
-- 20+ network tools in a single Flipper Zero application
+- 33 network & security tools in a single Flipper Zero application
 - Works with any W5500-based SPI Ethernet board
 - No IP lease consumed during DHCP analysis (safe for production networks)
 - DHCP result cached once, reused everywhere -- no repeated 15-second waits
@@ -33,9 +33,22 @@ Turn your **Flipper Zero + W5500** Ethernet module into a professional-grade por
 | Packet Capture | Traffic | Standalone PCAP dump to SD card |
 | ETH Bridge | Traffic | USB-to-Ethernet bridge via CDC-ECM with PCAP recording |
 | Statistics | Traffic | Frame counters by type and EtherType (10s capture) |
+| SNMP GET | Port Info | Query sysName, sysDescr, sysUpTime, ifStatus (v1/v2c) |
+| NetBIOS Query | Scan | Discover Windows machine names and workgroups |
+| NTP Diagnostics | Diagnostics | Stratum, root delay, reference ID, RTT |
+| DNS Poison Check | Diagnostics | Compare local vs public DNS to detect poisoning |
+| ARP Watch | Security | Detect spoofing, duplicate IPs, ARP storms |
+| Rogue DHCP | Security | Find unauthorized DHCP servers |
+| Rogue RA (IPv6) | Security | Find unauthorized Router Advertisements |
+| DHCP Fingerprint | Security | Identify client OS by DHCP option 55 |
+| 802.1X Probe | Security | EAPOL-Start probe, detect port authentication |
+| VLAN Hopping | Security | Test VLAN isolation (Top 10 / Custom VLANs) |
+| RADIUS Test | Security | Access-Request with PAP/MD5, check Accept/Reject |
 | Wake-on-LAN | Utilities | Magic packet sender |
 | PXE Server | Utilities | Network boot server with DHCP + TFTP |
 | File Manager | Utilities | Web-based SD card manager via HTTP |
+| TFTP Client | Utilities | Download config files from network equipment |
+| IPMI Query | Utilities | BMC chassis status, device ID, firmware version |
 | History | -- | Timestamped auto-saved results, browsable and deletable |
 | Settings | -- | Auto-save, sound/vibro, custom DNS, ping config, MAC Changer, About |
 

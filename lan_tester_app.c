@@ -1764,15 +1764,16 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     text_box_set_font(app->text_box_about, TextBoxFontText);
     text_box_set_text(
         app->text_box_about,
-        "[LAN Tester]\n\n"
-        "Ethernet network analysis\n"
-        "tool for Flipper Zero\n"
-        "using W5500 SPI module.\n\n"
-        "Scan, ping, trace,\n"
-        "discover devices,\n"
-        "analyze DHCP/LLDP/CDP,\n"
-        "detect VLANs and STP.\n\n"
-        "v1.4.0 | by dok2d\n"
+        "[LAN Tester]\n"
+        "Ethernet analyzer &\n"
+        "security toolkit for\n"
+        "Flipper Zero + W5500.\n"
+        "33 tools: scan, ping,\n"
+        "SNMP, DHCP, LLDP/CDP,\n"
+        "802.1X, VLAN, IPMI,\n"
+        "RADIUS, TFTP, NTP,\n"
+        "rogue DHCP/RA detect.\n"
+        "v2.0.0 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
