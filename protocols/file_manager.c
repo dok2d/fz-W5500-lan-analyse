@@ -1188,12 +1188,22 @@ void file_manager_poll(FileManagerState* state, uint8_t* buf, uint16_t buf_size)
     switch(status) {
     case SOCK_ESTABLISHED:
         handle_connection(FILEMGR_HTTP_SOCKET, buf, buf_size, state);
-        /* Data already flushed inside handlers.
-         * Use close() (RST) instead of disconnect() (FIN) for instant
-         * socket recycling — prevents "Unable to connect" when the
-         * browser follows a redirect before the FIN handshake completes. */
-        close(FILEMGR_HTTP_SOCKET);
-        /* Re-open and listen immediately */
+        /* Graceful close: FIN lets the browser read the full response.
+         * RST (close) would discard unread data in the browser's buffer. */
+        disconnect(FILEMGR_HTTP_SOCKET);
+        /* Brief wait for FIN handshake (typically <5ms on LAN) */
+        {
+            uint32_t dstart = furi_get_tick();
+            while(furi_get_tick() - dstart < 100) {
+                uint8_t dsr = getSn_SR(FILEMGR_HTTP_SOCKET);
+                if(dsr == SOCK_CLOSED) break;
+                furi_delay_ms(1);
+            }
+        }
+        /* Force close if FIN handshake didn't complete in time */
+        if(getSn_SR(FILEMGR_HTTP_SOCKET) != SOCK_CLOSED) {
+            close(FILEMGR_HTTP_SOCKET);
+        }
         socket(FILEMGR_HTTP_SOCKET, Sn_MR_TCP, FILEMGR_HTTP_PORT, 0);
         listen(FILEMGR_HTTP_SOCKET);
         break;
@@ -1211,6 +1221,11 @@ void file_manager_poll(FileManagerState* state, uint8_t* buf, uint16_t buf_size)
         break;
 
     default:
+        /* Socket stuck in transition (FIN_WAIT, TIME_WAIT, etc.)
+         * — force reset and re-listen */
+        close(FILEMGR_HTTP_SOCKET);
+        socket(FILEMGR_HTTP_SOCKET, Sn_MR_TCP, FILEMGR_HTTP_PORT, 0);
+        listen(FILEMGR_HTTP_SOCKET);
         break;
     }
 
