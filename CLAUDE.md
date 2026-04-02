@@ -7,6 +7,7 @@ Flipper Zero LAN Tester — portable Ethernet analyzer & security toolkit using 
 ## Build & Verify
 
 ```bash
+pip install ufbt    # install ufbt if not available
 ufbt build          # must pass with zero warnings (treated as errors)
 ```
 
