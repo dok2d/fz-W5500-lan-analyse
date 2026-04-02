@@ -14,7 +14,7 @@
 
 #define HTTP_CONNECT_TIMEOUT_MS 10000
 #define HTTP_RECV_TIMEOUT_MS    15000
-#define HTTP_LOCAL_PORT         18080
+#define HTTP_PROGRESS_INTERVAL  500 /* ms between progress callbacks */
 
 /* Wait for previous send() to complete on W5500 */
 static bool http_dl_wait_send(uint8_t sn) {
@@ -65,7 +65,9 @@ bool http_download_file(
     uint8_t* buf,
     uint16_t buf_size,
     HttpDownloadResult* result,
-    volatile bool* running) {
+    volatile bool* running,
+    HttpProgressCb progress_cb,
+    void* progress_ctx) {
     memset(result, 0, sizeof(HttpDownloadResult));
 
     /* Step 1: DNS resolve */
@@ -84,9 +86,14 @@ bool http_download_file(
         dns_result.resolved_ip[2],
         dns_result.resolved_ip[3]);
 
-    /* Step 2: Open TCP socket */
+    /* Step 2: Open TCP socket — use dynamic local port to avoid
+     * port reuse issues between sequential downloads */
     close(http_socket);
-    if(socket(http_socket, Sn_MR_TCP, HTTP_LOCAL_PORT, 0) != http_socket) {
+    static uint16_t local_port = 18080;
+    local_port++;
+    if(local_port > 18999) local_port = 18080;
+
+    if(socket(http_socket, Sn_MR_TCP, local_port, 0) != http_socket) {
         strncpy(result->error_msg, "Socket open failed", sizeof(result->error_msg));
         return false;
     }
@@ -94,7 +101,7 @@ bool http_download_file(
     /* Step 3: TCP connect */
     int8_t cr = connect(http_socket, dns_result.resolved_ip, HTTP_PORT);
     if(cr != SOCK_OK) {
-        /* connect() returns immediately on W5500; poll for ESTABLISHED */
+        /* connect() may return immediately on W5500; poll for ESTABLISHED */
         uint32_t start = furi_get_tick();
         bool connected = false;
         while(furi_get_tick() - start < HTTP_CONNECT_TIMEOUT_MS && *running) {
@@ -119,7 +126,6 @@ bool http_download_file(
        !http_dl_send_str(http_socket, hostname) ||
        !http_dl_send_str(http_socket, "\r\nConnection: close\r\n\r\n")) {
         strncpy(result->error_msg, "Send request failed", sizeof(result->error_msg));
-        disconnect(http_socket);
         close(http_socket);
         return false;
     }
@@ -135,7 +141,6 @@ bool http_download_file(
     while(!headers_done && *running) {
         if(furi_get_tick() - idle_start > HTTP_RECV_TIMEOUT_MS) {
             strncpy(result->error_msg, "Header recv timeout", sizeof(result->error_msg));
-            disconnect(http_socket);
             close(http_socket);
             return false;
         }
@@ -146,7 +151,6 @@ bool http_download_file(
         int32_t space = (int32_t)buf_size - total - 1;
         if(space <= 0) {
             strncpy(result->error_msg, "Headers too large", sizeof(result->error_msg));
-            disconnect(http_socket);
             close(http_socket);
             return false;
         }
@@ -169,7 +173,6 @@ bool http_download_file(
                         sizeof(result->error_msg),
                         "HTTP %.3s error",
                         status + 1);
-                    disconnect(http_socket);
                     close(http_socket);
                     return false;
                 }
@@ -183,7 +186,6 @@ bool http_download_file(
     if(!headers_done) {
         if(result->error_msg[0] == '\0')
             strncpy(result->error_msg, "No HTTP response", sizeof(result->error_msg));
-        disconnect(http_socket);
         close(http_socket);
         return false;
     }
@@ -196,7 +198,6 @@ bool http_download_file(
         strncpy(result->error_msg, "Cannot create file", sizeof(result->error_msg));
         storage_file_free(file);
         furi_record_close(RECORD_STORAGE);
-        disconnect(http_socket);
         close(http_socket);
         return false;
     }
@@ -211,6 +212,7 @@ bool http_download_file(
 
     /* Step 7: Stream remaining body to file */
     idle_start = furi_get_tick();
+    uint32_t last_progress = furi_get_tick();
     while(*running) {
         uint8_t sr = getSn_SR(http_socket);
 
@@ -219,6 +221,12 @@ bool http_download_file(
             storage_file_write(file, buf, len);
             result->bytes_received += len;
             idle_start = furi_get_tick();
+
+            /* Periodic progress callback */
+            if(progress_cb && furi_get_tick() - last_progress >= HTTP_PROGRESS_INTERVAL) {
+                last_progress = furi_get_tick();
+                progress_cb(result->bytes_received, progress_ctx);
+            }
         } else {
             /* No data — check if connection closed (HTTP/1.0 signals EOF by close) */
             if(sr == SOCK_CLOSE_WAIT || sr == SOCK_CLOSED) break;
@@ -230,11 +238,15 @@ bool http_download_file(
         }
     }
 
+    /* Final progress callback */
+    if(progress_cb) {
+        progress_cb(result->bytes_received, progress_ctx);
+    }
+
     /* Cleanup */
     storage_file_close(file);
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
-    disconnect(http_socket);
     close(http_socket);
 
     if(result->bytes_received > 0 && result->error_msg[0] == '\0') {

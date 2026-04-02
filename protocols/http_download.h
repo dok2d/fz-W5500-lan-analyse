@@ -13,6 +13,11 @@ typedef struct {
     char error_msg[48];
 } HttpDownloadResult;
 
+/* Progress callback: called periodically during download.
+ * bytes_received: total bytes downloaded so far.
+ * ctx: opaque user context. */
+typedef void (*HttpProgressCb)(uint32_t bytes_received, void* ctx);
+
 /**
  * Download a file via HTTP GET and save to SD card.
  *
@@ -26,6 +31,8 @@ typedef struct {
  * @param buf_size     Size of buf (e.g. 1024)
  * @param result       Output result
  * @param running      Pointer to volatile bool (set false to cancel)
+ * @param progress_cb  Optional progress callback (NULL to skip)
+ * @param progress_ctx Context passed to progress_cb
  * @return true if file downloaded and saved successfully
  */
 bool http_download_file(
@@ -38,4 +45,6 @@ bool http_download_file(
     uint8_t* buf,
     uint16_t buf_size,
     HttpDownloadResult* result,
-    volatile bool* running);
+    volatile bool* running,
+    HttpProgressCb progress_cb,
+    void* progress_ctx);

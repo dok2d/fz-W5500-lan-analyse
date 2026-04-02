@@ -2391,9 +2391,12 @@ static int32_t lan_tester_worker_fn(void* context) {
 static void lan_tester_worker_stop(LanTesterApp* app) {
     if(app->worker_thread) {
         app->worker_running = false;
-        /* Force-close file manager socket to unblock blocking send/recv */
+        /* Force-close sockets to unblock blocking send/recv */
         if(app->worker_op == LanTesterMenuItemFileManager) {
             close(FILEMGR_HTTP_SOCKET);
+        }
+        if(app->worker_op == LanTesterMenuItemPxeDownload) {
+            close(HTTP_CLIENT_SOCKET);
         }
         furi_thread_join(app->worker_thread);
         furi_thread_free(app->worker_thread);
@@ -2407,6 +2410,9 @@ static void lan_tester_worker_start(LanTesterApp* app, uint32_t op, LanTesterVie
         app->worker_running = false;
         if(app->worker_op == LanTesterMenuItemFileManager) {
             close(FILEMGR_HTTP_SOCKET);
+        }
+        if(app->worker_op == LanTesterMenuItemPxeDownload) {
+            close(HTTP_CLIENT_SOCKET);
         }
         if(furi_thread_get_state(app->worker_thread) == FuriThreadStateStopped) {
             furi_thread_join(app->worker_thread);
@@ -6071,6 +6077,30 @@ static void lan_tester_do_file_manager(LanTesterApp* app) {
 
 /* ==================== PXE Boot File Download ==================== */
 
+/* Progress callback context */
+typedef struct {
+    LanTesterApp* app;
+    const char* filename;
+    size_t base_len; /* length of tool_text before "downloading..." line */
+} PxeDownloadCtx;
+
+static void pxe_download_progress_cb(uint32_t bytes_received, void* ctx) {
+    PxeDownloadCtx* pctx = ctx;
+    /* Truncate back to base text, then append progress line */
+    furi_string_left(pctx->app->tool_text, pctx->base_len);
+    if(bytes_received < 1024) {
+        furi_string_cat_printf(
+            pctx->app->tool_text, "%s: %lu B\n", pctx->filename, (unsigned long)bytes_received);
+    } else {
+        furi_string_cat_printf(
+            pctx->app->tool_text,
+            "%s: %lu KB\n",
+            pctx->filename,
+            (unsigned long)(bytes_received / 1024));
+    }
+    lan_tester_update_view(pctx->app->text_box_tool, pctx->app->tool_text);
+}
+
 static void lan_tester_do_pxe_download(LanTesterApp* app) {
     FuriString* out = app->tool_text;
     furi_string_reset(out);
@@ -6126,7 +6156,13 @@ static void lan_tester_do_pxe_download(LanTesterApp* app) {
             continue;
         }
 
-        furi_string_cat_printf(out, "%s: downloading...\n", filenames[i]);
+        /* Set up progress callback */
+        PxeDownloadCtx pctx = {
+            .app = app,
+            .filename = filenames[i],
+            .base_len = furi_string_size(out),
+        };
+        furi_string_cat_printf(out, "%s: connecting...\n", filenames[i]);
         lan_tester_update_view(app->text_box_tool, out);
 
         char url_path[32];
@@ -6143,11 +6179,23 @@ static void lan_tester_do_pxe_download(LanTesterApp* app) {
             app->frame_buf,
             1024,
             &result,
-            &app->worker_running);
+            &app->worker_running,
+            pxe_download_progress_cb,
+            &pctx);
 
+        /* Replace progress line with final status */
+        furi_string_left(out, pctx.base_len);
         if(ok) {
-            furi_string_cat_printf(
-                out, "%s: OK (%lu B)\n", filenames[i], (unsigned long)result.bytes_received);
+            if(result.bytes_received < 1024) {
+                furi_string_cat_printf(
+                    out, "%s: OK %lu B\n", filenames[i], (unsigned long)result.bytes_received);
+            } else {
+                furi_string_cat_printf(
+                    out,
+                    "%s: OK %lu KB\n",
+                    filenames[i],
+                    (unsigned long)(result.bytes_received / 1024));
+            }
             ok_count++;
         } else {
             furi_string_cat_printf(out, "%s: %s\n", filenames[i], result.error_msg);
@@ -6155,7 +6203,7 @@ static void lan_tester_do_pxe_download(LanTesterApp* app) {
         lan_tester_update_view(app->text_box_tool, out);
     }
 
-    furi_string_cat_printf(out, "\nDone: %d downloaded, %d skipped\n", ok_count, skip_count);
+    furi_string_cat_printf(out, "\nDone: %d OK, %d skipped\n", ok_count, skip_count);
 
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 }
