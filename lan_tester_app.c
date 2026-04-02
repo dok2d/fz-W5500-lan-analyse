@@ -3614,7 +3614,7 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
                         memcpy(host->ip, sender_ip, 4);
                         memcpy(host->mac, sender_mac, 6);
                         const char* vendor = oui_lookup(sender_mac);
-                        strncpy(host->vendor, vendor, sizeof(host->vendor) - 1);
+                        host->vendor = vendor;
                         host->responded = true;
                         scan->count++;
                     }
@@ -3650,8 +3650,7 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
                     ArpHost* host = &scan->hosts[scan->count];
                     memcpy(host->ip, sender_ip, 4);
                     memcpy(host->mac, sender_mac, 6);
-                    const char* vendor = oui_lookup(sender_mac);
-                    strncpy(host->vendor, vendor, sizeof(host->vendor) - 1);
+                    host->vendor = oui_lookup(sender_mac);
                     host->responded = true;
                     scan->count++;
                 }
