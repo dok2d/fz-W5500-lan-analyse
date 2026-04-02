@@ -6205,7 +6205,7 @@ static void lan_tester_do_pxe_download(LanTesterApp* app) {
         lan_tester_update_view(app->text_box_tool, out);
     }
 
-    furi_string_cat_printf(out, "\nDone: %d OK, %d skipped\n", ok_count, skip_count);
+    furi_string_cat_printf(out, "Done: %d OK, %d skipped\n", ok_count, skip_count);
 
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
 }
