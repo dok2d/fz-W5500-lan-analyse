@@ -2734,7 +2734,14 @@ static uint32_t lan_tester_nav_back_tool(void* context) {
         return LanTesterViewToolResult;
     }
     lan_tester_stop_worker_on_back();
-    return g_app ? g_app->tool_back_view : LanTesterViewMainMenu;
+    if(!g_app) return LanTesterViewMainMenu;
+
+    /* Returning to History list — repopulate since state was freed */
+    if(g_app->tool_back_view == LanTesterViewHistory) {
+        lan_tester_history_populate(g_app);
+    }
+
+    return g_app->tool_back_view;
 }
 
 /* ==================== SNMP/NTP/NetBIOS/DNS Poison input callbacks ==================== */
