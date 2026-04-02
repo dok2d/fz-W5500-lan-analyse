@@ -413,12 +413,16 @@ static bool bridge_input_callback(InputEvent* event, void* context) {
 /* ==================== Host List / Host Actions callbacks ==================== */
 
 /* Host action menu item indices */
-#define HOST_ACTION_PING          0
-#define HOST_ACTION_CONT_PING     1
-#define HOST_ACTION_TRACEROUTE    2
-#define HOST_ACTION_PORT_SCAN_20  3
-#define HOST_ACTION_PORT_SCAN_100 4
-#define HOST_ACTION_WOL           5
+#define HOST_ACTION_INFO          0
+#define HOST_ACTION_PING          1
+#define HOST_ACTION_CONT_PING     2
+#define HOST_ACTION_TRACEROUTE    3
+#define HOST_ACTION_PORT_SCAN_20  4
+#define HOST_ACTION_PORT_SCAN_100 5
+#define HOST_ACTION_NETBIOS       6
+#define HOST_ACTION_SNMP          7
+#define HOST_ACTION_IPMI          8
+#define HOST_ACTION_WOL           9
 
 static uint32_t lan_tester_nav_back_host_list(void* context) {
     UNUSED(context);
@@ -439,7 +443,26 @@ static void lan_tester_host_action_callback(void* context, uint32_t index) {
     snprintf(
         ip_str, sizeof(ip_str), "%d.%d.%d.%d", host->ip[0], host->ip[1], host->ip[2], host->ip[3]);
 
+    /* Back from tool result returns to host actions menu */
+    app->tool_back_view = LanTesterViewHostActions;
+
     switch(index) {
+    case HOST_ACTION_INFO: {
+        furi_string_reset(app->tool_text);
+        furi_string_cat_printf(app->tool_text, "Host Info\n\nIP: %s\n", ip_str);
+        if(host->has_mac) {
+            char mac_str[18];
+            pkt_format_mac(host->mac, mac_str);
+            furi_string_cat_printf(app->tool_text, "MAC: %s\n", mac_str);
+            const char* vendor = oui_lookup(host->mac);
+            furi_string_cat_printf(app->tool_text, "Vendor: %s\n", vendor);
+        } else {
+            furi_string_cat(app->tool_text, "MAC: unknown\n");
+        }
+        text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolResult);
+        break;
+    }
     case HOST_ACTION_PING:
         memcpy(app->ping_ip_custom, host->ip, 4);
         strncpy(app->ping_ip_input, ip_str, sizeof(app->ping_ip_input));
@@ -479,6 +502,31 @@ static void lan_tester_host_action_callback(void* context, uint32_t index) {
         text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
         lan_tester_worker_start(app, LanTesterMenuItemPortScan, LanTesterViewToolResult);
         break;
+    case HOST_ACTION_NETBIOS:
+        memcpy(app->netbios_target, host->ip, 4);
+        strncpy(app->netbios_ip_input, ip_str, sizeof(app->netbios_ip_input));
+        lan_tester_show_view(
+            app,
+            app->text_box_tool,
+            LanTesterViewToolResult,
+            app->tool_text,
+            "Querying NetBIOS...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemNetbiosQuery, LanTesterViewToolResult);
+        break;
+    case HOST_ACTION_SNMP:
+        memcpy(app->snmp_target, host->ip, 4);
+        strncpy(app->snmp_ip_input, ip_str, sizeof(app->snmp_ip_input));
+        lan_tester_show_view(
+            app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Querying SNMP...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemSnmpGet, LanTesterViewToolResult);
+        break;
+    case HOST_ACTION_IPMI:
+        memcpy(app->ipmi_target, host->ip, 4);
+        strncpy(app->ipmi_ip_input, ip_str, sizeof(app->ipmi_ip_input));
+        lan_tester_show_view(
+            app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Querying IPMI...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemIpmiClient, LanTesterViewToolResult);
+        break;
     case HOST_ACTION_WOL:
         if(host->has_mac) {
             memcpy(app->wol_mac_input, host->mac, 6);
@@ -506,6 +554,12 @@ static void lan_tester_host_list_callback(void* context, uint32_t index) {
     submenu_set_header(app->submenu_host_actions, ip_str);
 
     submenu_add_item(
+        app->submenu_host_actions,
+        "Host Info",
+        HOST_ACTION_INFO,
+        lan_tester_host_action_callback,
+        app);
+    submenu_add_item(
         app->submenu_host_actions, "Ping", HOST_ACTION_PING, lan_tester_host_action_callback, app);
     submenu_add_item(
         app->submenu_host_actions,
@@ -529,6 +583,24 @@ static void lan_tester_host_list_callback(void* context, uint32_t index) {
         app->submenu_host_actions,
         "Port Scan (Top 100)",
         HOST_ACTION_PORT_SCAN_100,
+        lan_tester_host_action_callback,
+        app);
+    submenu_add_item(
+        app->submenu_host_actions,
+        "NetBIOS Query",
+        HOST_ACTION_NETBIOS,
+        lan_tester_host_action_callback,
+        app);
+    submenu_add_item(
+        app->submenu_host_actions,
+        "SNMP GET",
+        HOST_ACTION_SNMP,
+        lan_tester_host_action_callback,
+        app);
+    submenu_add_item(
+        app->submenu_host_actions,
+        "IPMI Query",
+        HOST_ACTION_IPMI,
         lan_tester_host_action_callback,
         app);
 
@@ -1788,7 +1860,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "802.1X, VLAN, IPMI,\n"
         "RADIUS, TFTP, NTP,\n"
         "rogue DHCP/RA detect.\n"
-        "v2.0.0 | by dok2d\n"
+        "v2.2.1 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
@@ -3870,8 +3942,8 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
     /* Save results to SD card */
     lan_tester_save_and_notify(app, "arp_scan.txt", app->tool_text);
 
-    /* Show interactive host list if hosts were found */
-    if(app->discovered_host_count > 0 && app->worker_running) {
+    /* Show interactive host list if hosts were found (even if scan was interrupted) */
+    if(app->discovered_host_count > 0) {
         view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_SHOW_HOST_LIST);
     }
 }
@@ -4454,8 +4526,8 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app) {
     furi_string_free(results);
     lan_tester_save_and_notify(app, "ping_sweep.txt", app->tool_text);
 
-    /* Show interactive host list if hosts were found */
-    if(app->discovered_host_count > 0 && app->worker_running) {
+    /* Show interactive host list if hosts were found (even if scan was interrupted) */
+    if(app->discovered_host_count > 0) {
         view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_SHOW_HOST_LIST);
     }
 }

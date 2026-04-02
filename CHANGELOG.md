@@ -1,3 +1,16 @@
+# 2.2.1
+
+## Added
+- **Host Info** action — view IP, MAC, vendor for any discovered host
+- **NetBIOS Query** action — identify Windows machine names from host list
+- **SNMP GET** action — query device info directly from host list
+- **IPMI Query** action — check BMC status from host list
+
+## Improved
+- ARP scan rate reduced to ~4 pps to avoid triggering switch DAI/storm control
+- Back navigation from host actions returns to actions menu instead of scan category
+- Interrupted ARP scan / Ping Sweep now shows discovered hosts list
+
 # 2.0.0
 
 ## Improved
