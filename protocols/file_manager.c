@@ -16,7 +16,7 @@
 
 /* Max single file/folder name */
 #define FM_NAME_MAX    64
-#define FM_MAX_ENTRIES 128 /* max directory entries to sort */
+#define FM_MAX_ENTRIES 48 /* max directory entries to sort (48×80≈3.8KB) */
 
 /* Directory entry for sorting */
 typedef struct {
@@ -356,7 +356,11 @@ static void
     uint16_t entry_count = 0;
 
     File* dir = storage_file_alloc(storage);
-    if(entries && storage_dir_open(dir, sd_path)) {
+    if(!entries) {
+        http_send_str(sn, "<tr><td colspan='3'>Not enough memory</td></tr>");
+    } else if(!storage_dir_open(dir, sd_path)) {
+        http_send_str(sn, "<tr><td colspan='3'>Failed to open directory</td></tr>");
+    } else {
         FileInfo info;
         char name[FM_NAME_MAX];
         while(storage_dir_read(dir, &info, name, sizeof(name)) && entry_count < FM_MAX_ENTRIES) {
@@ -370,7 +374,7 @@ static void
 
         /* Insertion sort: directories first, then alphabetical.
          * qsort is disabled in Flipper FAP SDK; insertion sort is
-         * fine for <=128 entries and uses no extra memory. */
+         * fine for <=48 entries and uses no extra memory. */
         for(uint16_t i = 1; i < entry_count; i++) {
             FmDirEntry tmp = entries[i];
             uint16_t j = i;
@@ -434,8 +438,6 @@ static void
                     "Del</a></td></tr>");
             }
         }
-    } else {
-        http_send_str(sn, "<tr><td colspan='3'>Failed to open directory</td></tr>");
     }
     storage_file_free(dir);
     if(entries) free(entries);
