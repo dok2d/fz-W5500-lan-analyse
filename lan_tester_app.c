@@ -6025,7 +6025,6 @@ static void lan_tester_do_file_manager(LanTesterApp* app) {
         "[File Manager] Running\n"
         "http://%d.%d.%d.%d/?t=%s\n"
         "Req:0 Tx:0 Rx:0\n"
-        "\n"
         "Press BACK to stop.",
         app->dhcp_ip[0],
         app->dhcp_ip[1],
