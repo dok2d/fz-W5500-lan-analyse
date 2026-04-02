@@ -6873,8 +6873,6 @@ static void lan_tester_do_snmp_get(LanTesterApp* app) {
         return;
     }
 
-    furi_string_reset(app->tool_text);
-    furi_string_cat_printf(app->tool_text, "[SNMP] %s\n", ip_str);
     if(result.has_sys_name) furi_string_cat_printf(app->tool_text, "Name: %s\n", result.sys_name);
     if(result.has_sys_descr)
         furi_string_cat_printf(app->tool_text, "Desc: %s\n", result.sys_descr);
