@@ -9,6 +9,7 @@
 #define RADIUS_PORT       1812
 #define RADIUS_LOCAL_PORT 18120
 #define RADIUS_TIMEOUT_MS 5000
+#define RADIUS_PKT_SIZE   300
 
 /* RADIUS codes */
 #define RADIUS_ACCESS_REQUEST   1
@@ -257,7 +258,7 @@ bool radius_test(
     }
 
     /* Build Access-Request */
-    uint8_t* pkt = malloc(300);
+    uint8_t* pkt = malloc(RADIUS_PKT_SIZE);
     if(!pkt) {
         strncpy(result->status_str, "Memory failed", sizeof(result->status_str));
         close(RADIUS_SOCK);
@@ -324,7 +325,7 @@ bool radius_test(
         if(rx_len > 0) {
             uint8_t from_ip[4];
             uint16_t from_port;
-            int32_t recv_len = recvfrom(RADIUS_SOCK, pkt, sizeof(pkt), from_ip, &from_port);
+            int32_t recv_len = recvfrom(RADIUS_SOCK, pkt, RADIUS_PKT_SIZE, from_ip, &from_port);
             if(recv_len >= 20) {
                 result->code = pkt[0];
                 result->identifier = pkt[1];

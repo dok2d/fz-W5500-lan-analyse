@@ -1,4 +1,5 @@
 #include "netbios_query.h"
+#include "../utils/packet_utils.h"
 #include <furi.h>
 #include <socket.h>
 #include <string.h>
@@ -13,15 +14,6 @@
 #define NB_SUFFIX_DOMAIN      0x00 /* group */
 #define NB_SUFFIX_SERVER      0x20
 
-static uint16_t read_u16_be(const uint8_t* p) {
-    return ((uint16_t)p[0] << 8) | p[1];
-}
-
-static void write_u16_be(uint8_t* p, uint16_t v) {
-    p[0] = (uint8_t)(v >> 8);
-    p[1] = (uint8_t)(v);
-}
-
 /**
  * Build NetBIOS Node Status Request.
  * Query name "*" (wildcard) to get all registered names.
@@ -31,17 +23,17 @@ static uint16_t nbns_build_node_status(uint8_t* pkt, uint16_t pkt_size, uint16_t
     uint16_t idx = 0;
 
     /* Header (12 bytes) */
-    write_u16_be(&pkt[idx], txn_id);
+    pkt_write_u16_be(&pkt[idx], txn_id);
     idx += 2;
-    write_u16_be(&pkt[idx], 0x0000); /* flags: query, opcode=0 */
+    pkt_write_u16_be(&pkt[idx], 0x0000); /* flags: query, opcode=0 */
     idx += 2;
-    write_u16_be(&pkt[idx], 1); /* QDCOUNT = 1 */
+    pkt_write_u16_be(&pkt[idx], 1); /* QDCOUNT = 1 */
     idx += 2;
-    write_u16_be(&pkt[idx], 0); /* ANCOUNT */
+    pkt_write_u16_be(&pkt[idx], 0); /* ANCOUNT */
     idx += 2;
-    write_u16_be(&pkt[idx], 0); /* NSCOUNT */
+    pkt_write_u16_be(&pkt[idx], 0); /* NSCOUNT */
     idx += 2;
-    write_u16_be(&pkt[idx], 0); /* ARCOUNT */
+    pkt_write_u16_be(&pkt[idx], 0); /* ARCOUNT */
     idx += 2;
 
     /* Question: encoded name "*" (wildcard) */
@@ -63,10 +55,10 @@ static uint16_t nbns_build_node_status(uint8_t* pkt, uint16_t pkt_size, uint16_t
     pkt[idx++] = 0x00; /* end of name */
 
     /* QTYPE = NBSTAT (0x0021) */
-    write_u16_be(&pkt[idx], 0x0021);
+    pkt_write_u16_be(&pkt[idx], 0x0021);
     idx += 2;
     /* QCLASS = IN (0x0001) */
-    write_u16_be(&pkt[idx], 0x0001);
+    pkt_write_u16_be(&pkt[idx], 0x0001);
     idx += 2;
 
     return idx;
@@ -83,11 +75,11 @@ static void nbns_parse_response(
     if(len < 12) return;
 
     /* Check transaction ID */
-    uint16_t resp_txn = read_u16_be(&buf[0]);
+    uint16_t resp_txn = pkt_read_u16_be(&buf[0]);
     if(resp_txn != txn_id) return;
 
     /* Check flags: response bit set */
-    uint16_t flags = read_u16_be(&buf[2]);
+    uint16_t flags = pkt_read_u16_be(&buf[2]);
     if(!(flags & 0x8000)) return; /* not a response */
 
     /* Skip header (12 bytes) */
@@ -121,7 +113,7 @@ static void nbns_parse_response(
     /* TYPE (2) + CLASS (2) + TTL (4) + RDLENGTH (2) = 10 bytes */
     if(idx + 10 > len) return;
     idx += 8; /* skip TYPE + CLASS + TTL */
-    uint16_t rdlength = read_u16_be(&buf[idx]);
+    uint16_t rdlength = pkt_read_u16_be(&buf[idx]);
     idx += 2;
 
     if(idx + rdlength > len) return;
@@ -152,7 +144,7 @@ static void nbns_parse_response(
         idx += 16;
 
         /* Flags */
-        n->flags = read_u16_be(&buf[idx]);
+        n->flags = pkt_read_u16_be(&buf[idx]);
         idx += 2;
         n->is_group = (n->flags & 0x8000) != 0;
 

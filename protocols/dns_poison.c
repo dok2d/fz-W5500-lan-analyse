@@ -1,4 +1,5 @@
 #include "dns_poison.h"
+#include "../utils/packet_utils.h"
 #include <furi.h>
 #include <socket.h>
 #include <string.h>
@@ -7,15 +8,6 @@
 #define DNS_PORT       53
 #define DNS_LOCAL_PORT 15300
 #define DNS_TIMEOUT_MS 3000
-
-static uint16_t read_u16_be(const uint8_t* p) {
-    return ((uint16_t)p[0] << 8) | p[1];
-}
-
-static void write_u16_be(uint8_t* p, uint16_t v) {
-    p[0] = (uint8_t)(v >> 8);
-    p[1] = (uint8_t)(v);
-}
 
 /**
  * Build a minimal DNS A-record query.
@@ -27,17 +19,17 @@ static uint16_t
 
     /* Header */
     if(pkt_size < 64) return 0;
-    write_u16_be(&pkt[idx], txn_id);
+    pkt_write_u16_be(&pkt[idx], txn_id);
     idx += 2;
-    write_u16_be(&pkt[idx], 0x0100); /* flags: standard query, RD=1 */
+    pkt_write_u16_be(&pkt[idx], 0x0100); /* flags: standard query, RD=1 */
     idx += 2;
-    write_u16_be(&pkt[idx], 1); /* QDCOUNT */
+    pkt_write_u16_be(&pkt[idx], 1); /* QDCOUNT */
     idx += 2;
-    write_u16_be(&pkt[idx], 0); /* ANCOUNT */
+    pkt_write_u16_be(&pkt[idx], 0); /* ANCOUNT */
     idx += 2;
-    write_u16_be(&pkt[idx], 0); /* NSCOUNT */
+    pkt_write_u16_be(&pkt[idx], 0); /* NSCOUNT */
     idx += 2;
-    write_u16_be(&pkt[idx], 0); /* ARCOUNT */
+    pkt_write_u16_be(&pkt[idx], 0); /* ARCOUNT */
     idx += 2;
 
     /* Question: encode hostname as labels */
@@ -59,9 +51,9 @@ static uint16_t
     }
     pkt[idx++] = 0x00; /* end of name */
 
-    write_u16_be(&pkt[idx], 0x0001); /* QTYPE = A */
+    pkt_write_u16_be(&pkt[idx], 0x0001); /* QTYPE = A */
     idx += 2;
-    write_u16_be(&pkt[idx], 0x0001); /* QCLASS = IN */
+    pkt_write_u16_be(&pkt[idx], 0x0001); /* QCLASS = IN */
     idx += 2;
 
     return idx;
@@ -79,17 +71,17 @@ static uint8_t dns_parse_response(
     if(len < 12) return 0;
 
     /* Verify transaction ID */
-    if(read_u16_be(&buf[0]) != txn_id) return 0;
+    if(pkt_read_u16_be(&buf[0]) != txn_id) return 0;
 
     /* Check response flag */
-    uint16_t flags = read_u16_be(&buf[2]);
+    uint16_t flags = pkt_read_u16_be(&buf[2]);
     if(!(flags & 0x8000)) return 0;
 
     /* Check RCODE */
     if((flags & 0x000F) != 0) return 0;
 
-    uint16_t qdcount = read_u16_be(&buf[4]);
-    uint16_t ancount = read_u16_be(&buf[6]);
+    uint16_t qdcount = pkt_read_u16_be(&buf[4]);
+    uint16_t ancount = pkt_read_u16_be(&buf[6]);
 
     /* Skip question section */
     uint16_t idx = 12;
@@ -129,11 +121,11 @@ static uint8_t dns_parse_response(
     name_done:
 
         if(idx + 10 > len) break;
-        uint16_t rtype = read_u16_be(&buf[idx]);
+        uint16_t rtype = pkt_read_u16_be(&buf[idx]);
         idx += 2;
         idx += 2; /* RCLASS */
         idx += 4; /* TTL */
-        uint16_t rdlength = read_u16_be(&buf[idx]);
+        uint16_t rdlength = pkt_read_u16_be(&buf[idx]);
         idx += 2;
 
         if(rtype == 0x0001 && rdlength == 4 && idx + 4 <= len) {

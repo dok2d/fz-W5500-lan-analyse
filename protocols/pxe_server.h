@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dhcp_discover.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <storage/storage.h>
@@ -30,17 +31,6 @@
 #define TFTP_ERR_NOT_FOUND 1
 #define TFTP_ERR_ACCESS    2
 #define TFTP_ERR_ILLEGAL   4
-
-/* DHCP constants */
-#define DHCP_SERVER_PORT  67
-#define DHCP_CLIENT_PORT  68
-#define DHCP_MAGIC_COOKIE 0x63825363
-
-/* DHCP message types (Option 53) */
-#define DHCP_DISCOVER 1
-#define DHCP_OFFER    2
-#define DHCP_REQUEST  3
-#define DHCP_ACK      5
 
 /* Timeout / retry */
 #define TFTP_TIMEOUT_MS  3000

@@ -1,4 +1,5 @@
 #include "ntp_diag.h"
+#include "../utils/packet_utils.h"
 #include <furi.h>
 #include <socket.h>
 #include <string.h>
@@ -15,17 +16,6 @@ typedef struct {
     uint32_t seconds;
     uint32_t fraction;
 } NtpTimestamp;
-
-static uint32_t read_u32_be(const uint8_t* p) {
-    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
-}
-
-static void write_u32_be(uint8_t* p, uint32_t v) {
-    p[0] = (uint8_t)(v >> 24);
-    p[1] = (uint8_t)(v >> 16);
-    p[2] = (uint8_t)(v >> 8);
-    p[3] = (uint8_t)(v);
-}
 
 /* Stratum description */
 static void stratum_to_name(uint8_t stratum, char* buf, uint8_t buf_size) {
@@ -80,7 +70,7 @@ bool ntp_diag_query(const uint8_t server_ip[4], NtpDiagResult* result) {
     uint32_t t1_tick = furi_get_tick();
 
     /* Write a simple transmit timestamp for correlation */
-    write_u32_be(&pkt[40], t1_tick); /* xmt seconds (arbitrary, for matching) */
+    pkt_write_u32_be(&pkt[40], t1_tick); /* xmt seconds (arbitrary, for matching) */
 
     if(sendto(NTP_SOCK, pkt, NTP_PKT_SIZE, (uint8_t*)server_ip, NTP_PORT) <= 0) {
         close(NTP_SOCK);
@@ -107,9 +97,9 @@ bool ntp_diag_query(const uint8_t server_ip[4], NtpDiagResult* result) {
                 result->stratum = pkt[1];
                 result->poll = (int8_t)pkt[2];
                 result->precision = (int8_t)pkt[3];
-                result->root_delay = read_u32_be(&pkt[4]);
-                result->root_disp = read_u32_be(&pkt[8]);
-                result->ref_id = read_u32_be(&pkt[12]);
+                result->root_delay = pkt_read_u32_be(&pkt[4]);
+                result->root_disp = pkt_read_u32_be(&pkt[8]);
+                result->ref_id = pkt_read_u32_be(&pkt[12]);
 
                 /* RTT in microseconds (approximate from tick ms) */
                 uint32_t rtt_ms = t4_tick - t1_tick;

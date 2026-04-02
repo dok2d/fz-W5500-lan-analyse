@@ -1,4 +1,5 @@
 #include "rogue_dhcp.h"
+#include "dhcp_discover.h"
 #include "../utils/packet_utils.h"
 
 #include <furi.h>
@@ -6,14 +7,8 @@
 #include <socket.h>
 #include <string.h>
 
-#define DHCP_SOCK         1
-#define DHCP_SERVER_PORT  67
-#define DHCP_CLIENT_PORT  68
-#define DHCP_MAGIC_COOKIE 0x63825363
-
-/* DHCP message types */
-#define DHCP_DISCOVER 1
-#define DHCP_OFFER    2
+#define DHCP_SOCK           1
+#define ROGUE_DHCP_PKT_SIZE 512
 
 /**
  * Build a DHCP Discover packet for rogue detection.
@@ -43,7 +38,7 @@ static uint16_t
     /* Option 53: DHCP Message Type = Discover */
     pkt[idx++] = 53;
     pkt[idx++] = 1;
-    pkt[idx++] = DHCP_DISCOVER;
+    pkt[idx++] = DHCP_MSG_DISCOVER;
 
     /* Option 55: Parameter Request List */
     pkt[idx++] = 55;
@@ -98,7 +93,7 @@ static bool parse_offer(const uint8_t* pkt, uint16_t len, uint32_t xid, RogueDhc
 
         switch(opt) {
         case 53: /* Message Type */
-            if(opt_len >= 1 && pkt[idx] == DHCP_OFFER) is_offer = true;
+            if(opt_len >= 1 && pkt[idx] == DHCP_MSG_OFFER) is_offer = true;
             break;
         case 54: /* Server Identifier */
             if(opt_len >= 4) memcpy(server->server_ip, &pkt[idx], 4);
@@ -154,13 +149,13 @@ bool rogue_dhcp_detect(const uint8_t our_mac[6], RogueDhcpState* state, uint32_t
     uint32_t xid;
     furi_hal_random_fill_buf((uint8_t*)&xid, 4);
 
-    uint8_t* pkt = malloc(512);
+    uint8_t* pkt = malloc(ROGUE_DHCP_PKT_SIZE);
     if(!pkt) {
         close(DHCP_SOCK);
         return false;
     }
 
-    uint16_t pkt_len = build_discover(pkt, 512, our_mac, xid);
+    uint16_t pkt_len = build_discover(pkt, ROGUE_DHCP_PKT_SIZE, our_mac, xid);
     if(pkt_len == 0) {
         free(pkt);
         close(DHCP_SOCK);
@@ -180,7 +175,7 @@ bool rogue_dhcp_detect(const uint8_t our_mac[6], RogueDhcpState* state, uint32_t
         if(rx_len > 0) {
             uint8_t from_ip[4];
             uint16_t from_port;
-            int32_t recv_len = recvfrom(DHCP_SOCK, pkt, sizeof(pkt), from_ip, &from_port);
+            int32_t recv_len = recvfrom(DHCP_SOCK, pkt, ROGUE_DHCP_PKT_SIZE, from_ip, &from_port);
             if(recv_len > 0) {
                 RogueDhcpServer temp;
                 memset(&temp, 0, sizeof(temp));

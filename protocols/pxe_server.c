@@ -44,7 +44,7 @@ static uint16_t pxe_build_tftp_error(uint8_t* buf, uint16_t code, const char* ms
 static uint16_t pxe_build_dhcp_reply(
     uint8_t* buf,
     const PxeConfig* config,
-    uint8_t type, /* DHCP_OFFER=2 or DHCP_ACK=5 */
+    uint8_t type, /* DHCP_MSG_OFFER=2 or DHCP_MSG_ACK=5 */
     uint32_t xid,
     const uint8_t client_mac[6],
     const char* boot_file) {
@@ -225,10 +225,10 @@ static void pxe_dhcp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
 
     uint8_t bcast[4] = {255, 255, 255, 255};
 
-    if(msg_type == DHCP_DISCOVER) {
+    if(msg_type == DHCP_MSG_DISCOVER) {
         state->dhcp_discovers++;
-        uint16_t pkt_len =
-            pxe_build_dhcp_reply(buf, &state->config, DHCP_OFFER, xid, cmac, state->boot_filename);
+        uint16_t pkt_len = pxe_build_dhcp_reply(
+            buf, &state->config, DHCP_MSG_OFFER, xid, cmac, state->boot_filename);
         sendto(PXE_DHCP_SOCKET, buf, pkt_len, bcast, DHCP_CLIENT_PORT);
         state->state = PxeStateDhcpOfferSent;
         FURI_LOG_I(
@@ -241,7 +241,7 @@ static void pxe_dhcp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
             cmac[4],
             cmac[5]);
 
-    } else if(msg_type == DHCP_REQUEST) {
+    } else if(msg_type == DHCP_MSG_REQUEST) {
         state->dhcp_requests++;
 
         /* If TFTP transfer is active from a previous client, reset it */
@@ -260,8 +260,8 @@ static void pxe_dhcp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
             memset(&state->tftp, 0, sizeof(state->tftp));
         }
 
-        uint16_t pkt_len =
-            pxe_build_dhcp_reply(buf, &state->config, DHCP_ACK, xid, cmac, state->boot_filename);
+        uint16_t pkt_len = pxe_build_dhcp_reply(
+            buf, &state->config, DHCP_MSG_ACK, xid, cmac, state->boot_filename);
         sendto(PXE_DHCP_SOCKET, buf, pkt_len, bcast, DHCP_CLIENT_PORT);
         state->state = PxeStateDhcpAckSent;
         FURI_LOG_I(TAG, "Sent DHCP ACK");

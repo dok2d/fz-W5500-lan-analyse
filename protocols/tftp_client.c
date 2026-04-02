@@ -1,4 +1,5 @@
 #include "tftp_client.h"
+#include "../utils/packet_utils.h"
 
 #include <furi.h>
 #include <socket.h>
@@ -10,6 +11,7 @@
 #define TFTP_LOCAL_PORT  16900
 #define TFTP_TIMEOUT_MS  5000
 #define TFTP_BLOCK_SIZE  512
+#define TFTP_PKT_SIZE    600
 
 #define TFTP_HELP_PATH APP_DATA_PATH("tftp/help.txt")
 
@@ -89,15 +91,6 @@ static void tftp_ensure_help_file(Storage* storage) {
 #define TFTP_OP_ACK   4
 #define TFTP_OP_ERROR 5
 
-static void write_u16_be(uint8_t* p, uint16_t v) {
-    p[0] = (uint8_t)(v >> 8);
-    p[1] = (uint8_t)(v);
-}
-
-static uint16_t read_u16_be(const uint8_t* p) {
-    return ((uint16_t)p[0] << 8) | p[1];
-}
-
 /**
  * Build TFTP Read Request (RRQ) packet.
  */
@@ -110,7 +103,7 @@ static uint16_t tftp_build_rrq(uint8_t* pkt, uint16_t pkt_size, const char* file
     if(total > pkt_size) return 0;
 
     uint16_t idx = 0;
-    write_u16_be(&pkt[idx], TFTP_OP_RRQ);
+    pkt_write_u16_be(&pkt[idx], TFTP_OP_RRQ);
     idx += 2;
     memcpy(&pkt[idx], filename, fname_len);
     idx += fname_len;
@@ -126,8 +119,8 @@ static uint16_t tftp_build_rrq(uint8_t* pkt, uint16_t pkt_size, const char* file
  * Build TFTP ACK packet.
  */
 static uint16_t tftp_build_ack(uint8_t* pkt, uint16_t block_num) {
-    write_u16_be(&pkt[0], TFTP_OP_ACK);
-    write_u16_be(&pkt[2], block_num);
+    pkt_write_u16_be(&pkt[0], TFTP_OP_ACK);
+    pkt_write_u16_be(&pkt[2], block_num);
     return 4;
 }
 
@@ -160,7 +153,7 @@ bool tftp_client_get(
     }
 
     /* Send RRQ */
-    uint8_t* pkt = malloc(600);
+    uint8_t* pkt = malloc(TFTP_PKT_SIZE);
     if(!pkt) {
         strncpy(result->error_msg, "Memory alloc failed", sizeof(result->error_msg));
         storage_file_close(file);
@@ -169,7 +162,7 @@ bool tftp_client_get(
         close(TFTP_SOCK);
         return false;
     }
-    uint16_t pkt_len = tftp_build_rrq(pkt, 600, filename);
+    uint16_t pkt_len = tftp_build_rrq(pkt, TFTP_PKT_SIZE, filename);
     if(pkt_len == 0) {
         strncpy(result->error_msg, "Filename too long", sizeof(result->error_msg));
         free(pkt);
@@ -196,13 +189,13 @@ bool tftp_client_get(
             if(rx_len > 0) {
                 uint8_t from_ip[4];
                 uint16_t from_port;
-                int32_t recv_len = recvfrom(TFTP_SOCK, pkt, sizeof(pkt), from_ip, &from_port);
+                int32_t recv_len = recvfrom(TFTP_SOCK, pkt, TFTP_PKT_SIZE, from_ip, &from_port);
                 if(recv_len < 4) continue;
 
-                uint16_t opcode = read_u16_be(&pkt[0]);
+                uint16_t opcode = pkt_read_u16_be(&pkt[0]);
 
                 if(opcode == TFTP_OP_ERROR) {
-                    uint16_t err_code = read_u16_be(&pkt[2]);
+                    uint16_t err_code = pkt_read_u16_be(&pkt[2]);
                     if(recv_len > 4) {
                         uint16_t msg_len = (uint16_t)(recv_len - 4);
                         if(msg_len > sizeof(result->error_msg) - 1)
@@ -221,7 +214,7 @@ bool tftp_client_get(
                 }
 
                 if(opcode == TFTP_OP_DATA) {
-                    uint16_t block_num = read_u16_be(&pkt[2]);
+                    uint16_t block_num = pkt_read_u16_be(&pkt[2]);
                     if(first_block) {
                         server_tid = from_port;
                         first_block = false;

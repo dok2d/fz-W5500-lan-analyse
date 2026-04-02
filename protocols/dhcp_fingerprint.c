@@ -1,16 +1,10 @@
 #include "dhcp_fingerprint.h"
+#include "dhcp_discover.h"
 #include "../utils/packet_utils.h"
 #include <string.h>
 
-#define ETH_TYPE_IPV4     0x0800
-#define IP_PROTO_UDP      17
-#define DHCP_CLIENT_PORT  68
-#define DHCP_SERVER_PORT  67
-#define DHCP_MAGIC_COOKIE 0x63825363
-
-/* DHCP message types */
-#define DHCP_DISCOVER 1
-#define DHCP_REQUEST  3
+#define ETH_TYPE_IPV4 0x0800
+#define IP_PROTO_UDP  17
 
 void dhcp_fp_init(DhcpFpState* state) {
     memset(state, 0, sizeof(DhcpFpState));
@@ -182,7 +176,7 @@ bool dhcp_fp_process_frame(DhcpFpState* state, const uint8_t* frame, uint16_t le
     }
 
     /* Only fingerprint Discover and Request messages */
-    if(msg_type != DHCP_DISCOVER && msg_type != DHCP_REQUEST) return false;
+    if(msg_type != DHCP_MSG_DISCOVER && msg_type != DHCP_MSG_REQUEST) return false;
     if(opt55_len == 0) return false;
 
     state->total_discovers++;

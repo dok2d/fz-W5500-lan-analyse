@@ -144,54 +144,47 @@ static void lan_tester_settings_load(LanTesterApp* app) {
         uint16_t read = storage_file_read(file, buf, sizeof(buf) - 1);
         buf[read] = '\0';
         storage_file_close(file);
-        if(strstr(buf, "autosave=0")) app->setting_autosave = false;
-        if(strstr(buf, "sound=0")) app->setting_sound = false;
-        if(strstr(buf, "dns_custom=1")) app->dns_custom_enabled = true;
-        char* dns_ip = strstr(buf, "dns_ip=");
-        if(dns_ip) {
-            dns_ip += 7; /* skip "dns_ip=" */
-            char ip_buf[16];
-            int j = 0;
-            while(dns_ip[j] && dns_ip[j] != '\n' && j < 15) {
-                ip_buf[j] = dns_ip[j];
-                j++;
+
+        /* Line-by-line parsing with strncmp — safe against substring collisions */
+        char* line = buf;
+        while(line && *line) {
+            char* next = strchr(line, '\n');
+            if(next) *next = '\0';
+
+            if(strncmp(line, "autosave=", 9) == 0) {
+                app->setting_autosave = (line[9] != '0');
+            } else if(strncmp(line, "sound=", 6) == 0) {
+                app->setting_sound = (line[6] != '0');
+            } else if(strncmp(line, "dns_custom=", 11) == 0) {
+                app->dns_custom_enabled = (line[11] == '1');
+            } else if(strncmp(line, "dns_ip=", 7) == 0) {
+                const char* val = line + 7;
+                if(lan_tester_parse_ip(val, app->dns_custom_server)) {
+                    strncpy(app->dns_custom_ip_input, val, sizeof(app->dns_custom_ip_input) - 1);
+                    app->dns_custom_ip_input[sizeof(app->dns_custom_ip_input) - 1] = '\0';
+                }
+            } else if(strncmp(line, "ping_count=", 11) == 0) {
+                int val = atoi(line + 11);
+                if(val >= 1 && val <= 100) app->ping_count = (uint8_t)val;
+            } else if(strncmp(line, "ping_timeout=", 13) == 0) {
+                int val = atoi(line + 13);
+                if(val >= 500 && val <= 10000) app->ping_timeout_ms = (uint16_t)val;
+            } else if(strncmp(line, "ping_interval=", 14) == 0) {
+                int val = atoi(line + 14);
+                if(val >= 200 && val <= 5000) app->ping_interval_ms = (uint16_t)val;
+            } else if(strncmp(line, "autotest_dns=", 13) == 0) {
+                const char* val = line + 13;
+                strncpy(app->autotest_dns_host, val, sizeof(app->autotest_dns_host) - 1);
+                app->autotest_dns_host[sizeof(app->autotest_dns_host) - 1] = '\0';
+            } else if(strncmp(line, "autotest_lldp_wait=", 19) == 0) {
+                int val = atoi(line + 19);
+                if(val >= 10 && val <= 60) app->autotest_lldp_wait_s = (uint8_t)val;
+            } else if(strncmp(line, "autotest_arp=", 13) == 0) {
+                app->autotest_arp_enabled = (line[13] != '0');
             }
-            ip_buf[j] = '\0';
-            if(lan_tester_parse_ip(ip_buf, app->dns_custom_server)) {
-                strncpy(app->dns_custom_ip_input, ip_buf, sizeof(app->dns_custom_ip_input));
-            }
+
+            line = next ? next + 1 : NULL;
         }
-        char* pc = strstr(buf, "ping_count=");
-        if(pc) {
-            int val = atoi(pc + 11);
-            if(val >= 1 && val <= 100) app->ping_count = (uint8_t)val;
-        }
-        char* pt = strstr(buf, "ping_timeout=");
-        if(pt) {
-            int val = atoi(pt + 13);
-            if(val >= 500 && val <= 10000) app->ping_timeout_ms = (uint16_t)val;
-        }
-        char* pi = strstr(buf, "ping_interval=");
-        if(pi) {
-            int val = atoi(pi + 14);
-            if(val >= 200 && val <= 5000) app->ping_interval_ms = (uint16_t)val;
-        }
-        char* at_dns = strstr(buf, "autotest_dns=");
-        if(at_dns) {
-            at_dns += 13;
-            int j = 0;
-            while(at_dns[j] && at_dns[j] != '\n' && j < 63) {
-                app->autotest_dns_host[j] = at_dns[j];
-                j++;
-            }
-            app->autotest_dns_host[j] = '\0';
-        }
-        char* at_lldp = strstr(buf, "autotest_lldp_wait=");
-        if(at_lldp) {
-            int val = atoi(at_lldp + 19);
-            if(val >= 10 && val <= 60) app->autotest_lldp_wait_s = (uint8_t)val;
-        }
-        if(strstr(buf, "autotest_arp=0")) app->autotest_arp_enabled = false;
     }
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
@@ -2561,6 +2554,34 @@ static bool lan_tester_ensure_dhcp(LanTesterApp* app) {
     return got_ip;
 }
 
+/* ==================== Tool init helpers ==================== */
+
+/* For tools that only need W5500 init (Link Info, LLDP/CDP, Stats, etc.) */
+static inline bool lan_tester_tool_begin(LanTesterApp* app) {
+    furi_string_reset(app->tool_text);
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->tool_text, "W5500 Not Found!\nCheck SPI wiring.\n");
+        return false;
+    }
+    return true;
+}
+
+/* For tools that need network (ping, DNS, port scan, SNMP, etc.) */
+static inline bool lan_tester_tool_begin_net(LanTesterApp* app) {
+    furi_string_reset(app->tool_text);
+    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
+    lan_tester_update_view(app->text_box_tool, app->tool_text);
+    if(!lan_tester_ensure_dhcp(app)) {
+        furi_string_set(
+            app->tool_text,
+            !app->w5500_initialized      ? "W5500 Not Found!\nCheck SPI wiring.\n" :
+            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
+                                           "DHCP Failed!\nNo IP obtained.\n");
+        return false;
+    }
+    return true;
+}
+
 /* ==================== ASCII progress bar ==================== */
 
 /**
@@ -3613,12 +3634,7 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
 /* ==================== Feature implementations ==================== */
 
 static void lan_tester_do_link_info(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\nCheck SPI wiring.\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     /* Read PHY info */
     bool link_up = false;
@@ -3650,12 +3666,7 @@ static void lan_tester_do_link_info(LanTesterApp* app) {
 }
 
 static void lan_tester_do_lldp_cdp(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     if(!w5500_hal_get_link_status()) {
         furi_string_set(app->tool_text, "No Link!\nConnect cable.\n");
@@ -3760,20 +3771,7 @@ static void lan_tester_do_lldp_cdp(LanTesterApp* app) {
 }
 
 static void lan_tester_do_arp_scan(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
-
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ?
-                                      "No Link!\nConnect cable.\n" :
-                                      "DHCP failed.\nCannot determine\nsubnet for ARP scan.\n");
-        return;
-    }
+    if(!lan_tester_tool_begin_net(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -3971,12 +3969,7 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
 }
 
 static void lan_tester_do_dhcp_analyze(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     if(!w5500_hal_get_link_status()) {
         furi_string_set(app->tool_text, "No Link!\nConnect cable.\n");
@@ -4077,19 +4070,7 @@ static void lan_tester_do_dhcp_analyze(LanTesterApp* app) {
 }
 
 static void lan_tester_do_ping(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
-
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\nCannot ping.\n");
-        return;
-    }
+    if(!lan_tester_tool_begin_net(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -4127,19 +4108,7 @@ static void lan_tester_do_ping(LanTesterApp* app) {
 /* ==================== DNS Lookup ==================== */
 
 static void lan_tester_do_dns_lookup(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
-
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\nCannot resolve DNS.\n");
-        return;
-    }
+    if(!lan_tester_tool_begin_net(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -4182,19 +4151,7 @@ static void lan_tester_do_dns_lookup(LanTesterApp* app) {
 /* ==================== Wake-on-LAN ==================== */
 
 static void lan_tester_do_wol(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
-
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\nCannot send WoL.\n");
-        return;
-    }
+    if(!lan_tester_tool_begin_net(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -4260,19 +4217,7 @@ static void lan_tester_do_mac_changer(LanTesterApp* app) {
 /* ==================== Traceroute ==================== */
 
 static void lan_tester_do_traceroute(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
-
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\n");
-        return;
-    }
+    if(!lan_tester_tool_begin_net(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -4366,20 +4311,7 @@ static bool parse_cidr(const char* str, uint8_t base_ip[4], uint8_t* prefix) {
 
 /* Phase 1: detect network via DHCP, then signal main thread to show input */
 static void lan_tester_do_ping_sweep_detect(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
-
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\n");
-        lan_tester_update_view(app->text_box_tool, app->tool_text);
-        return;
-    }
+    if(!lan_tester_tool_begin_net(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -4405,19 +4337,7 @@ static void lan_tester_do_ping_sweep_detect(LanTesterApp* app) {
 
 /* Phase 2: actual ping sweep scan */
 static void lan_tester_do_ping_sweep(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
-
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\n");
-        return;
-    }
+    if(!lan_tester_tool_begin_net(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -4557,19 +4477,7 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app) {
 /* ==================== mDNS / SSDP Discovery ==================== */
 
 static void lan_tester_do_discovery(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
-
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\n");
-        return;
-    }
+    if(!lan_tester_tool_begin_net(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -4699,12 +4607,7 @@ static void lan_tester_do_discovery(LanTesterApp* app) {
 /* ==================== STP/BPDU + VLAN Detection ==================== */
 
 static void lan_tester_do_stp_vlan(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     if(!w5500_hal_get_link_status()) {
         furi_string_set(app->tool_text, "No Link!\nConnect cable.\n");
@@ -4907,19 +4810,7 @@ static void lan_tester_history_file_callback(void* context, uint32_t index) {
 /* ==================== Port Scanner ==================== */
 
 static void lan_tester_do_port_scan(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
-
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\nCannot scan.\n");
-        return;
-    }
+    if(!lan_tester_tool_begin_net(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -5162,15 +5053,10 @@ static void lan_tester_count_frame(LanTesterApp* app, const uint8_t* frame, uint
 }
 
 static void lan_tester_do_stats(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     if(!w5500_hal_get_link_status()) {
-        furi_string_set(app->tool_text, "No Link!\nConnect cable first.\n");
+        furi_string_set(app->tool_text, "No Link!\nConnect cable.\n");
         return;
     }
 
@@ -6214,12 +6100,7 @@ static void lan_tester_do_pxe_download(LanTesterApp* app) {
 /* ==================== TFTP Client ==================== */
 
 static void lan_tester_do_tftp_client(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     char ip_str[16];
     snprintf(
@@ -6267,12 +6148,7 @@ static void lan_tester_do_tftp_client(LanTesterApp* app) {
 /* ==================== IPMI Client ==================== */
 
 static void lan_tester_do_ipmi_client(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     char ip_str[16];
     snprintf(
@@ -6337,12 +6213,7 @@ static void lan_tester_do_ipmi_client(LanTesterApp* app) {
 /* ==================== RADIUS Client ==================== */
 
 static void lan_tester_do_radius_client(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     char ip_str[16];
     snprintf(
@@ -6391,12 +6262,7 @@ static void lan_tester_do_radius_client(LanTesterApp* app) {
 /* ==================== 802.1X EAPOL Probe ==================== */
 
 static void lan_tester_do_eapol_probe(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     furi_string_cat(app->tool_text, "[802.1X] Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -6450,12 +6316,7 @@ static void lan_tester_do_eapol_probe(LanTesterApp* app) {
 /* ==================== VLAN Hopping Test ==================== */
 
 static void lan_tester_do_vlan_hop(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     uint8_t target_ip[4] = {0, 0, 0, 0};
     uint8_t our_ip[4] = {0, 0, 0, 0};
@@ -6553,12 +6414,7 @@ static void lan_tester_do_vlan_hop(LanTesterApp* app) {
 /* ==================== ARP Watch ==================== */
 
 static void lan_tester_do_arp_watch(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     furi_string_cat(app->tool_text, "[ARP Watch] Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -6645,12 +6501,7 @@ static void lan_tester_do_arp_watch(LanTesterApp* app) {
 /* ==================== Rogue DHCP Detection ==================== */
 
 static void lan_tester_do_rogue_dhcp(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     furi_string_cat(app->tool_text, "[Rogue DHCP] Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -6718,12 +6569,7 @@ static void lan_tester_do_rogue_dhcp(LanTesterApp* app) {
 /* ==================== Rogue RA Detection ==================== */
 
 static void lan_tester_do_rogue_ra(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     furi_string_cat(app->tool_text, "[Rogue RA] Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -6789,12 +6635,7 @@ static void lan_tester_do_rogue_ra(LanTesterApp* app) {
 /* ==================== DHCP Fingerprinting ==================== */
 
 static void lan_tester_do_dhcp_fingerprint(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     furi_string_cat(app->tool_text, "[DHCP FP] Listening...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -6846,12 +6687,7 @@ static void lan_tester_do_dhcp_fingerprint(LanTesterApp* app) {
 /* ==================== SNMP GET ==================== */
 
 static void lan_tester_do_snmp_get(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     char ip_str[16];
     snprintf(
@@ -6914,12 +6750,7 @@ static void lan_tester_do_snmp_get(LanTesterApp* app) {
 /* ==================== NTP Diagnostics ==================== */
 
 static void lan_tester_do_ntp_diag(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     char ip_str[16];
     snprintf(
@@ -6978,12 +6809,7 @@ static void lan_tester_do_ntp_diag(LanTesterApp* app) {
 /* ==================== NetBIOS Query ==================== */
 
 static void lan_tester_do_netbios_query(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     char ip_str[16];
     snprintf(
@@ -7038,12 +6864,7 @@ static void lan_tester_do_netbios_query(LanTesterApp* app) {
 /* ==================== DNS Poisoning Check ==================== */
 
 static void lan_tester_do_dns_poison_check(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_tool_begin(app)) return;
 
     furi_string_cat_printf(app->tool_text, "[DNS Check] %s\n", app->dns_poison_host_input);
     lan_tester_update_view(app->text_box_tool, app->tool_text);

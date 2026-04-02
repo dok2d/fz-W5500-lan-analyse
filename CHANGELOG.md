@@ -1,3 +1,14 @@
+# 2.4.1
+
+## Fixed
+- **Rogue DHCP, TFTP Client, RADIUS Client** received only 4 bytes of network data due to sizeof(pointer) instead of buffer size in recvfrom calls
+- **Settings parser** could match wrong keys when one setting name was a substring of another
+
+## Improved
+- Unified error messages across all tools: three-level diagnostics (W5500 / Link / DHCP) instead of inconsistent single-line messages
+- Removed duplicate endian-conversion helpers from DNS Poison, TFTP, NetBIOS, NTP — now using shared utility functions
+- Consolidated DHCP protocol constants into a single header instead of four separate copies
+
 # 2.4.0
 
 ## Added
