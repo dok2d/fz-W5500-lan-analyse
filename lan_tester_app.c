@@ -2402,8 +2402,10 @@ static bool lan_tester_ensure_dhcp(LanTesterApp* app) {
         return true;
     }
 
-    /* Run DHCP — reuse frame_buf (1600 bytes, already allocated by ensure_w5500) */
-    uint8_t* dhcp_buffer = app->frame_buf;
+    /* DHCP needs its own buffer — WIZnet library keeps the pointer for DHCP_run().
+     * Cannot share with frame_buf which is used for ping/ARP/MACRAW. */
+    uint8_t* dhcp_buffer = malloc(1024);
+    if(!dhcp_buffer) return false;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -2440,6 +2442,7 @@ static bool lan_tester_ensure_dhcp(LanTesterApp* app) {
         furi_delay_ms(10);
     }
     DHCP_stop();
+    free(dhcp_buffer);
 
     if(!got_ip && app->setting_sound) {
         notification_message(app->notifications, &sequence_error);
