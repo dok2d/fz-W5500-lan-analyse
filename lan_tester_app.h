@@ -23,29 +23,9 @@ typedef struct LanTesterApp LanTesterApp;
 /* View IDs for ViewDispatcher */
 typedef enum {
     LanTesterViewMainMenu,
-    LanTesterViewLinkInfo,
-    LanTesterViewLldp,
-    LanTesterViewArpScan,
-    LanTesterViewDhcpAnalyze,
-    LanTesterViewPing,
-    LanTesterViewStats,
-    LanTesterViewDnsLookup,
-    LanTesterViewDnsInput,
-    LanTesterViewWol,
-    LanTesterViewWolInput,
     LanTesterViewContPing,
-    LanTesterViewPortScan,
-    LanTesterViewMacChanger,
-    LanTesterViewMacChangerInput,
-    LanTesterViewTraceroute,
-    LanTesterViewTracerouteInput,
-    LanTesterViewPortScanCustomInput,
-    LanTesterViewPingSweep,
     LanTesterViewIpKeyboard,
-    LanTesterViewDiscovery,
-    LanTesterViewStpVlan,
     LanTesterViewHistory,
-    LanTesterViewHistoryFile,
     LanTesterViewAbout,
     LanTesterViewCatPortInfo,
     LanTesterViewCatScan,
@@ -55,14 +35,16 @@ typedef enum {
     LanTesterViewPortScanMode,
     LanTesterViewSettings,
     LanTesterViewEthBridge,
-    LanTesterViewPxeServer,
     LanTesterViewPxeSettings,
     LanTesterViewPxeHelp,
-    LanTesterViewFileManager,
     LanTesterViewPacketCapture,
     LanTesterViewHostList,
     LanTesterViewHostActions,
     LanTesterViewAutoTest,
+    LanTesterViewCatSecurity,
+    LanTesterViewToolResult,  /* shared TextBox for all tools */
+    LanTesterViewToolInput,   /* shared TextInput for all tools */
+    LanTesterViewToolByteInput, /* shared ByteInput for MAC entry */
     LanTesterViewCount,
 } LanTesterView;
 
@@ -92,6 +74,20 @@ typedef enum {
     LanTesterMenuItemPxeServer,
     LanTesterMenuItemFileManager,
     LanTesterMenuItemPacketCapture,
+    LanTesterMenuItemSnmpGet,
+    LanTesterMenuItemNtpDiag,
+    LanTesterMenuItemNetbiosQuery,
+    LanTesterMenuItemDnsPoisonCheck,
+    LanTesterMenuItemArpWatch,
+    LanTesterMenuItemRogueDhcp,
+    LanTesterMenuItemRogueRa,
+    LanTesterMenuItemDhcpFingerprint,
+    LanTesterMenuItemEapolProbe,
+    LanTesterMenuItemVlanHopTop10,
+    LanTesterMenuItemVlanHopCustom,
+    LanTesterMenuItemTftpClient,
+    LanTesterMenuItemIpmiClient,
+    LanTesterMenuItemRadiusClient,
 } LanTesterMenuItem;
 
 /* Packet statistics counters */
@@ -128,29 +124,9 @@ struct LanTesterApp {
     Submenu* submenu_cat_traffic;
     Submenu* submenu_cat_utilities;
     Submenu* submenu_port_scan_mode;
-    TextBox* text_box_link;
-    TextBox* text_box_lldp;
-    TextBox* text_box_arp;
-    TextBox* text_box_dhcp;
-    TextBox* text_box_ping;
-    TextBox* text_box_stats;
-    TextBox* text_box_dns;
-    TextBox* text_box_wol;
-    TextInput* text_input_dns;
-    ByteInput* byte_input_wol;
     View* view_cont_ping;
-    TextBox* text_box_port_scan;
-    TextBox* text_box_mac_changer;
-    ByteInput* byte_input_mac_changer;
-    TextBox* text_box_traceroute;
-    TextInput* text_input_traceroute;
-    TextInput* text_input_port_custom;
-    TextBox* text_box_ping_sweep;
     IpKeyboard* ip_keyboard;
-    TextBox* text_box_discovery;
-    TextBox* text_box_stp_vlan;
     Submenu* submenu_history;
-    TextBox* text_box_history_file;
     HistoryState* history_state;
     uint16_t history_selected; /* index of currently viewed file */
     TextBox* text_box_about;
@@ -241,9 +217,7 @@ struct LanTesterApp {
     EthBridgeState* bridge_state;
 
     /* PXE Server state */
-    TextBox* text_box_pxe;
     TextBox* text_box_pxe_help;
-    FuriString* pxe_text;
     VariableItemList* pxe_settings_list;
     VariableItem* pxe_item_dhcp;
     VariableItem* pxe_item_sip;
@@ -277,10 +251,6 @@ struct LanTesterApp {
     PcapDumpState pcap_state;
     uint32_t pcap_start_tick;
 
-    /* File Manager state */
-    TextBox* text_box_file_manager;
-    FuriString* file_manager_text;
-
     /* Auto Test UI */
     TextBox* text_box_autotest;
     FuriString* autotest_text;
@@ -297,20 +267,37 @@ struct LanTesterApp {
     uint8_t autotest_lldp_wait_s;
     bool autotest_arp_enabled;
 
-    /* Text buffers for views */
-    FuriString* link_info_text;
-    FuriString* lldp_text;
-    FuriString* arp_text;
-    FuriString* dhcp_text;
-    FuriString* ping_text;
-    FuriString* stats_text;
-    FuriString* dns_text;
-    FuriString* wol_text;
-    FuriString* port_scan_text;
-    FuriString* mac_changer_text;
-    FuriString* traceroute_text;
-    FuriString* ping_sweep_text;
-    FuriString* discovery_text;
-    FuriString* stp_vlan_text;
-    FuriString* history_file_text;
+    /* Shared views for all tools (memory-efficient: 1 TextBox for all) */
+    TextBox* text_box_tool;
+    FuriString* tool_text;
+    TextInput* text_input_tool;
+    ByteInput* byte_input_tool;
+    LanTesterView tool_back_view; /* navigation target when pressing Back */
+
+    /* Tool input buffers (small, always allocated) */
+    uint8_t snmp_target[4];
+    char snmp_ip_input[16];
+    uint8_t ntp_target[4];
+    char ntp_ip_input[16];
+    uint8_t netbios_target[4];
+    char netbios_ip_input[16];
+    char dns_poison_host_input[64];
+    uint8_t tftp_target[4];
+    char tftp_ip_input[16];
+    char tftp_filename_input[64];
+    uint8_t ipmi_target[4];
+    char ipmi_ip_input[16];
+    uint8_t radius_target[4];
+    char radius_ip_input[16];
+    /* VLAN Hop state */
+    bool vlan_hop_custom;
+    char vlan_hop_input[32]; /* comma-separated VLAN IDs */
+
+    char radius_secret_input[32];
+    char radius_user_input[32];
+    char radius_pass_input[32];
+    uint8_t radius_input_step;
+
+    /* Security category submenu */
+    Submenu* submenu_cat_security;
 };

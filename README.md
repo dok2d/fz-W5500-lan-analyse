@@ -8,7 +8,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Build](https://img.shields.io/badge/build-ufbt-yellow)
-![Version](https://img.shields.io/badge/version-1.4.0-brightgreen)
+![Version](https://img.shields.io/badge/version-2.0.0-brightgreen)
 
 **[English docs](docs/en/README.md)** | **[Документация на русском](docs/ru/README.md)**
 
@@ -39,12 +39,25 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | **ETH Bridge** | USB-to-Ethernet bridge: phone/PC gets LAN access via Flipper (CDC-ECM), optional PCAP traffic dump to SD card |
 | **PXE Server** | Minimal PXE boot server with built-in DHCP + TFTP, boots .kpxe/.efi files from SD card |
 | **File Manager** | Web-based file manager: browse, download, upload, delete files on microSD via HTTP from any browser on the LAN |
+| **SNMP GET** | Query device info via SNMPv1/v2c: sysName, sysDescr, sysUpTime, ifOperStatus |
+| **NTP Diagnostics** | NTP server analysis: stratum, root delay/dispersion, reference ID, RTT |
+| **NetBIOS Query** | Discover Windows machine names, workgroups, and MAC addresses |
+| **DNS Poison Check** | Compare local vs public DNS (8.8.8.8) to detect poisoning or split-horizon |
+| **ARP Watch** | Passive ARP monitoring: detect spoofing, duplicate IPs, gratuitous ARP storms |
+| **Rogue DHCP** | Send Discover, collect Offers from multiple servers, detect unauthorized DHCP |
+| **Rogue RA** | Listen for IPv6 Router Advertisements, detect unauthorized routers |
+| **DHCP Fingerprint** | Identify client OS by DHCP option 55 (Windows, Linux, macOS, Android, etc.) |
+| **802.1X Probe** | Send EAPOL-Start to detect 802.1X port authentication, identify EAP type |
+| **VLAN Hopping** | Send 802.1Q tagged frames to test VLAN isolation (Top 10 / Custom VLANs) |
+| **TFTP Client** | Download config files from network equipment via TFTP, save to SD card |
+| **IPMI v1.5** | Query BMC: chassis power status, device ID, firmware version |
+| **RADIUS Test** | Send Access-Request with PAP auth (MD5), check Accept/Reject/Challenge |
 | **History** | All scan results auto-saved with timestamps, browsable and deletable |
 | **Settings** | Auto-save, sound/vibro, custom DNS server, ping count/timeout/interval, clear history, MAC Changer |
 
 ### UX Highlights
 
-- **Hierarchical menu**: features grouped into Port Info, Scan, Diagnostics, Traffic, Utilities
+- **Hierarchical menu**: features grouped into Port Info, Scan, Diagnostics, Traffic, Security, Utilities
 - **Link status in header**: see UP/DOWN, speed, duplex without entering Link Info
 - **DHCP caching**: single negotiation shared across all operations — no repeated 15s waits
 - **Visual progress**: countdown timers for listeners, ASCII progress bars for scans
@@ -120,15 +133,28 @@ The compiled `.fap` file will appear in `dist/`. You can also copy it manually t
 │   ├── lldp.c / lldp.h         # IEEE 802.1AB LLDP parser
 │   ├── cdp.c / cdp.h           # Cisco CDP parser (LLC/SNAP)
 │   ├── arp_scan.c / arp_scan.h  # ARP request builder & reply parser
+│   ├── arp_watch.c / .h        # ARP spoofing & storm detection
 │   ├── dhcp_discover.c / .h     # DHCP Discover builder & Offer parser
-│   ├── icmp.c / icmp.h         # ICMP Echo (ping) via IPRAW
+│   ├── dhcp_fingerprint.c / .h  # OS fingerprinting via DHCP option 55
 │   ├── dns_lookup.c / .h       # DNS A-record resolver via UDP
-│   ├── wol.c / .h              # Wake-on-LAN magic packet
-│   ├── port_scan.c / .h        # TCP connect port scanner
-│   ├── traceroute.c / .h       # ICMP traceroute with TTL
-│   ├── ping_graph.c / .h       # Ring buffer RTT graph for continuous ping
+│   ├── dns_poison.c / .h       # DNS poisoning check (local vs public)
 │   ├── discovery.c / .h        # mDNS + SSDP service discovery
+│   ├── eapol_probe.c / .h      # 802.1X EAPOL-Start probe
+│   ├── icmp.c / icmp.h         # ICMP Echo (ping) via IPRAW
+│   ├── ipmi_client.c / .h      # IPMI v1.5 over LAN (chassis, device ID)
+│   ├── netbios_query.c / .h    # NetBIOS Name Query (NBSTAT)
+│   ├── ntp_diag.c / .h         # NTP diagnostics (stratum, offset, RTT)
+│   ├── port_scan.c / .h        # TCP connect port scanner
+│   ├── radius_client.c / .h    # RADIUS Access-Request with PAP/MD5
+│   ├── rogue_dhcp.c / .h       # Rogue DHCP server detection
+│   ├── rogue_ra.c / .h         # Rogue IPv6 Router Advertisement detection
+│   ├── snmp_client.c / .h      # SNMP v1/v2c GET client (BER/ASN.1)
 │   ├── stp_vlan.c / .h         # STP BPDU parser + 802.1Q VLAN detection
+│   ├── tftp_client.c / .h      # TFTP file download client (RFC 1350)
+│   ├── traceroute.c / .h       # ICMP traceroute with TTL
+│   ├── vlan_hop.c / .h         # VLAN hopping test (802.1Q tagged frames)
+│   ├── wol.c / .h              # Wake-on-LAN magic packet
+│   ├── ping_graph.c / .h       # Ring buffer RTT graph for continuous ping
 │   ├── mac_changer.c / .h      # Random/custom MAC with SD persistence
 │   ├── pxe_server.c / .h      # PXE boot server (DHCP + TFTP)
 │   ├── file_manager.c / .h    # Web-based SD card file manager (HTTP server)
@@ -153,30 +179,49 @@ The compiled `.fap` file will appear in `dist/`. You can also copy it manually t
 4. The menu header shows link status (e.g. `LAN [UP 100M FD]`)
 5. Select a category and then a tool:
 
-### Network Info
+### Port Info
 - **Link Info** — link status, speed, duplex, MAC. Use first to verify hardware.
 - **DHCP Analyze** — sends Discover, parses Offer. Does **not** take an IP lease.
-- **Statistics** — captures frames for 10s, shows breakdown by type and EtherType.
+- **LLDP/CDP** — listens up to 60s for switch neighbor advertisements.
+- **STP/VLAN** — listens 30s for BPDU frames and 802.1Q VLAN tags.
+- **SNMP GET** — query sysName, sysDescr, sysUpTime, ifStatus via SNMPv1/v2c.
 
-### Discovery
+### Scan
 - **ARP Scan** — scans local subnet via DHCP-detected range, shows IP/MAC/vendor.
 - **Ping Sweep** — ICMP sweep of a CIDR range, auto-detected or manually entered.
-- **LLDP/CDP** — listens up to 60s for switch neighbor advertisements.
 - **mDNS/SSDP** — discovers services via multicast DNS and UPnP.
-- **STP/VLAN** — listens 30s for BPDU frames and 802.1Q VLAN tags.
+- **NetBIOS Query** — discover Windows machine names and workgroups.
+- **Port Scan (Top 20/100/Custom)** — TCP connect scan of common ports.
 
 ### Diagnostics
 - **Ping** — 4 pings to any IP (default: gateway from DHCP).
 - **Continuous Ping** — live RTT graph with loss tracking, runs until Back.
 - **DNS Lookup** — resolves a hostname via the DHCP-provided DNS server.
 - **Traceroute** — hop-by-hop ICMP path discovery up to 30 hops.
-- **Port Scan (Top 20/100)** — TCP connect scan of common ports.
+- **NTP Diagnostics** — stratum, root delay, reference ID, RTT.
+- **DNS Poison Check** — compare local vs public DNS responses.
 
-### Tools
+### Traffic
+- **Packet Capture** — capture raw Ethernet frames to .pcap file on SD card.
+- **ETH Bridge** — USB-to-Ethernet bridge via CDC-ECM with optional PCAP dump.
+- **Statistics** — frame counters by type and EtherType (10s capture).
+
+### Security
+- **ARP Watch** — detect ARP spoofing, duplicate IPs, gratuitous ARP storms (15s scan).
+- **Rogue DHCP** — send Discover, detect unauthorized DHCP servers.
+- **Rogue RA (IPv6)** — listen for unauthorized Router Advertisements (15s scan).
+- **DHCP Fingerprint** — identify client OS by option 55 parameter list (30s listen).
+- **802.1X Probe** — send EAPOL-Start, detect port authentication and EAP type.
+- **VLAN Hop Top10** — test VLAN isolation on common VLANs (1,2,10,20,50,100,150,200,300,999).
+- **VLAN Hop Custom** — test user-specified VLAN IDs (comma-separated).
+- **RADIUS Test** — send Access-Request with PAP/MD5 auth, check server response.
+
+### Utilities
 - **Wake-on-LAN** — send magic packet to wake a device by MAC address.
-- **ETH Bridge** — turns Flipper into a USB-to-Ethernet bridge. Phone/PC connects via USB (CDC-ECM), traffic is bridged to LAN via W5500 at Layer 2. The host gets an IP from the LAN's DHCP server transparently. Live stats show frame counts and link status. Press **OK** to start/stop PCAP traffic recording to SD card (Wireshark-compatible `.pcap` files saved to `apps_data/lan_tester/pcap/`). Press Back to stop and restore USB.
-- **PXE Server** — minimal PXE boot server. Configure Server/Client IP and subnet, toggle built-in DHCP server. Serves .kpxe/.efi boot files from SD card (`apps_data/lan_tester/pxe/`) via TFTP. Connect Flipper directly to target machine to network-boot it.
-- **File Manager** — starts an HTTP server on port 80. Open `http://<flipper-ip>/` in any browser on the LAN to browse the microSD card, download/upload files, create folders, and delete items. Flipper gets its IP via DHCP; the address is displayed on screen.
+- **PXE Server** — minimal PXE boot server with built-in DHCP + TFTP.
+- **File Manager** — web-based SD card file manager via HTTP on port 80.
+- **TFTP Client** — download config files from network equipment to SD card.
+- **IPMI Query** — query BMC chassis status, device ID, firmware version.
 
 ### Settings
 - **Auto-save results** — ON/OFF, controls automatic history saving.
@@ -242,12 +287,25 @@ MIT License. See [LICENSE](LICENSE) for details.
 | **ETH Bridge** | USB-Ethernet мост: телефон/ПК получает доступ в LAN через Flipper (CDC-ECM), опциональный PCAP-дамп трафика на SD |
 | **PXE Server** | Минимальный PXE-сервер с DHCP + TFTP, загрузка .kpxe/.efi файлов с SD-карты |
 | **File Manager** | Веб-менеджер файлов: просмотр, скачивание, загрузка, удаление файлов на microSD через HTTP из любого браузера в сети |
+| **SNMP GET** | Запрос информации об устройстве по SNMPv1/v2c: sysName, sysDescr, sysUpTime, ifStatus |
+| **NTP Diagnostics** | Анализ NTP-сервера: stratum, root delay/dispersion, reference ID, RTT |
+| **NetBIOS Query** | Обнаружение имён Windows-машин, рабочих групп и MAC-адресов |
+| **DNS Poison Check** | Сравнение локального и публичного DNS (8.8.8.8) для обнаружения подмены |
+| **ARP Watch** | Пассивный мониторинг ARP: обнаружение спуфинга, дубликатов IP, ARP-штормов |
+| **Rogue DHCP** | Отправка Discover, сбор Offer от нескольких серверов, обнаружение неавторизованных DHCP |
+| **Rogue RA** | Прослушивание IPv6 Router Advertisement, обнаружение неавторизованных роутеров |
+| **DHCP Fingerprint** | Определение ОС клиентов по DHCP option 55 (Windows, Linux, macOS, Android и др.) |
+| **802.1X Probe** | Отправка EAPOL-Start для проверки 802.1X аутентификации на порту |
+| **VLAN Hopping** | Отправка 802.1Q tagged-фреймов для проверки изоляции VLAN (Top 10 / Custom) |
+| **TFTP Client** | Скачивание конфигурационных файлов с оборудования по TFTP на SD-карту |
+| **IPMI v1.5** | Запрос BMC: статус питания шасси, ID устройства, версия прошивки |
+| **RADIUS Test** | Отправка Access-Request с PAP-аутентификацией (MD5), проверка Accept/Reject |
 | **История** | Все результаты автосохраняются с метками времени, просмотр и удаление |
 | **Настройки** | Автосохранение, звук/вибрация, очистка истории, MAC Changer (смена MAC с сохранением на SD) |
 
 ### UX-особенности
 
-- **Иерархическое меню**: функции сгруппированы в Port Info, Scan, Diagnostics, Traffic, Utilities
+- **Иерархическое меню**: функции сгруппированы в Port Info, Scan, Diagnostics, Traffic, Security, Utilities
 - **Статус линка в заголовке**: UP/DOWN, скорость, дуплекс видны сразу
 - **Кеширование DHCP**: одна DHCP-сессия на всё — не ждёте 15 секунд каждый раз
 - **Визуальный прогресс**: таймеры обратного отсчёта для прослушиваний, прогрессбары для сканов
@@ -319,22 +377,35 @@ ufbt install            # установка .fap на SD-карту Flipper
 │   ├── pcap_dump.c              # PCAP-дамп трафика на SD (совместим с Wireshark)
 │   └── pcap_dump.h
 │
-├── protocols/                   # Парсеры и генераторы протоколов
-│   ├── lldp.c / lldp.h         # Парсер IEEE 802.1AB LLDP
-│   ├── cdp.c / cdp.h           # Парсер Cisco CDP (LLC/SNAP)
-│   ├── arp_scan.c / arp_scan.h  # ARP-запросы и парсер ответов
-│   ├── dhcp_discover.c / .h     # DHCP Discover/Offer
-│   ├── icmp.c / icmp.h         # ICMP Echo (ping) через IPRAW
-│   ├── dns_lookup.c / .h       # DNS A-запросы через UDP
-│   ├── wol.c / .h              # Wake-on-LAN magic packet
-│   ├── port_scan.c / .h        # TCP connect сканер портов
-│   ├── traceroute.c / .h       # ICMP traceroute с TTL
-│   ├── ping_graph.c / .h       # Кольцевой буфер RTT для continuous ping
+├── protocols/                   # Парсеры и генераторы протоколов (29 файлов)
+│   ├── arp_scan.c / .h         # ARP-запросы и парсер ответов
+│   ├── arp_watch.c / .h        # Обнаружение ARP-спуфинга
+│   ├── cdp.c / .h              # Парсер Cisco CDP (LLC/SNAP)
+│   ├── dhcp_discover.c / .h    # DHCP Discover/Offer
+│   ├── dhcp_fingerprint.c / .h # Фингерпринт ОС по DHCP option 55
 │   ├── discovery.c / .h        # mDNS + SSDP обнаружение
+│   ├── dns_lookup.c / .h       # DNS A-запросы через UDP
+│   ├── dns_poison.c / .h       # Проверка подмены DNS
+│   ├── eapol_probe.c / .h      # 802.1X EAPOL-Start проба
+│   ├── icmp.c / .h             # ICMP Echo (ping)
+│   ├── ipmi_client.c / .h      # IPMI v1.5 over LAN
+│   ├── lldp.c / .h             # Парсер IEEE 802.1AB LLDP
+│   ├── netbios_query.c / .h    # NetBIOS Name Query (NBSTAT)
+│   ├── ntp_diag.c / .h         # NTP-диагностика
+│   ├── port_scan.c / .h        # TCP connect сканер портов
+│   ├── radius_client.c / .h    # RADIUS Access-Request (PAP/MD5)
+│   ├── rogue_dhcp.c / .h       # Обнаружение Rogue DHCP
+│   ├── rogue_ra.c / .h         # Обнаружение Rogue RA (IPv6)
+│   ├── snmp_client.c / .h      # SNMP v1/v2c GET (BER/ASN.1)
 │   ├── stp_vlan.c / .h         # STP BPDU + 802.1Q VLAN
+│   ├── tftp_client.c / .h      # TFTP-клиент (RFC 1350)
+│   ├── traceroute.c / .h       # ICMP traceroute с TTL
+│   ├── vlan_hop.c / .h         # VLAN hopping (802.1Q tagged)
+│   ├── wol.c / .h              # Wake-on-LAN magic packet
+│   ├── ping_graph.c / .h       # Кольцевой буфер RTT
 │   ├── mac_changer.c / .h      # Смена MAC с сохранением на SD
-│   ├── pxe_server.c / .h      # PXE-сервер (DHCP + TFTP)
-│   ├── file_manager.c / .h    # Веб-менеджер файлов SD (HTTP-сервер)
+│   ├── pxe_server.c / .h       # PXE-сервер (DHCP + TFTP)
+│   ├── file_manager.c / .h     # Веб-менеджер файлов (HTTP)
 │   └── history.c / .h          # Хранение результатов на SD
 │
 ├── utils/
@@ -356,36 +427,55 @@ ufbt install            # установка .fap на SD-карту Flipper
 4. В заголовке меню отображается статус линка (напр. `LAN [UP 100M FD]`)
 5. Выберите категорию, затем инструмент:
 
-### Network Info
-- **Link Info** — статус линка, скорость, дуплекс, MAC. Используйте первым.
-- **DHCP Analyze** — Discover/Offer без занятия адреса. Безопасно для прода.
-- **Statistics** — захват фреймов 10с, разбивка по типам и EtherType.
+### Port Info
+- **Link Info** — статус линка, скорость, дуплекс, MAC.
+- **DHCP Analyze** — Discover/Offer без занятия адреса.
+- **LLDP/CDP** — пассивное обнаружение соседей (до 60с).
+- **STP/VLAN** — BPDU + определение 802.1Q VLAN-тегов.
+- **SNMP GET** — sysName, sysDescr, sysUpTime, ifStatus по SNMPv1/v2c.
 
-### Discovery
-- **ARP Scan** — сканирование подсети, IP/MAC/вендор для каждого хоста.
-- **Ping Sweep** — ICMP-свип по CIDR (автоопределение или ручной ввод).
-- **LLDP/CDP** — пассивное прослушивание до 60с для обнаружения свитча.
+### Scan
+- **ARP Scan** — сканирование подсети, IP/MAC/вендор.
+- **Ping Sweep** — ICMP-свип по CIDR.
 - **mDNS/SSDP** — обнаружение сервисов через multicast DNS и UPnP.
-- **STP/VLAN** — прослушивание BPDU (30с) и определение VLAN-тегов.
+- **NetBIOS Query** — имена Windows-машин и рабочие группы.
+- **Port Scan (Top 20/100/Custom)** — TCP connect-сканирование.
 
 ### Diagnostics
-- **Ping** — 4 пинга на любой IP (по умолчанию — шлюз из DHCP).
-- **Continuous Ping** — живой график RTT с отслеживанием потерь, до нажатия Back.
-- **DNS Lookup** — разрешение имени через DNS-сервер из DHCP.
+- **Ping** — пинг на любой IP (по умолчанию — шлюз).
+- **Continuous Ping** — график RTT с отслеживанием потерь.
+- **DNS Lookup** — разрешение имён через DNS.
 - **Traceroute** — ICMP-трассировка до 30 хопов.
-- **Port Scan (Top 20/100)** — TCP connect-сканирование популярных портов.
+- **NTP Diagnostics** — stratum, root delay, reference ID, RTT.
+- **DNS Poison Check** — сравнение локального и публичного DNS.
 
-### Tools
-- **Wake-on-LAN** — отправка magic-пакета для пробуждения устройства по MAC.
-- **ETH Bridge** — превращает Flipper в USB-Ethernet мост. Телефон/ПК подключается по USB (CDC-ECM), трафик прозрачно передаётся в LAN через W5500 на уровне L2. Хост получает IP от DHCP-сервера сети. На экране отображаются счётчики фреймов и статус соединений. Нажмите **OK** для старта/остановки записи PCAP-дампа на SD-карту (файлы `.pcap`, совместимые с Wireshark, сохраняются в `apps_data/lan_tester/pcap/`). Нажмите Back для остановки и восстановления USB.
-- **PXE Server** — минимальный PXE-сервер. Настройка IP сервера/клиента и подсети, встроенный DHCP-сервер (вкл/выкл). Раздаёт .kpxe/.efi файлы с SD-карты (`apps_data/lan_tester/pxe/`) по TFTP. Подключите Flipper напрямую к целевой машине для сетевой загрузки.
-- **File Manager** — запускает HTTP-сервер на порту 80. Откройте `http://<ip-flipper>/` в любом браузере в сети для просмотра microSD-карты, скачивания/загрузки файлов, создания папок и удаления. Flipper получает IP по DHCP; адрес отображается на экране.
+### Traffic
+- **Packet Capture** — захват фреймов в .pcap на SD.
+- **ETH Bridge** — USB-Ethernet мост (CDC-ECM) с опциональным PCAP-дампом.
+- **Statistics** — счётчики фреймов по типам (10с).
+
+### Security
+- **ARP Watch** — обнаружение спуфинга, дубликатов IP, ARP-штормов (15с).
+- **Rogue DHCP** — обнаружение неавторизованных DHCP-серверов.
+- **Rogue RA (IPv6)** — обнаружение неавторизованных Router Advertisement (15с).
+- **DHCP Fingerprint** — определение ОС клиентов по option 55 (30с).
+- **802.1X Probe** — EAPOL-Start, обнаружение аутентификации и типа EAP.
+- **VLAN Hop Top10** — проверка изоляции на VLANs 1,2,10,20,50,100,150,200,300,999.
+- **VLAN Hop Custom** — проверка произвольных VLAN ID (через запятую).
+- **RADIUS Test** — Access-Request с PAP/MD5, проверка ответа сервера.
+
+### Utilities
+- **Wake-on-LAN** — magic-пакет для пробуждения устройства.
+- **PXE Server** — PXE-сервер с DHCP + TFTP.
+- **File Manager** — веб-менеджер SD через HTTP.
+- **TFTP Client** — скачивание конфигов с оборудования на SD.
+- **IPMI Query** — статус шасси BMC, ID устройства, версия прошивки.
 
 ### Settings
-- **Auto-save results** — вкл/выкл автосохранение результатов в историю.
-- **Sound & vibro** — вкл/выкл LED/вибро уведомления.
-- **Clear History** — удалить все сохранённые результаты.
-- **MAC Changer** — генерация случайного MAC или ручной ввод, сохраняется на SD.
+- **Auto-save results** — вкл/выкл автосохранение.
+- **Sound & vibro** — вкл/выкл LED/вибро.
+- **Clear History** — удалить все результаты.
+- **MAC Changer** — генерация/ввод MAC, сохранение на SD.
 
 ## Технические детали
 

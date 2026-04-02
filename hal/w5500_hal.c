@@ -50,13 +50,13 @@ static void w5500_spi_write_burst(uint8_t* buf, uint16_t len) {
 bool w5500_hal_init(void) {
     FURI_LOG_I(TAG, "Initializing W5500 HAL");
 
-    /* Enable OTG power for the W5500 module */
-    furi_hal_power_enable_otg();
-    furi_delay_ms(300);
-
-    /* Acquire the external SPI bus */
+    /* Acquire SPI bus first — if it hangs here, no resources are leaked */
     furi_hal_spi_acquire(&furi_hal_spi_bus_handle_external);
     spi_acquired = true;
+
+    /* Enable OTG power for the W5500 module (after SPI, so deinit can clean up) */
+    furi_hal_power_enable_otg();
+    furi_delay_ms(300);
 
     /* Configure CS pin: output open-drain, default high (deselected) */
     furi_hal_gpio_write(&gpio_cs, true);
@@ -78,22 +78,23 @@ bool w5500_hal_init(void) {
 void w5500_hal_deinit(void) {
     FURI_LOG_I(TAG, "Deinitializing W5500 HAL");
 
-    /* Close any open sockets */
-    for(uint8_t i = 0; i < 8; i++) {
-        close(i);
-    }
-
+    /* Close any open sockets (safe even if chip not initialized) */
     if(spi_acquired) {
+        for(uint8_t i = 0; i < 8; i++) {
+            close(i);
+        }
         furi_hal_spi_release(&furi_hal_spi_bus_handle_external);
         spi_acquired = false;
     }
 
-    /* Reset GPIO pins to analog (default) state */
+    /* Reset GPIO pins to analog (safe to call unconditionally) */
     furi_hal_gpio_init(&gpio_cs, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
     furi_hal_gpio_init(&gpio_reset, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
 
-    /* Disable OTG power */
-    furi_hal_power_disable_otg();
+    /* Disable OTG power (ref-counted, safe if already disabled) */
+    if(furi_hal_power_is_otg_enabled()) {
+        furi_hal_power_disable_otg();
+    }
 
     FURI_LOG_I(TAG, "W5500 HAL deinitialized");
 }

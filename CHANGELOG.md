@@ -1,3 +1,33 @@
+# 2.0.0
+
+## Improved
+- Significantly reduced memory usage — app is stable during prolonged use
+- Compact output for all tools — results fit on screen without scrolling
+- Safe W5500 init/deinit — no hangs when reopening app after crash
+- History: fixed browsing after heavy tool usage
+
+## Changed
+- VLAN Hop: Top 10 and Custom modes (like Port Scan)
+- Rogue DHCP: concise output with key details per server
+
+# 1.5.0
+
+## Added
+- New menu category: **Security**
+- **SNMP v1/v2c GET** — query sysName, sysDescr, sysUpTime, ifStatus
+- **NTP Diagnostics** — stratum, offset, root delay, reference ID
+- **NetBIOS Name Query** — discover Windows machine names and workgroups
+- **DNS Poisoning Check** — compare local vs public DNS responses
+- **ARP Watch** — detect spoofing, duplicate IPs, ARP storms
+- **Rogue DHCP Detection** — find unauthorized DHCP servers
+- **Rogue RA Detection** — find unauthorized IPv6 routers
+- **DHCP Fingerprinting** — identify client OS by option 55
+- **802.1X Probe** — check if port authentication is enabled
+- **VLAN Hopping Test** — verify VLAN isolation
+- **TFTP Client** — download config files from network equipment
+- **IPMI v1.5** — chassis status, BMC device info
+- **RADIUS Test Client** — send Access-Request, check Accept/Reject
+
 # 1.4.0
 
 ## Added
