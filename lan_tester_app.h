@@ -67,6 +67,11 @@ typedef enum {
     LanTesterViewNtpDiag,
     LanTesterViewNetbiosQuery,
     LanTesterViewDnsPoisonCheck,
+    LanTesterViewArpWatch,
+    LanTesterViewRogueDhcp,
+    LanTesterViewRogueRa,
+    LanTesterViewDhcpFingerprint,
+    LanTesterViewCatSecurity,
     LanTesterViewCount,
 } LanTesterView;
 
@@ -100,6 +105,10 @@ typedef enum {
     LanTesterMenuItemNtpDiag,
     LanTesterMenuItemNetbiosQuery,
     LanTesterMenuItemDnsPoisonCheck,
+    LanTesterMenuItemArpWatch,
+    LanTesterMenuItemRogueDhcp,
+    LanTesterMenuItemRogueRa,
+    LanTesterMenuItemDhcpFingerprint,
 } LanTesterMenuItem;
 
 /* Packet statistics counters */
@@ -344,4 +353,23 @@ struct LanTesterApp {
     TextBox* text_box_dns_poison;
     FuriString* dns_poison_text;
     char dns_poison_host_input[64];
+
+    /* ARP Watch state */
+    TextBox* text_box_arp_watch;
+    FuriString* arp_watch_text;
+
+    /* Rogue DHCP state */
+    TextBox* text_box_rogue_dhcp;
+    FuriString* rogue_dhcp_text;
+
+    /* Rogue RA state */
+    TextBox* text_box_rogue_ra;
+    FuriString* rogue_ra_text;
+
+    /* DHCP Fingerprint state */
+    TextBox* text_box_dhcp_fp;
+    FuriString* dhcp_fp_text;
+
+    /* Security category submenu */
+    Submenu* submenu_cat_security;
 };

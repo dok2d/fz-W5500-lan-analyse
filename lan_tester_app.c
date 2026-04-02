@@ -20,6 +20,10 @@
 #include "protocols/ntp_diag.h"
 #include "protocols/netbios_query.h"
 #include "protocols/dns_poison.h"
+#include "protocols/arp_watch.h"
+#include "protocols/rogue_dhcp.h"
+#include "protocols/rogue_ra.h"
+#include "protocols/dhcp_fingerprint.h"
 #include "bridge/eth_bridge.h"
 #include "usb_eth/usb_eth.h"
 #include "utils/packet_utils.h"
@@ -272,6 +276,11 @@ static void lan_tester_do_snmp_get(LanTesterApp* app);
 static void lan_tester_do_ntp_diag(LanTesterApp* app);
 static void lan_tester_do_netbios_query(LanTesterApp* app);
 static void lan_tester_do_dns_poison_check(LanTesterApp* app);
+static void lan_tester_do_arp_watch(LanTesterApp* app);
+static void lan_tester_do_rogue_dhcp(LanTesterApp* app);
+static void lan_tester_do_rogue_ra(LanTesterApp* app);
+static void lan_tester_do_dhcp_fingerprint(LanTesterApp* app);
+static uint32_t lan_tester_nav_back_security(void* context);
 static void lan_tester_history_populate(LanTesterApp* app);
 static void lan_tester_history_file_callback(void* context, uint32_t index);
 static void lan_tester_history_delete_callback(void* context, uint32_t index);
@@ -1190,6 +1199,10 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->ntp_text = furi_string_alloc();
     app->netbios_text = furi_string_alloc();
     app->dns_poison_text = furi_string_alloc();
+    app->arp_watch_text = furi_string_alloc();
+    app->rogue_dhcp_text = furi_string_alloc();
+    app->rogue_ra_text = furi_string_alloc();
+    app->dhcp_fp_text = furi_string_alloc();
     /* history_text removed — history now uses submenu */
     app->history_file_text = furi_string_alloc();
 
@@ -1233,6 +1246,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     submenu_add_item(app->submenu, "Diagnostics", 102, lan_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Traffic", 105, lan_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Utilities", 103, lan_tester_submenu_callback, app);
+    submenu_add_item(app->submenu, "Security", 107, lan_tester_submenu_callback, app);
     submenu_add_item(
         app->submenu, "History", LanTesterMenuItemHistory, lan_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Settings", 104, lan_tester_submenu_callback, app);
@@ -1405,6 +1419,26 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         app->view_dispatcher,
         LanTesterViewCatUtilities,
         submenu_get_view(app->submenu_cat_utilities));
+
+    /* Category: Security */
+    app->submenu_cat_security = submenu_alloc();
+    submenu_add_item(
+        app->submenu_cat_security, "ARP Watch", LanTesterMenuItemArpWatch,
+        lan_tester_submenu_callback, app);
+    submenu_add_item(
+        app->submenu_cat_security, "Rogue DHCP", LanTesterMenuItemRogueDhcp,
+        lan_tester_submenu_callback, app);
+    submenu_add_item(
+        app->submenu_cat_security, "Rogue RA (IPv6)", LanTesterMenuItemRogueRa,
+        lan_tester_submenu_callback, app);
+    submenu_add_item(
+        app->submenu_cat_security, "DHCP Fingerprint", LanTesterMenuItemDhcpFingerprint,
+        lan_tester_submenu_callback, app);
+    view_set_previous_callback(
+        submenu_get_view(app->submenu_cat_security), lan_tester_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewCatSecurity,
+        submenu_get_view(app->submenu_cat_security));
 
     /* Port Scan Mode submenu */
     app->submenu_port_scan_mode = submenu_alloc();
@@ -1840,6 +1874,38 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         app->view_dispatcher, LanTesterViewDnsPoisonCheck, text_box_get_view(app->text_box_dns_poison));
     strncpy(app->dns_poison_host_input, "google.com", sizeof(app->dns_poison_host_input));
 
+    /* ARP Watch view */
+    app->text_box_arp_watch = text_box_alloc();
+    text_box_set_font(app->text_box_arp_watch, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_arp_watch), lan_tester_nav_back_security);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewArpWatch, text_box_get_view(app->text_box_arp_watch));
+
+    /* Rogue DHCP view */
+    app->text_box_rogue_dhcp = text_box_alloc();
+    text_box_set_font(app->text_box_rogue_dhcp, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_rogue_dhcp), lan_tester_nav_back_security);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewRogueDhcp, text_box_get_view(app->text_box_rogue_dhcp));
+
+    /* Rogue RA view */
+    app->text_box_rogue_ra = text_box_alloc();
+    text_box_set_font(app->text_box_rogue_ra, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_rogue_ra), lan_tester_nav_back_security);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewRogueRa, text_box_get_view(app->text_box_rogue_ra));
+
+    /* DHCP Fingerprint view */
+    app->text_box_dhcp_fp = text_box_alloc();
+    text_box_set_font(app->text_box_dhcp_fp, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_dhcp_fp), lan_tester_nav_back_security);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewDhcpFingerprint, text_box_get_view(app->text_box_dhcp_fp));
+
     /* Auto Test defaults */
     strncpy(app->autotest_dns_host, "google.com", sizeof(app->autotest_dns_host));
     app->autotest_lldp_wait_s = 30;
@@ -2077,6 +2143,11 @@ static void lan_tester_app_free(LanTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewNtpDiag);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewNetbiosQuery);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewDnsPoisonCheck);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewArpWatch);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewRogueDhcp);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewRogueRa);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewDhcpFingerprint);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatSecurity);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_portinfo);
@@ -2084,6 +2155,7 @@ static void lan_tester_app_free(LanTesterApp* app) {
     submenu_free(app->submenu_cat_diag);
     submenu_free(app->submenu_cat_traffic);
     submenu_free(app->submenu_cat_utilities);
+    submenu_free(app->submenu_cat_security);
     submenu_free(app->submenu_port_scan_mode);
     variable_item_list_free(app->settings_list);
     text_box_free(app->text_box_link);
@@ -2125,6 +2197,10 @@ static void lan_tester_app_free(LanTesterApp* app) {
     text_box_free(app->text_box_ntp);
     text_box_free(app->text_box_netbios);
     text_box_free(app->text_box_dns_poison);
+    text_box_free(app->text_box_arp_watch);
+    text_box_free(app->text_box_rogue_dhcp);
+    text_box_free(app->text_box_rogue_ra);
+    text_box_free(app->text_box_dhcp_fp);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -2147,6 +2223,10 @@ static void lan_tester_app_free(LanTesterApp* app) {
     furi_string_free(app->ntp_text);
     furi_string_free(app->netbios_text);
     furi_string_free(app->dns_poison_text);
+    furi_string_free(app->arp_watch_text);
+    furi_string_free(app->rogue_dhcp_text);
+    furi_string_free(app->rogue_ra_text);
+    furi_string_free(app->dhcp_fp_text);
     /* history_text removed — history now uses submenu */
     furi_string_free(app->history_file_text);
     furi_string_free(app->pxe_text);
@@ -2450,6 +2530,22 @@ static int32_t lan_tester_worker_fn(void* context) {
     case LanTesterMenuItemDnsPoisonCheck:
         lan_tester_do_dns_poison_check(app);
         lan_tester_update_view(app->text_box_dns_poison, app->dns_poison_text);
+        break;
+    case LanTesterMenuItemArpWatch:
+        lan_tester_do_arp_watch(app);
+        lan_tester_update_view(app->text_box_arp_watch, app->arp_watch_text);
+        break;
+    case LanTesterMenuItemRogueDhcp:
+        lan_tester_do_rogue_dhcp(app);
+        lan_tester_update_view(app->text_box_rogue_dhcp, app->rogue_dhcp_text);
+        break;
+    case LanTesterMenuItemRogueRa:
+        lan_tester_do_rogue_ra(app);
+        lan_tester_update_view(app->text_box_rogue_ra, app->rogue_ra_text);
+        break;
+    case LanTesterMenuItemDhcpFingerprint:
+        lan_tester_do_dhcp_fingerprint(app);
+        lan_tester_update_view(app->text_box_dhcp_fp, app->dhcp_fp_text);
         break;
     case LanTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
@@ -2880,6 +2976,12 @@ static void lan_tester_wol_input_callback(void* context) {
     furi_string_set(app->wol_text, "Sending WoL...\n");
     text_box_set_text(app->text_box_wol, furi_string_get_cstr(app->wol_text));
     lan_tester_worker_start(app, LanTesterMenuItemWol, LanTesterViewWol);
+}
+
+static uint32_t lan_tester_nav_back_security(void* context) {
+    UNUSED(context);
+    lan_tester_stop_worker_on_back();
+    return LanTesterViewCatSecurity;
 }
 
 /* ==================== SNMP/NTP/NetBIOS/DNS Poison input callbacks ==================== */
@@ -3313,6 +3415,37 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         break;
     case 106: /* Port Scan mode submenu */
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPortScanMode);
+        break;
+    case 107: /* Security category */
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewCatSecurity);
+        break;
+
+    case LanTesterMenuItemArpWatch:
+        lan_tester_show_view(
+            app, app->text_box_arp_watch, LanTesterViewArpWatch,
+            app->arp_watch_text, "Listening for ARP...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemArpWatch, LanTesterViewArpWatch);
+        break;
+
+    case LanTesterMenuItemRogueDhcp:
+        lan_tester_show_view(
+            app, app->text_box_rogue_dhcp, LanTesterViewRogueDhcp,
+            app->rogue_dhcp_text, "Sending DHCP Discover...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemRogueDhcp, LanTesterViewRogueDhcp);
+        break;
+
+    case LanTesterMenuItemRogueRa:
+        lan_tester_show_view(
+            app, app->text_box_rogue_ra, LanTesterViewRogueRa,
+            app->rogue_ra_text, "Listening for IPv6 RA...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemRogueRa, LanTesterViewRogueRa);
+        break;
+
+    case LanTesterMenuItemDhcpFingerprint:
+        lan_tester_show_view(
+            app, app->text_box_dhcp_fp, LanTesterViewDhcpFingerprint,
+            app->dhcp_fp_text, "Listening for DHCP...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemDhcpFingerprint, LanTesterViewDhcpFingerprint);
         break;
 
     default:
@@ -5857,6 +5990,294 @@ static void lan_tester_do_file_manager(LanTesterApp* app) {
         (unsigned long)fm_state.bytes_sent,
         (unsigned long)fm_state.bytes_received);
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
+}
+
+/* ==================== ARP Watch ==================== */
+
+static void lan_tester_do_arp_watch(LanTesterApp* app) {
+    furi_string_reset(app->arp_watch_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->arp_watch_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    furi_string_cat(app->arp_watch_text, "[ARP Watch]\nListening 15 sec...\n\n");
+    lan_tester_update_view(app->text_box_arp_watch, app->arp_watch_text);
+
+    if(!w5500_hal_open_macraw()) {
+        furi_string_cat(app->arp_watch_text, "MACRAW open failed!\n");
+        return;
+    }
+
+    ArpWatchState watch;
+    arp_watch_init(&watch);
+
+    uint32_t start = furi_get_tick();
+    uint32_t duration_ms = 15000;
+
+    while(app->worker_running && (furi_get_tick() - start) < duration_ms) {
+        uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+        if(recv_len > 0) {
+            arp_watch_process_frame(&watch, app->frame_buf, recv_len);
+        }
+        furi_delay_ms(1);
+    }
+
+    w5500_hal_close_macraw();
+
+    furi_string_cat_printf(
+        app->arp_watch_text, "ARP packets: %d\nUnique IPs: %d\n",
+        watch.total_arp_seen, watch.entry_count);
+
+    if(watch.duplicate_count > 0) {
+        furi_string_cat_printf(
+            app->arp_watch_text, "\nDUPLICATE IPs: %d\n", watch.duplicate_count);
+        for(uint16_t i = 0; i < watch.entry_count; i++) {
+            if(watch.entries[i].is_duplicate) {
+                furi_string_cat_printf(
+                    app->arp_watch_text, "  %d.%d.%d.%d (spoofed!)\n",
+                    watch.entries[i].ip[0], watch.entries[i].ip[1],
+                    watch.entries[i].ip[2], watch.entries[i].ip[3]);
+            }
+        }
+    }
+
+    if(watch.gratuitous_count > 0) {
+        furi_string_cat_printf(
+            app->arp_watch_text, "\nGratuitous ARP: %d\n", watch.gratuitous_count);
+    }
+
+    if(watch.storm_detected) {
+        furi_string_cat(app->arp_watch_text, "\nARP STORM detected!\n");
+    }
+
+    if(watch.duplicate_count == 0 && !watch.storm_detected) {
+        furi_string_cat(app->arp_watch_text, "\nNo anomalies detected.\n");
+    }
+
+    /* Show some entries */
+    if(watch.entry_count > 0) {
+        uint16_t show = watch.entry_count < 10 ? watch.entry_count : 10;
+        furi_string_cat(app->arp_watch_text, "\nHosts seen:\n");
+        for(uint16_t i = 0; i < show; i++) {
+            furi_string_cat_printf(
+                app->arp_watch_text,
+                "  %d.%d.%d.%d %02X:%02X:%02X:%02X:%02X:%02X (%d)\n",
+                watch.entries[i].ip[0], watch.entries[i].ip[1],
+                watch.entries[i].ip[2], watch.entries[i].ip[3],
+                watch.entries[i].mac[0], watch.entries[i].mac[1],
+                watch.entries[i].mac[2], watch.entries[i].mac[3],
+                watch.entries[i].mac[4], watch.entries[i].mac[5],
+                watch.entries[i].arp_count);
+        }
+    }
+
+    lan_tester_save_and_notify(app, "arp_watch.txt", app->arp_watch_text);
+}
+
+/* ==================== Rogue DHCP Detection ==================== */
+
+static void lan_tester_do_rogue_dhcp(LanTesterApp* app) {
+    furi_string_reset(app->rogue_dhcp_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->rogue_dhcp_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    furi_string_cat(app->rogue_dhcp_text, "[Rogue DHCP Detection]\n\n");
+    furi_string_cat(app->rogue_dhcp_text, "Sending Discover...\n");
+    furi_string_cat(app->rogue_dhcp_text, "Listening 5 sec...\n\n");
+    lan_tester_update_view(app->text_box_rogue_dhcp, app->rogue_dhcp_text);
+
+    RogueDhcpState state;
+    rogue_dhcp_detect(app->mac_addr, &state, 5000);
+
+    furi_string_cat_printf(
+        app->rogue_dhcp_text, "Offers received: %d\nDHCP servers: %d\n\n",
+        state.offers_received, state.server_count);
+
+    if(state.server_count == 0) {
+        furi_string_cat(app->rogue_dhcp_text, "No DHCP servers found.\n");
+    } else {
+        for(uint8_t i = 0; i < state.server_count; i++) {
+            RogueDhcpServer* srv = &state.servers[i];
+            furi_string_cat_printf(
+                app->rogue_dhcp_text, "Server %d:\n", i + 1);
+            furi_string_cat_printf(
+                app->rogue_dhcp_text, "  IP: %d.%d.%d.%d\n",
+                srv->server_ip[0], srv->server_ip[1],
+                srv->server_ip[2], srv->server_ip[3]);
+            furi_string_cat_printf(
+                app->rogue_dhcp_text, "  Offer: %d.%d.%d.%d\n",
+                srv->offered_ip[0], srv->offered_ip[1],
+                srv->offered_ip[2], srv->offered_ip[3]);
+            furi_string_cat_printf(
+                app->rogue_dhcp_text, "  GW: %d.%d.%d.%d\n",
+                srv->gateway[0], srv->gateway[1],
+                srv->gateway[2], srv->gateway[3]);
+            furi_string_cat_printf(
+                app->rogue_dhcp_text, "  DNS: %d.%d.%d.%d\n",
+                srv->dns[0], srv->dns[1], srv->dns[2], srv->dns[3]);
+            if(srv->domain[0]) {
+                furi_string_cat_printf(
+                    app->rogue_dhcp_text, "  Domain: %s\n", srv->domain);
+            }
+            furi_string_cat_printf(
+                app->rogue_dhcp_text, "  Lease: %lu sec\n",
+                (unsigned long)srv->lease_time);
+            furi_string_cat(app->rogue_dhcp_text, "\n");
+        }
+
+        if(state.multiple_servers) {
+            furi_string_cat(app->rogue_dhcp_text, "WARNING: Multiple DHCP\nservers detected!\nPossible rogue DHCP.\n");
+        } else {
+            furi_string_cat(app->rogue_dhcp_text, "Single DHCP server.\nNo rogue detected.\n");
+        }
+    }
+
+    lan_tester_save_and_notify(app, "rogue_dhcp.txt", app->rogue_dhcp_text);
+}
+
+/* ==================== Rogue RA Detection ==================== */
+
+static void lan_tester_do_rogue_ra(LanTesterApp* app) {
+    furi_string_reset(app->rogue_ra_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->rogue_ra_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    furi_string_cat(app->rogue_ra_text, "[Rogue RA Detection]\nListening 15 sec...\n\n");
+    lan_tester_update_view(app->text_box_rogue_ra, app->rogue_ra_text);
+
+    if(!w5500_hal_open_macraw()) {
+        furi_string_cat(app->rogue_ra_text, "MACRAW open failed!\n");
+        return;
+    }
+
+    RogueRaState state;
+    rogue_ra_init(&state);
+
+    uint32_t start = furi_get_tick();
+    uint32_t duration_ms = 15000;
+
+    while(app->worker_running && (furi_get_tick() - start) < duration_ms) {
+        uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+        if(recv_len > 0) {
+            rogue_ra_process_frame(&state, app->frame_buf, recv_len);
+        }
+        furi_delay_ms(1);
+    }
+
+    w5500_hal_close_macraw();
+
+    furi_string_cat_printf(
+        app->rogue_ra_text, "RA packets: %d\nRouters: %d\n\n",
+        state.total_ra_seen, state.router_count);
+
+    if(state.router_count == 0) {
+        furi_string_cat(app->rogue_ra_text, "No IPv6 routers found.\n(Normal if IPv6 disabled)\n");
+    } else {
+        for(uint8_t i = 0; i < state.router_count; i++) {
+            RogueRaRouter* r = &state.routers[i];
+            furi_string_cat_printf(
+                app->rogue_ra_text, "Router %d:\n", i + 1);
+            furi_string_cat_printf(
+                app->rogue_ra_text, "  MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                r->src_mac[0], r->src_mac[1], r->src_mac[2],
+                r->src_mac[3], r->src_mac[4], r->src_mac[5]);
+
+            /* Show IPv6 link-local in abbreviated form */
+            furi_string_cat_printf(
+                app->rogue_ra_text, "  IPv6: %02x%02x::%02x%02x:%02x%02x:%02x%02x\n",
+                r->src_ip[0], r->src_ip[1],
+                r->src_ip[8], r->src_ip[9], r->src_ip[10],
+                r->src_ip[11], r->src_ip[12], r->src_ip[13]);
+
+            furi_string_cat_printf(
+                app->rogue_ra_text, "  Lifetime: %d s\n", r->router_lifetime);
+            furi_string_cat_printf(
+                app->rogue_ra_text, "  Flags: %s%s\n",
+                r->managed_flag ? "M " : "", r->other_flag ? "O" : "");
+
+            if(r->prefix_len > 0) {
+                furi_string_cat_printf(
+                    app->rogue_ra_text, "  Prefix: /%d\n", r->prefix_len);
+            }
+            furi_string_cat(app->rogue_ra_text, "\n");
+        }
+
+        if(state.multiple_routers) {
+            furi_string_cat(app->rogue_ra_text, "WARNING: Multiple IPv6\nrouters detected!\nPossible rogue RA.\n");
+        }
+    }
+
+    lan_tester_save_and_notify(app, "rogue_ra.txt", app->rogue_ra_text);
+}
+
+/* ==================== DHCP Fingerprinting ==================== */
+
+static void lan_tester_do_dhcp_fingerprint(LanTesterApp* app) {
+    furi_string_reset(app->dhcp_fp_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->dhcp_fp_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    furi_string_cat(app->dhcp_fp_text, "[DHCP Fingerprinting]\nListening 30 sec...\n\n");
+    lan_tester_update_view(app->text_box_dhcp_fp, app->dhcp_fp_text);
+
+    if(!w5500_hal_open_macraw()) {
+        furi_string_cat(app->dhcp_fp_text, "MACRAW open failed!\n");
+        return;
+    }
+
+    DhcpFpState state;
+    dhcp_fp_init(&state);
+
+    uint32_t start = furi_get_tick();
+    uint32_t duration_ms = 30000;
+
+    while(app->worker_running && (furi_get_tick() - start) < duration_ms) {
+        uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+        if(recv_len > 0) {
+            if(dhcp_fp_process_frame(&state, app->frame_buf, recv_len)) {
+                /* Update display when new client found */
+                furi_string_reset(app->dhcp_fp_text);
+                furi_string_cat_printf(
+                    app->dhcp_fp_text, "[DHCP Fingerprinting]\nClients: %d  DHCP msgs: %d\n\n",
+                    state.client_count, state.total_discovers);
+                for(uint16_t i = 0; i < state.client_count; i++) {
+                    DhcpFpClient* c = &state.clients[i];
+                    furi_string_cat_printf(
+                        app->dhcp_fp_text,
+                        "%02X:%02X:%02X:%02X:%02X:%02X\n  %s\n  Opts(%d): ",
+                        c->mac[0], c->mac[1], c->mac[2],
+                        c->mac[3], c->mac[4], c->mac[5],
+                        c->os_guess, c->option_count);
+                    for(uint8_t j = 0; j < c->option_count && j < 8; j++) {
+                        furi_string_cat_printf(app->dhcp_fp_text, "%d ", c->options[j]);
+                    }
+                    if(c->option_count > 8) furi_string_cat(app->dhcp_fp_text, "...");
+                    furi_string_cat(app->dhcp_fp_text, "\n\n");
+                }
+                lan_tester_update_view(app->text_box_dhcp_fp, app->dhcp_fp_text);
+            }
+        }
+        furi_delay_ms(1);
+    }
+
+    w5500_hal_close_macraw();
+
+    if(state.client_count == 0) {
+        furi_string_cat(app->dhcp_fp_text, "No DHCP clients detected.\n");
+    }
+
+    lan_tester_save_and_notify(app, "dhcp_fp.txt", app->dhcp_fp_text);
 }
 
 /* ==================== SNMP GET ==================== */
