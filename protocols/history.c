@@ -89,10 +89,16 @@ uint16_t history_list(HistoryState* state) {
                 uint16_t type_len = strlen(type_start);
                 if(type_len > 4) type_len -= 4;
                 if(type_len > 8) type_len = 8;
-                snprintf(e->label, sizeof(e->label),
+                snprintf(
+                    e->label,
+                    sizeof(e->label),
                     "%.2s-%.2s %.2s:%.2s %.*s",
-                    name + 4, name + 6, name + 9, name + 11,
-                    type_len, type_start);
+                    name + 4,
+                    name + 6,
+                    name + 9,
+                    name + 11,
+                    type_len,
+                    type_start);
             } else {
                 strncpy(e->label, name, sizeof(e->label) - 1);
             }

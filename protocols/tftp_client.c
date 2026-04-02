@@ -5,11 +5,11 @@
 #include <storage/storage.h>
 #include <string.h>
 
-#define TFTP_SOCK       3
+#define TFTP_SOCK        3
 #define TFTP_SERVER_PORT 69
-#define TFTP_LOCAL_PORT 16900
-#define TFTP_TIMEOUT_MS 5000
-#define TFTP_BLOCK_SIZE 512
+#define TFTP_LOCAL_PORT  16900
+#define TFTP_TIMEOUT_MS  5000
+#define TFTP_BLOCK_SIZE  512
 
 /* TFTP opcodes */
 #define TFTP_OP_RRQ   1
@@ -137,8 +137,11 @@ bool tftp_client_get(
                         memcpy(result->error_msg, &pkt[4], msg_len);
                         result->error_msg[msg_len] = '\0';
                     } else {
-                        snprintf(result->error_msg, sizeof(result->error_msg),
-                                "TFTP error %d", err_code);
+                        snprintf(
+                            result->error_msg,
+                            sizeof(result->error_msg),
+                            "TFTP error %d",
+                            err_code);
                     }
                     result->errors++;
                     goto done;

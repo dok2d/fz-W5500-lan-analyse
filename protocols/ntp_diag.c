@@ -17,8 +17,7 @@ typedef struct {
 } NtpTimestamp;
 
 static uint32_t read_u32_be(const uint8_t* p) {
-    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
-           ((uint32_t)p[2] << 8) | p[3];
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
 }
 
 static void write_u32_be(uint8_t* p, uint32_t v) {
@@ -119,7 +118,8 @@ bool ntp_diag_query(const uint8_t server_ip[4], NtpDiagResult* result) {
                 /* Offset: simplified estimate = RTT/2 (we don't have real NTP timestamps) */
                 result->offset_us = (int32_t)(rtt_ms * 500); /* half RTT as rough estimate */
 
-                stratum_to_name(result->stratum, result->stratum_name, sizeof(result->stratum_name));
+                stratum_to_name(
+                    result->stratum, result->stratum_name, sizeof(result->stratum_name));
                 refid_to_str(result->ref_id, result->stratum, result->ref_id_str);
 
                 result->valid = true;

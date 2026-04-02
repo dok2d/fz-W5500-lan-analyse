@@ -11,17 +11,17 @@
 
 /* RMCP header */
 #define RMCP_VERSION    0x06
-#define RMCP_SEQ_NO     0xFF  /* no RMCP ACK */
+#define RMCP_SEQ_NO     0xFF /* no RMCP ACK */
 #define RMCP_CLASS_IPMI 0x07
 
 /* IPMI v1.5 session header (unauthenticated) */
-#define IPMI_AUTH_NONE  0x00
-#define IPMI_SEQ_NONE   0x00000000
-#define IPMI_SID_NONE   0x00000000
+#define IPMI_AUTH_NONE 0x00
+#define IPMI_SEQ_NONE  0x00000000
+#define IPMI_SID_NONE  0x00000000
 
 /* IPMI commands */
-#define IPMI_NETFN_CHASSIS 0x00
-#define IPMI_NETFN_APP     0x06
+#define IPMI_NETFN_CHASSIS          0x00
+#define IPMI_NETFN_APP              0x06
 #define IPMI_CMD_GET_CHASSIS_STATUS 0x01
 #define IPMI_CMD_GET_DEVICE_ID      0x01
 
@@ -48,12 +48,8 @@ static uint8_t ipmi_checksum(const uint8_t* data, uint8_t len) {
  *
  * Format: RMCP(4) + Session(10) + IPMI Message (variable)
  */
-static uint16_t ipmi_build_request(
-    uint8_t* pkt,
-    uint16_t pkt_size,
-    uint8_t netfn,
-    uint8_t cmd,
-    uint8_t rq_seq) {
+static uint16_t
+    ipmi_build_request(uint8_t* pkt, uint16_t pkt_size, uint8_t netfn, uint8_t cmd, uint8_t rq_seq) {
     if(pkt_size < 30) return 0;
     uint16_t idx = 0;
 
@@ -78,7 +74,7 @@ static uint16_t ipmi_build_request(
     uint16_t msg_start = idx;
 
     /* rsAddr = 0x20 (BMC), netFn/rsLUN */
-    pkt[idx++] = 0x20;               /* rsAddr: BMC */
+    pkt[idx++] = 0x20; /* rsAddr: BMC */
     pkt[idx++] = (netfn << 2) | 0x00; /* netFn/rsLUN */
 
     /* Checksum 1: over rsAddr + netFn/rsLUN */
@@ -86,7 +82,7 @@ static uint16_t ipmi_build_request(
     idx++;
 
     /* rqAddr, rqSeq/rqLUN, cmd */
-    pkt[idx++] = 0x81;               /* rqAddr: remote console */
+    pkt[idx++] = 0x81; /* rqAddr: remote console */
     pkt[idx++] = (rq_seq << 2) | 0x00; /* rqSeq/rqLUN */
     pkt[idx++] = cmd;
 
@@ -173,7 +169,8 @@ static bool ipmi_send_recv(
             uint16_t from_port;
             int32_t recv_len = recvfrom(IPMI_SOCK, rx_buf, sizeof(rx_buf), from_ip, &from_port);
             if(recv_len > 0) {
-                if(ipmi_parse_response(rx_buf, (uint16_t)recv_len, netfn, cmd, resp_data, resp_len)) {
+                if(ipmi_parse_response(
+                       rx_buf, (uint16_t)recv_len, netfn, cmd, resp_data, resp_len)) {
                     ok = true;
                     break;
                 }
@@ -193,7 +190,8 @@ bool ipmi_query(const uint8_t target_ip[4], IpmiResult* result) {
     const uint8_t* data;
     uint8_t data_len;
 
-    if(ipmi_send_recv(target_ip, IPMI_NETFN_CHASSIS, IPMI_CMD_GET_CHASSIS_STATUS, 1, &data, &data_len)) {
+    if(ipmi_send_recv(
+           target_ip, IPMI_NETFN_CHASSIS, IPMI_CMD_GET_CHASSIS_STATUS, 1, &data, &data_len)) {
         if(data_len >= 3) {
             result->power_state = data[0];
             result->last_event = data[1];

@@ -8,7 +8,7 @@
 typedef struct {
     char sys_name[SNMP_MAX_STRING];
     char sys_descr[SNMP_MAX_STRING];
-    uint32_t sys_uptime;    /* in hundredths of a second */
+    uint32_t sys_uptime; /* in hundredths of a second */
     int32_t if_oper_status; /* 1=up, 2=down, 3=testing, -1=error */
     bool has_sys_name;
     bool has_sys_descr;

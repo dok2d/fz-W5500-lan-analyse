@@ -6,10 +6,10 @@
 #include <string.h>
 
 /* EAPOL constants */
-#define ETH_TYPE_EAPOL   0x888E
-#define EAPOL_VERSION    1
-#define EAPOL_START      1
-#define EAPOL_PACKET     0
+#define ETH_TYPE_EAPOL 0x888E
+#define EAPOL_VERSION  1
+#define EAPOL_START    1
+#define EAPOL_PACKET   0
 
 /* EAP codes */
 #define EAP_REQUEST  1
@@ -34,9 +34,9 @@ static uint16_t eapol_build_start(uint8_t* frame, const uint8_t our_mac[6]) {
 
     /* EAPOL header (4 bytes) */
     frame[14] = EAPOL_VERSION; /* Protocol Version */
-    frame[15] = EAPOL_START;   /* Type: EAPOL-Start */
-    frame[16] = 0;             /* Body Length: 0 (MSB) */
-    frame[17] = 0;             /* Body Length: 0 (LSB) */
+    frame[15] = EAPOL_START; /* Type: EAPOL-Start */
+    frame[16] = 0; /* Body Length: 0 (MSB) */
+    frame[17] = 0; /* Body Length: 0 (LSB) */
 
     return 18;
 }
@@ -44,10 +44,7 @@ static uint16_t eapol_build_start(uint8_t* frame, const uint8_t our_mac[6]) {
 /**
  * Parse EAPOL frame from raw Ethernet.
  */
-static void eapol_parse_frame(
-    const uint8_t* frame,
-    uint16_t len,
-    EapolProbeResult* result) {
+static void eapol_parse_frame(const uint8_t* frame, uint16_t len, EapolProbeResult* result) {
     if(len < 18) return;
 
     uint16_t ethertype = pkt_get_ethertype(frame);

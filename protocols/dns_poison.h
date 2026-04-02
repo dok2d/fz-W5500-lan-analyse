@@ -10,9 +10,9 @@ typedef struct {
     uint8_t local_count;
     uint8_t public_addrs[DNS_POISON_MAX_ADDRS][4];
     uint8_t public_count;
-    bool match;     /* true if results overlap */
-    bool mismatch;  /* true if results completely differ */
-    bool local_ok;  /* local DNS responded */
+    bool match; /* true if results overlap */
+    bool mismatch; /* true if results completely differ */
+    bool local_ok; /* local DNS responded */
     bool public_ok; /* public DNS responded */
     bool valid;
 } DnsPoisonResult;

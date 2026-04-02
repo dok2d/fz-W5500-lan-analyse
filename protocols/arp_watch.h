@@ -11,7 +11,7 @@ typedef struct {
     uint32_t first_seen_tick;
     uint32_t last_seen_tick;
     uint16_t arp_count; /* number of ARP packets from this IP */
-    bool is_duplicate;  /* another MAC seen for same IP */
+    bool is_duplicate; /* another MAC seen for same IP */
     bool is_gratuitous; /* gratuitous ARP detected */
 } ArpWatchEntry;
 
@@ -19,9 +19,9 @@ typedef struct {
     ArpWatchEntry entries[ARP_WATCH_MAX_ENTRIES];
     uint16_t entry_count;
     uint16_t total_arp_seen;
-    uint16_t duplicate_count;   /* IPs with multiple MACs */
-    uint16_t gratuitous_count;  /* gratuitous ARP count */
-    uint16_t storm_threshold;   /* alert if ARP/sec exceeds this */
+    uint16_t duplicate_count; /* IPs with multiple MACs */
+    uint16_t gratuitous_count; /* gratuitous ARP count */
+    uint16_t storm_threshold; /* alert if ARP/sec exceeds this */
     bool storm_detected;
 } ArpWatchState;
 

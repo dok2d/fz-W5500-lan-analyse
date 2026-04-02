@@ -42,8 +42,8 @@ typedef enum {
     LanTesterViewHostActions,
     LanTesterViewAutoTest,
     LanTesterViewCatSecurity,
-    LanTesterViewToolResult,  /* shared TextBox for all tools */
-    LanTesterViewToolInput,   /* shared TextInput for all tools */
+    LanTesterViewToolResult, /* shared TextBox for all tools */
+    LanTesterViewToolInput, /* shared TextInput for all tools */
     LanTesterViewToolByteInput, /* shared ByteInput for MAC entry */
     LanTesterViewCount,
 } LanTesterView;

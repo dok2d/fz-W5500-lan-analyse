@@ -2,7 +2,7 @@
 #include "../utils/packet_utils.h"
 #include <string.h>
 
-#define ETH_TYPE_ARP  0x0806
+#define ETH_TYPE_ARP   0x0806
 #define ARP_OP_REQUEST 1
 #define ARP_OP_REPLY   2
 

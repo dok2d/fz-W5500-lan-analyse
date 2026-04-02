@@ -6,10 +6,10 @@
 #define NETBIOS_MAX_NAMES 16
 
 typedef struct {
-    char name[16];     /* NetBIOS name (15 chars + null) */
-    uint8_t suffix;    /* name suffix (type byte) */
-    uint16_t flags;    /* name flags */
-    bool is_group;     /* group name flag */
+    char name[16]; /* NetBIOS name (15 chars + null) */
+    uint8_t suffix; /* name suffix (type byte) */
+    uint16_t flags; /* name flags */
+    bool is_group; /* group name flag */
 } NetbiosName;
 
 typedef struct {
@@ -18,7 +18,7 @@ typedef struct {
     uint8_t unit_id[6]; /* MAC address from adapter status */
     bool has_unit_id;
     char computer_name[16]; /* first unique name (workstation) */
-    char workgroup[16];     /* first group name */
+    char workgroup[16]; /* first group name */
     bool valid;
 } NetbiosQueryResult;
 

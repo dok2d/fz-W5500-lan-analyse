@@ -43,15 +43,15 @@ static uint16_t build_tagged_arp_request(
     idx += 2;
     pkt_write_u16_be(&frame[idx], 0x0800); /* PTYPE: IPv4 */
     idx += 2;
-    frame[idx++] = 6;  /* HLEN */
-    frame[idx++] = 4;  /* PLEN */
+    frame[idx++] = 6; /* HLEN */
+    frame[idx++] = 4; /* PLEN */
     pkt_write_u16_be(&frame[idx], 0x0001); /* OPER: Request */
     idx += 2;
-    memcpy(&frame[idx], our_mac, 6);  /* Sender MAC */
+    memcpy(&frame[idx], our_mac, 6); /* Sender MAC */
     idx += 6;
-    memcpy(&frame[idx], our_ip, 4);   /* Sender IP */
+    memcpy(&frame[idx], our_ip, 4); /* Sender IP */
     idx += 4;
-    memset(&frame[idx], 0x00, 6);     /* Target MAC: unknown */
+    memset(&frame[idx], 0x00, 6); /* Target MAC: unknown */
     idx += 6;
     memcpy(&frame[idx], target_ip, 4); /* Target IP */
     idx += 4;

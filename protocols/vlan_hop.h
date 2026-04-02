@@ -4,11 +4,11 @@
 #include <stdbool.h>
 
 typedef struct {
-    uint16_t test_vlan_id;   /* VLAN ID used for test */
-    bool tagged_reply;       /* received any reply to tagged frame */
-    bool native_reply;       /* received reply on native (untagged) */
-    bool isolation_ok;       /* true if VLAN isolation appears correct */
-    uint16_t tagged_frames_seen;  /* 802.1Q frames seen during test */
+    uint16_t test_vlan_id; /* VLAN ID used for test */
+    bool tagged_reply; /* received any reply to tagged frame */
+    bool native_reply; /* received reply on native (untagged) */
+    bool isolation_ok; /* true if VLAN isolation appears correct */
+    uint16_t tagged_frames_seen; /* 802.1Q frames seen during test */
     uint16_t untagged_frames_seen;
     bool valid;
 } VlanHopResult;

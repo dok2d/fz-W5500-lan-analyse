@@ -6,9 +6,9 @@
 #include <socket.h>
 #include <string.h>
 
-#define DHCP_SOCK       1
-#define DHCP_SERVER_PORT 67
-#define DHCP_CLIENT_PORT 68
+#define DHCP_SOCK         1
+#define DHCP_SERVER_PORT  67
+#define DHCP_CLIENT_PORT  68
 #define DHCP_MAGIC_COOKIE 0x63825363
 
 /* DHCP message types */
@@ -18,17 +18,18 @@
 /**
  * Build a DHCP Discover packet for rogue detection.
  */
-static uint16_t build_discover(uint8_t* pkt, uint16_t pkt_size, const uint8_t mac[6], uint32_t xid) {
+static uint16_t
+    build_discover(uint8_t* pkt, uint16_t pkt_size, const uint8_t mac[6], uint32_t xid) {
     if(pkt_size < 300) return 0;
     memset(pkt, 0, 300);
 
-    pkt[0] = 1;    /* op: BOOTREQUEST */
-    pkt[1] = 1;    /* htype: Ethernet */
-    pkt[2] = 6;    /* hlen */
-    pkt[3] = 0;    /* hops */
+    pkt[0] = 1; /* op: BOOTREQUEST */
+    pkt[1] = 1; /* htype: Ethernet */
+    pkt[2] = 6; /* hlen */
+    pkt[3] = 0; /* hops */
 
     pkt_write_u32_be(&pkt[4], xid);
-    pkt_write_u16_be(&pkt[8], 0);    /* secs */
+    pkt_write_u16_be(&pkt[8], 0); /* secs */
     pkt_write_u16_be(&pkt[10], 0x8000); /* flags: broadcast */
 
     memcpy(&pkt[28], mac, 6); /* chaddr */
@@ -47,12 +48,12 @@ static uint16_t build_discover(uint8_t* pkt, uint16_t pkt_size, const uint8_t ma
     /* Option 55: Parameter Request List */
     pkt[idx++] = 55;
     pkt[idx++] = 6;
-    pkt[idx++] = 1;   /* Subnet Mask */
-    pkt[idx++] = 3;   /* Router */
-    pkt[idx++] = 6;   /* DNS */
-    pkt[idx++] = 15;  /* Domain Name */
-    pkt[idx++] = 51;  /* Lease Time */
-    pkt[idx++] = 54;  /* Server Identifier */
+    pkt[idx++] = 1; /* Subnet Mask */
+    pkt[idx++] = 3; /* Router */
+    pkt[idx++] = 6; /* DNS */
+    pkt[idx++] = 15; /* Domain Name */
+    pkt[idx++] = 51; /* Lease Time */
+    pkt[idx++] = 54; /* Server Identifier */
 
     /* End option */
     pkt[idx++] = 255;
@@ -63,11 +64,7 @@ static uint16_t build_discover(uint8_t* pkt, uint16_t pkt_size, const uint8_t ma
 /**
  * Parse a DHCP Offer and extract server information.
  */
-static bool parse_offer(
-    const uint8_t* pkt,
-    uint16_t len,
-    uint32_t xid,
-    RogueDhcpServer* server) {
+static bool parse_offer(const uint8_t* pkt, uint16_t len, uint32_t xid, RogueDhcpServer* server) {
     if(len < 244) return false;
 
     /* Check op = BOOTREPLY */
@@ -116,7 +113,8 @@ static bool parse_offer(
             break;
         case 15: /* Domain Name */
             if(opt_len > 0) {
-                uint8_t copy = opt_len < sizeof(server->domain) - 1 ? opt_len : sizeof(server->domain) - 1;
+                uint8_t copy = opt_len < sizeof(server->domain) - 1 ? opt_len :
+                                                                      sizeof(server->domain) - 1;
                 memcpy(server->domain, &pkt[idx], copy);
                 server->domain[copy] = '\0';
             }
@@ -134,9 +132,7 @@ static bool parse_offer(
 /**
  * Find server entry by IP, or create new one.
  */
-static RogueDhcpServer* find_or_add_server(
-    RogueDhcpState* state,
-    const uint8_t server_ip[4]) {
+static RogueDhcpServer* find_or_add_server(RogueDhcpState* state, const uint8_t server_ip[4]) {
     for(uint8_t i = 0; i < state->server_count; i++) {
         if(memcmp(state->servers[i].server_ip, server_ip, 4) == 0) {
             return &state->servers[i];
@@ -159,7 +155,10 @@ bool rogue_dhcp_detect(const uint8_t our_mac[6], RogueDhcpState* state, uint32_t
     furi_hal_random_fill_buf((uint8_t*)&xid, 4);
 
     uint8_t* pkt = malloc(512);
-    if(!pkt) { close(DHCP_SOCK); return false; }
+    if(!pkt) {
+        close(DHCP_SOCK);
+        return false;
+    }
 
     uint16_t pkt_len = build_discover(pkt, 512, our_mac, xid);
     if(pkt_len == 0) {

@@ -1219,11 +1219,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->submenu = submenu_alloc();
     /* Main menu: grouped categories */
     submenu_add_item(
-        app->submenu,
-        "Auto Test",
-        LanTesterMenuItemAutoTest,
-        lan_tester_submenu_callback,
-        app);
+        app->submenu, "Auto Test", LanTesterMenuItemAutoTest, lan_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Port Info", 100, lan_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Scan", 101, lan_tester_submenu_callback, app);
     submenu_add_item(app->submenu, "Diagnostics", 102, lan_tester_submenu_callback, app);
@@ -1303,8 +1299,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         LanTesterMenuItemNetbiosQuery,
         lan_tester_submenu_callback,
         app);
-    submenu_add_item(
-        app->submenu_cat_scan, "Port Scan", 106, lan_tester_submenu_callback, app);
+    submenu_add_item(app->submenu_cat_scan, "Port Scan", 106, lan_tester_submenu_callback, app);
     view_set_previous_callback(
         submenu_get_view(app->submenu_cat_scan), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
@@ -1372,9 +1367,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     view_set_previous_callback(
         submenu_get_view(app->submenu_cat_traffic), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
-        app->view_dispatcher,
-        LanTesterViewCatTraffic,
-        submenu_get_view(app->submenu_cat_traffic));
+        app->view_dispatcher, LanTesterViewCatTraffic, submenu_get_view(app->submenu_cat_traffic));
 
     /* Category: Utilities */
     app->submenu_cat_utilities = submenu_alloc();
@@ -1418,33 +1411,58 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* Category: Security */
     app->submenu_cat_security = submenu_alloc();
     submenu_add_item(
-        app->submenu_cat_security, "ARP Watch", LanTesterMenuItemArpWatch,
-        lan_tester_submenu_callback, app);
+        app->submenu_cat_security,
+        "ARP Watch",
+        LanTesterMenuItemArpWatch,
+        lan_tester_submenu_callback,
+        app);
     submenu_add_item(
-        app->submenu_cat_security, "Rogue DHCP", LanTesterMenuItemRogueDhcp,
-        lan_tester_submenu_callback, app);
+        app->submenu_cat_security,
+        "Rogue DHCP",
+        LanTesterMenuItemRogueDhcp,
+        lan_tester_submenu_callback,
+        app);
     submenu_add_item(
-        app->submenu_cat_security, "Rogue RA (IPv6)", LanTesterMenuItemRogueRa,
-        lan_tester_submenu_callback, app);
+        app->submenu_cat_security,
+        "Rogue RA (IPv6)",
+        LanTesterMenuItemRogueRa,
+        lan_tester_submenu_callback,
+        app);
     submenu_add_item(
-        app->submenu_cat_security, "DHCP Fingerprint", LanTesterMenuItemDhcpFingerprint,
-        lan_tester_submenu_callback, app);
+        app->submenu_cat_security,
+        "DHCP Fingerprint",
+        LanTesterMenuItemDhcpFingerprint,
+        lan_tester_submenu_callback,
+        app);
     submenu_add_item(
-        app->submenu_cat_security, "802.1X Probe", LanTesterMenuItemEapolProbe,
-        lan_tester_submenu_callback, app);
+        app->submenu_cat_security,
+        "802.1X Probe",
+        LanTesterMenuItemEapolProbe,
+        lan_tester_submenu_callback,
+        app);
     submenu_add_item(
-        app->submenu_cat_security, "VLAN Hop Top10", LanTesterMenuItemVlanHopTop10,
-        lan_tester_submenu_callback, app);
+        app->submenu_cat_security,
+        "VLAN Hop Top10",
+        LanTesterMenuItemVlanHopTop10,
+        lan_tester_submenu_callback,
+        app);
     submenu_add_item(
-        app->submenu_cat_security, "VLAN Hop Custom", LanTesterMenuItemVlanHopCustom,
-        lan_tester_submenu_callback, app);
+        app->submenu_cat_security,
+        "VLAN Hop Custom",
+        LanTesterMenuItemVlanHopCustom,
+        lan_tester_submenu_callback,
+        app);
     submenu_add_item(
-        app->submenu_cat_security, "RADIUS Test", LanTesterMenuItemRadiusClient,
-        lan_tester_submenu_callback, app);
+        app->submenu_cat_security,
+        "RADIUS Test",
+        LanTesterMenuItemRadiusClient,
+        lan_tester_submenu_callback,
+        app);
     view_set_previous_callback(
         submenu_get_view(app->submenu_cat_security), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
-        app->view_dispatcher, LanTesterViewCatSecurity,
+        app->view_dispatcher,
+        LanTesterViewCatSecurity,
         submenu_get_view(app->submenu_cat_security));
 
     /* Port Scan Mode submenu */
@@ -1477,8 +1495,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* Shared TextBox for ALL tool results (allocated once, reused) */
     app->text_box_tool = text_box_alloc();
     text_box_set_font(app->text_box_tool, TextBoxFontText);
-    view_set_previous_callback(
-        text_box_get_view(app->text_box_tool), lan_tester_nav_back_tool);
+    view_set_previous_callback(text_box_get_view(app->text_box_tool), lan_tester_nav_back_tool);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewToolResult, text_box_get_view(app->text_box_tool));
     app->tool_back_view = LanTesterViewMainMenu;
@@ -1718,9 +1735,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     view_set_previous_callback(
         text_box_get_view(app->text_box_autotest), lan_tester_nav_back_autotest);
     view_dispatcher_add_view(
-        app->view_dispatcher,
-        LanTesterViewAutoTest,
-        text_box_get_view(app->text_box_autotest));
+        app->view_dispatcher, LanTesterViewAutoTest, text_box_get_view(app->text_box_autotest));
 
     /* Shared result view for all new analysis tools (saves ~12 TextBox allocs) */
     app->tool_back_view = LanTesterViewMainMenu;
@@ -2780,7 +2795,10 @@ static void lan_tester_netbios_ip_input_callback(void* context) {
     furi_assert(app);
     if(lan_tester_parse_ip(app->netbios_ip_input, app->netbios_target)) {
         lan_tester_show_view(
-            app, app->text_box_tool, LanTesterViewToolResult, app->tool_text,
+            app,
+            app->text_box_tool,
+            LanTesterViewToolResult,
+            app->tool_text,
             "Querying NetBIOS...\n");
         lan_tester_worker_start(app, LanTesterMenuItemNetbiosQuery, LanTesterViewToolResult);
     } else {
@@ -2795,10 +2813,8 @@ static void lan_tester_dns_poison_input_callback(void* context) {
     furi_assert(app);
     if(app->dns_poison_host_input[0] != '\0') {
         lan_tester_show_view(
-            app, app->text_box_tool, LanTesterViewToolResult, app->tool_text,
-            "Checking DNS...\n");
-        lan_tester_worker_start(
-            app, LanTesterMenuItemDnsPoisonCheck, LanTesterViewToolResult);
+            app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Checking DNS...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemDnsPoisonCheck, LanTesterViewToolResult);
     }
 }
 
@@ -2810,8 +2826,7 @@ static void lan_tester_vlan_hop_custom_input_callback(void* context) {
     if(app->vlan_hop_input[0] != '\0') {
         app->vlan_hop_custom = true;
         lan_tester_show_view(
-            app, app->text_box_tool, LanTesterViewToolResult,
-            app->tool_text, "Testing VLANs...\n");
+            app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Testing VLANs...\n");
         lan_tester_worker_start(app, LanTesterMenuItemVlanHopCustom, LanTesterViewToolResult);
     }
 }
@@ -2836,8 +2851,12 @@ static void lan_tester_tftp_ip_input_callback(void* context) {
         text_input_reset(app->text_input_tool);
         text_input_set_header_text(app->text_input_tool, "Remote filename:");
         text_input_set_result_callback(
-            app->text_input_tool, lan_tester_tftp_filename_input_callback, app,
-            app->tftp_filename_input, sizeof(app->tftp_filename_input), false);
+            app->text_input_tool,
+            lan_tester_tftp_filename_input_callback,
+            app,
+            app->tftp_filename_input,
+            sizeof(app->tftp_filename_input),
+            false);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
     }
 }
@@ -2863,8 +2882,12 @@ static void lan_tester_radius_ip_input_callback(void* context) {
         text_input_reset(app->text_input_tool);
         text_input_set_header_text(app->text_input_tool, "Shared secret:");
         text_input_set_result_callback(
-            app->text_input_tool, lan_tester_radius_step_callback, app,
-            app->radius_secret_input, sizeof(app->radius_secret_input), false);
+            app->text_input_tool,
+            lan_tester_radius_step_callback,
+            app,
+            app->radius_secret_input,
+            sizeof(app->radius_secret_input),
+            false);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
     }
 }
@@ -2879,8 +2902,12 @@ static void lan_tester_radius_step_callback(void* context) {
         text_input_reset(app->text_input_tool);
         text_input_set_header_text(app->text_input_tool, "Username:");
         text_input_set_result_callback(
-            app->text_input_tool, lan_tester_radius_step_callback, app,
-            app->radius_user_input, sizeof(app->radius_user_input), false);
+            app->text_input_tool,
+            lan_tester_radius_step_callback,
+            app,
+            app->radius_user_input,
+            sizeof(app->radius_user_input),
+            false);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
     } else if(app->radius_input_step == 2) {
         /* Ask for password */
@@ -2888,14 +2915,21 @@ static void lan_tester_radius_step_callback(void* context) {
         text_input_reset(app->text_input_tool);
         text_input_set_header_text(app->text_input_tool, "Password:");
         text_input_set_result_callback(
-            app->text_input_tool, lan_tester_radius_step_callback, app,
-            app->radius_pass_input, sizeof(app->radius_pass_input), false);
+            app->text_input_tool,
+            lan_tester_radius_step_callback,
+            app,
+            app->radius_pass_input,
+            sizeof(app->radius_pass_input),
+            false);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
     } else {
         /* All inputs collected, run test */
         lan_tester_show_view(
-            app, app->text_box_tool, LanTesterViewToolResult,
-            app->tool_text, "Testing RADIUS...\n");
+            app,
+            app->text_box_tool,
+            LanTesterViewToolResult,
+            app->tool_text,
+            "Testing RADIUS...\n");
         lan_tester_worker_start(app, LanTesterMenuItemRadiusClient, LanTesterViewToolResult);
     }
 }
@@ -2910,8 +2944,7 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
     case LanTesterMenuItemAutoTest:
         app->autotest_running = true;
         furi_string_set(app->autotest_text, "Waiting for link...\n");
-        text_box_set_text(
-            app->text_box_autotest, furi_string_get_cstr(app->autotest_text));
+        text_box_set_text(app->text_box_autotest, furi_string_get_cstr(app->autotest_text));
         lan_tester_worker_start(app, LanTesterMenuItemAutoTest, LanTesterViewAutoTest);
         break;
 
@@ -2940,7 +2973,11 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
     case LanTesterMenuItemArpScan:
         app->tool_back_view = LanTesterViewCatScan;
         lan_tester_show_view(
-            app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Initializing W5500...\n");
+            app,
+            app->text_box_tool,
+            LanTesterViewToolResult,
+            app->tool_text,
+            "Initializing W5500...\n");
         lan_tester_worker_start(app, LanTesterMenuItemArpScan, LanTesterViewToolResult);
         break;
 
@@ -3025,22 +3062,14 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
     case LanTesterMenuItemStpVlan:
         app->tool_back_view = LanTesterViewCatPortInfo;
         lan_tester_show_view(
-            app,
-            app->text_box_tool,
-            LanTesterViewToolResult,
-            app->tool_text,
-            "Listening...\n");
+            app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Listening...\n");
         lan_tester_worker_start(app, LanTesterMenuItemStpVlan, LanTesterViewToolResult);
         break;
 
     case LanTesterMenuItemDiscovery:
         app->tool_back_view = LanTesterViewCatScan;
         lan_tester_show_view(
-            app,
-            app->text_box_tool,
-            LanTesterViewToolResult,
-            app->tool_text,
-            "Scanning...\n");
+            app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Scanning...\n");
         lan_tester_worker_start(app, LanTesterMenuItemDiscovery, LanTesterViewToolResult);
         break;
 
@@ -3207,8 +3236,7 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
     case LanTesterMenuItemFileManager:
         app->tool_back_view = LanTesterViewCatUtilities;
         furi_string_set(app->tool_text, "Starting File Manager...\n");
-        text_box_set_text(
-            app->text_box_tool, furi_string_get_cstr(app->tool_text));
+        text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
         lan_tester_worker_start(app, LanTesterMenuItemFileManager, LanTesterViewToolResult);
         break;
 
@@ -3224,13 +3252,23 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         app->tool_back_view = LanTesterViewCatPortInfo;
         if(app->dhcp_valid) {
             snprintf(
-                app->snmp_ip_input, sizeof(app->snmp_ip_input), "%d.%d.%d.%d",
-                app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+                app->snmp_ip_input,
+                sizeof(app->snmp_ip_input),
+                "%d.%d.%d.%d",
+                app->dhcp_gw[0],
+                app->dhcp_gw[1],
+                app->dhcp_gw[2],
+                app->dhcp_gw[3]);
         }
         ip_keyboard_setup(
-            app->ip_keyboard, "SNMP target IP:", app->snmp_ip_input, false,
-            lan_tester_snmp_ip_input_callback, app,
-            app->snmp_ip_input, sizeof(app->snmp_ip_input),
+            app->ip_keyboard,
+            "SNMP target IP:",
+            app->snmp_ip_input,
+            false,
+            lan_tester_snmp_ip_input_callback,
+            app,
+            app->snmp_ip_input,
+            sizeof(app->snmp_ip_input),
             lan_tester_nav_back_portinfo);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
@@ -3239,13 +3277,23 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         app->tool_back_view = LanTesterViewCatDiag;
         if(app->dhcp_valid) {
             snprintf(
-                app->ntp_ip_input, sizeof(app->ntp_ip_input), "%d.%d.%d.%d",
-                app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+                app->ntp_ip_input,
+                sizeof(app->ntp_ip_input),
+                "%d.%d.%d.%d",
+                app->dhcp_gw[0],
+                app->dhcp_gw[1],
+                app->dhcp_gw[2],
+                app->dhcp_gw[3]);
         }
         ip_keyboard_setup(
-            app->ip_keyboard, "NTP server IP:", app->ntp_ip_input, false,
-            lan_tester_ntp_ip_input_callback, app,
-            app->ntp_ip_input, sizeof(app->ntp_ip_input),
+            app->ip_keyboard,
+            "NTP server IP:",
+            app->ntp_ip_input,
+            false,
+            lan_tester_ntp_ip_input_callback,
+            app,
+            app->ntp_ip_input,
+            sizeof(app->ntp_ip_input),
             lan_tester_nav_back_diag);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
@@ -3254,13 +3302,23 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         app->tool_back_view = LanTesterViewCatScan;
         if(app->dhcp_valid) {
             snprintf(
-                app->netbios_ip_input, sizeof(app->netbios_ip_input), "%d.%d.%d.%d",
-                app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+                app->netbios_ip_input,
+                sizeof(app->netbios_ip_input),
+                "%d.%d.%d.%d",
+                app->dhcp_gw[0],
+                app->dhcp_gw[1],
+                app->dhcp_gw[2],
+                app->dhcp_gw[3]);
         }
         ip_keyboard_setup(
-            app->ip_keyboard, "NetBIOS target IP:", app->netbios_ip_input, false,
-            lan_tester_netbios_ip_input_callback, app,
-            app->netbios_ip_input, sizeof(app->netbios_ip_input),
+            app->ip_keyboard,
+            "NetBIOS target IP:",
+            app->netbios_ip_input,
+            false,
+            lan_tester_netbios_ip_input_callback,
+            app,
+            app->netbios_ip_input,
+            sizeof(app->netbios_ip_input),
             lan_tester_nav_back_scan);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
@@ -3270,8 +3328,12 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         text_input_reset(app->text_input_tool);
         text_input_set_header_text(app->text_input_tool, "Hostname to check:");
         text_input_set_result_callback(
-            app->text_input_tool, lan_tester_dns_poison_input_callback, app,
-            app->dns_poison_host_input, sizeof(app->dns_poison_host_input), false);
+            app->text_input_tool,
+            lan_tester_dns_poison_input_callback,
+            app,
+            app->dns_poison_host_input,
+            sizeof(app->dns_poison_host_input),
+            false);
         view_set_previous_callback(
             text_input_get_view(app->text_input_tool), lan_tester_nav_back_diag);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
@@ -3305,40 +3367,55 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
     case LanTesterMenuItemArpWatch:
         app->tool_back_view = LanTesterViewCatSecurity;
         lan_tester_show_view(
-            app, app->text_box_tool, LanTesterViewToolResult,
-            app->tool_text, "Listening for ARP...\n");
+            app,
+            app->text_box_tool,
+            LanTesterViewToolResult,
+            app->tool_text,
+            "Listening for ARP...\n");
         lan_tester_worker_start(app, LanTesterMenuItemArpWatch, LanTesterViewToolResult);
         break;
 
     case LanTesterMenuItemRogueDhcp:
         app->tool_back_view = LanTesterViewCatSecurity;
         lan_tester_show_view(
-            app, app->text_box_tool, LanTesterViewToolResult,
-            app->tool_text, "Sending DHCP Discover...\n");
+            app,
+            app->text_box_tool,
+            LanTesterViewToolResult,
+            app->tool_text,
+            "Sending DHCP Discover...\n");
         lan_tester_worker_start(app, LanTesterMenuItemRogueDhcp, LanTesterViewToolResult);
         break;
 
     case LanTesterMenuItemRogueRa:
         app->tool_back_view = LanTesterViewCatSecurity;
         lan_tester_show_view(
-            app, app->text_box_tool, LanTesterViewToolResult,
-            app->tool_text, "Listening for IPv6 RA...\n");
+            app,
+            app->text_box_tool,
+            LanTesterViewToolResult,
+            app->tool_text,
+            "Listening for IPv6 RA...\n");
         lan_tester_worker_start(app, LanTesterMenuItemRogueRa, LanTesterViewToolResult);
         break;
 
     case LanTesterMenuItemDhcpFingerprint:
         app->tool_back_view = LanTesterViewCatSecurity;
         lan_tester_show_view(
-            app, app->text_box_tool, LanTesterViewToolResult,
-            app->tool_text, "Listening for DHCP...\n");
+            app,
+            app->text_box_tool,
+            LanTesterViewToolResult,
+            app->tool_text,
+            "Listening for DHCP...\n");
         lan_tester_worker_start(app, LanTesterMenuItemDhcpFingerprint, LanTesterViewToolResult);
         break;
 
     case LanTesterMenuItemEapolProbe:
         app->tool_back_view = LanTesterViewCatSecurity;
         lan_tester_show_view(
-            app, app->text_box_tool, LanTesterViewToolResult,
-            app->tool_text, "Sending EAPOL-Start...\n");
+            app,
+            app->text_box_tool,
+            LanTesterViewToolResult,
+            app->tool_text,
+            "Sending EAPOL-Start...\n");
         lan_tester_worker_start(app, LanTesterMenuItemEapolProbe, LanTesterViewToolResult);
         break;
 
@@ -3346,8 +3423,11 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         app->tool_back_view = LanTesterViewCatSecurity;
         app->vlan_hop_custom = false;
         lan_tester_show_view(
-            app, app->text_box_tool, LanTesterViewToolResult,
-            app->tool_text, "Testing VLAN isolation...\n");
+            app,
+            app->text_box_tool,
+            LanTesterViewToolResult,
+            app->tool_text,
+            "Testing VLAN isolation...\n");
         lan_tester_worker_start(app, LanTesterMenuItemVlanHopTop10, LanTesterViewToolResult);
         break;
 
@@ -3356,8 +3436,12 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         text_input_reset(app->text_input_tool);
         text_input_set_header_text(app->text_input_tool, "VLANs (comma sep):");
         text_input_set_result_callback(
-            app->text_input_tool, lan_tester_vlan_hop_custom_input_callback, app,
-            app->vlan_hop_input, sizeof(app->vlan_hop_input), false);
+            app->text_input_tool,
+            lan_tester_vlan_hop_custom_input_callback,
+            app,
+            app->vlan_hop_input,
+            sizeof(app->vlan_hop_input),
+            false);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
         break;
 
@@ -3365,13 +3449,23 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         app->tool_back_view = LanTesterViewCatUtilities;
         if(app->dhcp_valid) {
             snprintf(
-                app->tftp_ip_input, sizeof(app->tftp_ip_input), "%d.%d.%d.%d",
-                app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+                app->tftp_ip_input,
+                sizeof(app->tftp_ip_input),
+                "%d.%d.%d.%d",
+                app->dhcp_gw[0],
+                app->dhcp_gw[1],
+                app->dhcp_gw[2],
+                app->dhcp_gw[3]);
         }
         ip_keyboard_setup(
-            app->ip_keyboard, "TFTP server IP:", app->tftp_ip_input, false,
-            lan_tester_tftp_ip_input_callback, app,
-            app->tftp_ip_input, sizeof(app->tftp_ip_input),
+            app->ip_keyboard,
+            "TFTP server IP:",
+            app->tftp_ip_input,
+            false,
+            lan_tester_tftp_ip_input_callback,
+            app,
+            app->tftp_ip_input,
+            sizeof(app->tftp_ip_input),
             lan_tester_nav_back_utilities);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
@@ -3380,13 +3474,23 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         app->tool_back_view = LanTesterViewCatUtilities;
         if(app->dhcp_valid) {
             snprintf(
-                app->ipmi_ip_input, sizeof(app->ipmi_ip_input), "%d.%d.%d.%d",
-                app->dhcp_gw[0], app->dhcp_gw[1], app->dhcp_gw[2], app->dhcp_gw[3]);
+                app->ipmi_ip_input,
+                sizeof(app->ipmi_ip_input),
+                "%d.%d.%d.%d",
+                app->dhcp_gw[0],
+                app->dhcp_gw[1],
+                app->dhcp_gw[2],
+                app->dhcp_gw[3]);
         }
         ip_keyboard_setup(
-            app->ip_keyboard, "BMC/IPMI IP:", app->ipmi_ip_input, false,
-            lan_tester_ipmi_ip_input_callback, app,
-            app->ipmi_ip_input, sizeof(app->ipmi_ip_input),
+            app->ip_keyboard,
+            "BMC/IPMI IP:",
+            app->ipmi_ip_input,
+            false,
+            lan_tester_ipmi_ip_input_callback,
+            app,
+            app->ipmi_ip_input,
+            sizeof(app->ipmi_ip_input),
             lan_tester_nav_back_utilities);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
@@ -3395,9 +3499,14 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         app->tool_back_view = LanTesterViewCatSecurity;
         app->radius_input_step = 0;
         ip_keyboard_setup(
-            app->ip_keyboard, "RADIUS server IP:", app->radius_ip_input, false,
-            lan_tester_radius_ip_input_callback, app,
-            app->radius_ip_input, sizeof(app->radius_ip_input),
+            app->ip_keyboard,
+            "RADIUS server IP:",
+            app->radius_ip_input,
+            false,
+            lan_tester_radius_ip_input_callback,
+            app,
+            app->radius_ip_input,
+            sizeof(app->radius_ip_input),
             lan_tester_nav_back_security);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
@@ -3838,7 +3947,8 @@ static void lan_tester_do_dhcp_analyze(LanTesterApp* app) {
         if(rx_size > 0) {
             uint8_t from_ip[4];
             uint16_t from_port;
-            int32_t received = recvfrom(dhcp_socket, app->frame_buf, FRAME_BUF_SIZE, from_ip, &from_port);
+            int32_t received =
+                recvfrom(dhcp_socket, app->frame_buf, FRAME_BUF_SIZE, from_ip, &from_port);
             if(received > 0) {
                 if(dhcp_parse_offer(app->frame_buf, (uint16_t)received, xid, &dhcp_result)) {
                     got_offer = true;
@@ -3955,8 +4065,7 @@ static void lan_tester_do_dns_lookup(LanTesterApp* app) {
     char dns_str[16];
     pkt_format_ip(dns_ip, dns_str);
 
-    furi_string_printf(
-        app->tool_text, "[DNS] %s via %s\n", app->dns_hostname_input, dns_str);
+    furi_string_printf(app->tool_text, "[DNS] %s via %s\n", app->dns_hostname_input, dns_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     DnsLookupResult dns_result;
@@ -3967,7 +4076,9 @@ static void lan_tester_do_dns_lookup(LanTesterApp* app) {
         pkt_format_ip(dns_result.resolved_ip, ip_str);
         furi_string_cat_printf(app->tool_text, "-> %s\n", ip_str);
     } else {
-        furi_string_cat_printf(app->tool_text, "%s\n",
+        furi_string_cat_printf(
+            app->tool_text,
+            "%s\n",
             dns_result.rcode == DNS_RCODE_NXDOMAIN ? "NXDOMAIN" : "Timeout");
     }
 
@@ -4098,8 +4209,7 @@ static void lan_tester_do_traceroute(LanTesterApp* app) {
 
         char ip_str[16];
         pkt_format_ip(dns_result.resolved_ip, ip_str);
-        furi_string_printf(
-            app->tool_text, "%s -> %s\n\n", app->traceroute_host_input, ip_str);
+        furi_string_printf(app->tool_text, "%s -> %s\n\n", app->traceroute_host_input, ip_str);
         lan_tester_update_view(app->text_box_tool, app->tool_text);
     }
 
@@ -4128,11 +4238,7 @@ static void lan_tester_do_traceroute(LanTesterApp* app) {
             char hop_ip_str[16];
             pkt_format_ip(hop.hop_ip, hop_ip_str);
             furi_string_cat_printf(
-                app->tool_text,
-                "%2d  %s  %lu ms\n",
-                ttl,
-                hop_ip_str,
-                (unsigned long)hop.rtt_ms);
+                app->tool_text, "%2d  %s  %lu ms\n", ttl, hop_ip_str, (unsigned long)hop.rtt_ms);
         } else {
             furi_string_cat_printf(app->tool_text, "%2d  * * *\n", ttl);
         }
@@ -4614,9 +4720,7 @@ static void lan_tester_do_stp_vlan(LanTesterApp* app) {
     furi_string_cat_str(app->tool_text, "\n--- VLANs ---\n");
     if(vlan_state.vlan_count > 0) {
         furi_string_cat_printf(
-            app->tool_text,
-            "Tagged frames: %lu\n",
-            (unsigned long)vlan_state.total_tagged_frames);
+            app->tool_text, "Tagged frames: %lu\n", (unsigned long)vlan_state.total_tagged_frames);
         for(uint16_t i = 0; i < vlan_state.vlan_count; i++) {
             furi_string_cat_printf(
                 app->tool_text,
@@ -4625,8 +4729,7 @@ static void lan_tester_do_stp_vlan(LanTesterApp* app) {
                 (unsigned long)vlan_state.vlans[i].frame_count);
         }
     } else {
-        furi_string_cat_str(
-            app->tool_text, "No 802.1Q tags detected.\n(Not on trunk port?)\n");
+        furi_string_cat_str(app->tool_text, "No 802.1Q tags detected.\n(Not on trunk port?)\n");
     }
 
     lan_tester_save_and_notify(app, "stp_vlan.txt", app->tool_text);
@@ -5517,10 +5620,7 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                 app->link_speed = speed;
                 app->link_duplex = duplex;
                 furi_string_cat_printf(
-                    body,
-                    "Link: UP %sM %s\n",
-                    speed ? "100" : "10",
-                    duplex ? "Full" : "Half");
+                    body, "Link: UP %sM %s\n", speed ? "100" : "10", duplex ? "Full" : "Half");
             }
             furi_string_set(app->autotest_text, "[Auto Test]\n");
             furi_string_cat(app->autotest_text, body);
@@ -5531,8 +5631,8 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
             furi_mutex_acquire(app->autotest_lldp_mutex, FuriWaitForever);
             furi_string_reset(app->autotest_lldp_result);
             furi_mutex_release(app->autotest_lldp_mutex);
-            app->autotest_lldp_thread = furi_thread_alloc_ex(
-                "AutoLLDP", 3 * 1024, autotest_lldp_thread_fn, app);
+            app->autotest_lldp_thread =
+                furi_thread_alloc_ex("AutoLLDP", 3 * 1024, autotest_lldp_thread_fn, app);
             furi_thread_start(app->autotest_lldp_thread);
 
             /* Step 2: DHCP (Socket 1 — no conflict with LLDP) */
@@ -5578,11 +5678,9 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
             /* Step 3: Ping Gateway (Socket 2 — no conflict) */
             if(dhcp_ok && w5500_hal_get_link_status() && app->autotest_running) {
                 PingResult pr;
-                gw_ok =
-                    icmp_ping(W5500_PING_SOCKET, app->dhcp_gw, 1, app->ping_timeout_ms, &pr);
+                gw_ok = icmp_ping(W5500_PING_SOCKET, app->dhcp_gw, 1, app->ping_timeout_ms, &pr);
                 if(gw_ok) {
-                    furi_string_cat_printf(
-                        body, "GW ping: %lums\n", (unsigned long)pr.rtt_ms);
+                    furi_string_cat_printf(body, "GW ping: %lums\n", (unsigned long)pr.rtt_ms);
                 } else {
                     furi_string_cat_str(body, "GW ping: FAIL\n");
                 }
@@ -5600,8 +5698,7 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                 } else {
                     memcpy(dns_ip, app->dhcp_dns, 4);
                 }
-                dns_ok =
-                    dns_lookup(W5500_DNS_SOCKET, dns_ip, app->autotest_dns_host, &dr);
+                dns_ok = dns_lookup(W5500_DNS_SOCKET, dns_ip, app->autotest_dns_host, &dr);
                 if(dns_ok) {
                     furi_string_cat_printf(
                         body,
@@ -5631,11 +5728,10 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                     inet_target[3] = 8;
                 }
                 PingResult ir;
-                bool inet_ok = icmp_ping(
-                    W5500_PING_SOCKET, inet_target, 2, app->ping_timeout_ms, &ir);
+                bool inet_ok =
+                    icmp_ping(W5500_PING_SOCKET, inet_target, 2, app->ping_timeout_ms, &ir);
                 if(inet_ok) {
-                    furi_string_cat_printf(
-                        body, "Internet: %lums\n", (unsigned long)ir.rtt_ms);
+                    furi_string_cat_printf(body, "Internet: %lums\n", (unsigned long)ir.rtt_ms);
                 } else {
                     furi_string_cat_str(body, "Internet: FAIL\n");
                 }
@@ -5647,8 +5743,7 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
             /* Step 6: Wait for LLDP thread to finish */
             {
                 uint32_t lldp_wait_start = furi_get_tick();
-                uint32_t lldp_max_wait_ms =
-                    (uint32_t)app->autotest_lldp_wait_s * 1000 + 2000;
+                uint32_t lldp_max_wait_ms = (uint32_t)app->autotest_lldp_wait_s * 1000 + 2000;
                 while(!app->autotest_lldp_done && app->autotest_running &&
                       (furi_get_tick() - lldp_wait_start < lldp_max_wait_ms)) {
                     furi_delay_ms(100);
@@ -5694,8 +5789,7 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                                     w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
                                 if(recv_len == 0) break;
                                 uint8_t s_mac[6], s_ip[4];
-                                if(arp_parse_reply(
-                                       app->frame_buf, recv_len, s_mac, s_ip)) {
+                                if(arp_parse_reply(app->frame_buf, recv_len, s_mac, s_ip)) {
                                     found_count++;
                                 }
                             }
@@ -5705,12 +5799,10 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                     uint32_t tail_start = furi_get_tick();
                     while(furi_get_tick() - tail_start < ARP_TAIL_WAIT_MS &&
                           app->autotest_running) {
-                        uint16_t recv_len =
-                            w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+                        uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
                         if(recv_len > 0) {
                             uint8_t s_mac[6], s_ip[4];
-                            if(arp_parse_reply(
-                                   app->frame_buf, recv_len, s_mac, s_ip)) {
+                            if(arp_parse_reply(app->frame_buf, recv_len, s_mac, s_ip)) {
                                 found_count++;
                             }
                         } else {
@@ -5718,8 +5810,7 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                         }
                     }
                     w5500_hal_close_macraw();
-                    furi_string_cat_printf(
-                        body, "Hosts: %d in subnet\n", found_count);
+                    furi_string_cat_printf(body, "Hosts: %d in subnet\n", found_count);
                     furi_string_set(app->autotest_text, "[Auto Test]\n");
                     furi_string_cat(app->autotest_text, body);
                     lan_tester_update_view(app->text_box_autotest, app->autotest_text);
@@ -5729,8 +5820,7 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
             /* Final render with verdict (steps 2-4; internet ping not counted) */
             bool all_ok = dhcp_ok && gw_ok && dns_ok;
             furi_string_reset(app->autotest_text);
-            furi_string_cat_str(
-                app->autotest_text, all_ok ? "[Auto Test] OK\n" : "[Auto Test]\n");
+            furi_string_cat_str(app->autotest_text, all_ok ? "[Auto Test] OK\n" : "[Auto Test]\n");
             furi_string_cat(app->autotest_text, body);
             furi_string_free(body);
             lan_tester_update_view(app->text_box_autotest, app->autotest_text);
@@ -5904,9 +5994,13 @@ static void lan_tester_do_tftp_client(LanTesterApp* app) {
 
     char ip_str[16];
     snprintf(
-        ip_str, sizeof(ip_str), "%d.%d.%d.%d",
-        app->tftp_target[0], app->tftp_target[1],
-        app->tftp_target[2], app->tftp_target[3]);
+        ip_str,
+        sizeof(ip_str),
+        "%d.%d.%d.%d",
+        app->tftp_target[0],
+        app->tftp_target[1],
+        app->tftp_target[2],
+        app->tftp_target[3]);
 
     furi_string_cat(app->tool_text, "[TFTP] ");
     furi_string_cat_printf(app->tool_text, "Server: %s\n", ip_str);
@@ -5918,22 +6012,23 @@ static void lan_tester_do_tftp_client(LanTesterApp* app) {
     snprintf(save_path, sizeof(save_path), APP_DATA_PATH("tftp/%s"), app->tftp_filename_input);
 
     TftpClientResult result;
-    tftp_client_get(app->tftp_target, app->tftp_filename_input, save_path, &result, &app->worker_running);
+    tftp_client_get(
+        app->tftp_target, app->tftp_filename_input, save_path, &result, &app->worker_running);
 
     if(result.success) {
         furi_string_cat_printf(
-            app->tool_text, "\nSuccess!\n%lu bytes, %d blocks\n",
-            (unsigned long)result.bytes_received, result.blocks_received);
+            app->tool_text,
+            "\nSuccess!\n%lu bytes, %d blocks\n",
+            (unsigned long)result.bytes_received,
+            result.blocks_received);
         if(result.saved_to_sd) {
             furi_string_cat_printf(app->tool_text, "-> %s\n", result.save_path);
         }
     } else {
-        furi_string_cat_printf(
-            app->tool_text, "\nFailed: %s\n", result.error_msg);
+        furi_string_cat_printf(app->tool_text, "\nFailed: %s\n", result.error_msg);
         if(result.bytes_received > 0) {
             furi_string_cat_printf(
-                app->tool_text, "Partial: %lu bytes\n",
-                (unsigned long)result.bytes_received);
+                app->tool_text, "Partial: %lu bytes\n", (unsigned long)result.bytes_received);
         }
     }
 
@@ -5952,9 +6047,13 @@ static void lan_tester_do_ipmi_client(LanTesterApp* app) {
 
     char ip_str[16];
     snprintf(
-        ip_str, sizeof(ip_str), "%d.%d.%d.%d",
-        app->ipmi_target[0], app->ipmi_target[1],
-        app->ipmi_target[2], app->ipmi_target[3]);
+        ip_str,
+        sizeof(ip_str),
+        "%d.%d.%d.%d",
+        app->ipmi_target[0],
+        app->ipmi_target[1],
+        app->ipmi_target[2],
+        app->ipmi_target[3]);
 
     furi_string_cat_printf(app->tool_text, "[IPMI] %s\n", ip_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -5971,7 +6070,8 @@ static void lan_tester_do_ipmi_client(LanTesterApp* app) {
     if(result.chassis_ok) {
         furi_string_cat(app->tool_text, "== Chassis Status ==\n");
         furi_string_cat_printf(
-            app->tool_text, "Power: %s\n",
+            app->tool_text,
+            "Power: %s\n",
             (result.power_state & IPMI_CHASSIS_POWER_ON) ? "ON" : "OFF");
         if(result.power_state & IPMI_CHASSIS_OVERLOAD)
             furi_string_cat(app->tool_text, "Overload detected!\n");
@@ -5980,24 +6080,26 @@ static void lan_tester_do_ipmi_client(LanTesterApp* app) {
 
         const char* policy = "Unknown";
         uint8_t pol = (result.power_state & IPMI_CHASSIS_POWER_POLICY) >> 5;
-        if(pol == 0) policy = "Stay off";
-        else if(pol == 1) policy = "Restore prev";
-        else if(pol == 2) policy = "Always on";
+        if(pol == 0)
+            policy = "Stay off";
+        else if(pol == 1)
+            policy = "Restore prev";
+        else if(pol == 2)
+            policy = "Always on";
         furi_string_cat_printf(app->tool_text, "Policy: %s\n", policy);
     }
 
     if(result.device_ok) {
         furi_string_cat(app->tool_text, "== Device Info ==\n");
+        furi_string_cat_printf(app->tool_text, "Device ID: 0x%02X\n", result.device_id);
+        furi_string_cat_printf(app->tool_text, "Revision: %d\n", result.device_revision);
         furi_string_cat_printf(
-            app->tool_text, "Device ID: 0x%02X\n", result.device_id);
+            app->tool_text, "Firmware: %d.%02d\n", result.firmware_major, result.firmware_minor);
         furi_string_cat_printf(
-            app->tool_text, "Revision: %d\n", result.device_revision);
-        furi_string_cat_printf(
-            app->tool_text, "Firmware: %d.%02d\n",
-            result.firmware_major, result.firmware_minor);
-        furi_string_cat_printf(
-            app->tool_text, "IPMI ver: %d.%d\n",
-            result.ipmi_version >> 4, result.ipmi_version & 0x0F);
+            app->tool_text,
+            "IPMI ver: %d.%d\n",
+            result.ipmi_version >> 4,
+            result.ipmi_version & 0x0F);
     }
 
     lan_tester_save_and_notify(app, "ipmi.txt", app->tool_text);
@@ -6015,9 +6117,13 @@ static void lan_tester_do_radius_client(LanTesterApp* app) {
 
     char ip_str[16];
     snprintf(
-        ip_str, sizeof(ip_str), "%d.%d.%d.%d",
-        app->radius_target[0], app->radius_target[1],
-        app->radius_target[2], app->radius_target[3]);
+        ip_str,
+        sizeof(ip_str),
+        "%d.%d.%d.%d",
+        app->radius_target[0],
+        app->radius_target[1],
+        app->radius_target[2],
+        app->radius_target[3]);
 
     furi_string_cat(app->tool_text, "[RADIUS] ");
     furi_string_cat_printf(app->tool_text, "Server: %s\n", ip_str);
@@ -6027,17 +6133,17 @@ static void lan_tester_do_radius_client(LanTesterApp* app) {
 
     RadiusResult result;
     radius_test(
-        app->radius_target, app->radius_secret_input,
-        app->radius_user_input, app->radius_pass_input, &result);
+        app->radius_target,
+        app->radius_secret_input,
+        app->radius_user_input,
+        app->radius_pass_input,
+        &result);
 
-    furi_string_cat_printf(
-        app->tool_text, "\nResult: %s\n", result.status_str);
+    furi_string_cat_printf(app->tool_text, "\nResult: %s\n", result.status_str);
 
     if(result.response_received) {
-        furi_string_cat_printf(
-            app->tool_text, "Code: %d\n", result.code);
-        furi_string_cat_printf(
-            app->tool_text, "Length: %d bytes\n", result.length);
+        furi_string_cat_printf(app->tool_text, "Code: %d\n", result.code);
+        furi_string_cat_printf(app->tool_text, "Length: %d bytes\n", result.length);
 
         if(result.code == 2) {
             furi_string_cat(app->tool_text, "\nAuthentication OK!\n");
@@ -6075,17 +6181,32 @@ static void lan_tester_do_eapol_probe(LanTesterApp* app) {
     } else {
         furi_string_cat(app->tool_text, "[802.1X] DETECTED!\n");
         furi_string_cat_printf(
-            app->tool_text, "Auth: %02X:%02X:%02X:%02X:%02X:%02X\n",
-            result.auth_mac[0], result.auth_mac[1], result.auth_mac[2],
-            result.auth_mac[3], result.auth_mac[4], result.auth_mac[5]);
+            app->tool_text,
+            "Auth: %02X:%02X:%02X:%02X:%02X:%02X\n",
+            result.auth_mac[0],
+            result.auth_mac[1],
+            result.auth_mac[2],
+            result.auth_mac[3],
+            result.auth_mac[4],
+            result.auth_mac[5]);
         if(result.eap_request) {
             const char* t = "Unknown";
             switch(result.eap_type) {
-            case 1: t = "Identity"; break;
-            case 4: t = "MD5"; break;
-            case 13: t = "TLS"; break;
-            case 21: t = "TTLS"; break;
-            case 25: t = "PEAP"; break;
+            case 1:
+                t = "Identity";
+                break;
+            case 4:
+                t = "MD5";
+                break;
+            case 13:
+                t = "TLS";
+                break;
+            case 21:
+                t = "TTLS";
+                break;
+            case 25:
+                t = "PEAP";
+                break;
             }
             furi_string_cat_printf(app->tool_text, "EAP: %s (%d)\n", t, result.eap_type);
         }
@@ -6122,13 +6243,15 @@ static void lan_tester_do_vlan_hop(LanTesterApp* app) {
         /* Parse comma-separated VLAN IDs from user input */
         const char* p = app->vlan_hop_input;
         while(*p && num_tests < 32) {
-            while(*p == ' ' || *p == ',') p++;
+            while(*p == ' ' || *p == ',')
+                p++;
             if(!*p) break;
             int v = atoi(p);
             if(v >= 1 && v <= 4094) {
                 test_vlans[num_tests++] = (uint16_t)v;
             }
-            while(*p && *p != ',') p++;
+            while(*p && *p != ',')
+                p++;
         }
     } else {
         /* Top 10 common VLANs */
@@ -6142,8 +6265,7 @@ static void lan_tester_do_vlan_hop(LanTesterApp* app) {
         return;
     }
 
-    furi_string_cat_printf(
-        app->tool_text, "[VLAN Hop] %d VLANs\n\n", num_tests);
+    furi_string_cat_printf(app->tool_text, "[VLAN Hop] %d VLANs\n\n", num_tests);
     furi_string_cat(app->tool_text, "Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
@@ -6234,25 +6356,28 @@ static void lan_tester_do_arp_watch(LanTesterApp* app) {
     w5500_hal_close_macraw();
 
     furi_string_cat_printf(
-        app->tool_text, "ARP packets: %d\nUnique IPs: %d\n",
-        watch.total_arp_seen, watch.entry_count);
+        app->tool_text,
+        "ARP packets: %d\nUnique IPs: %d\n",
+        watch.total_arp_seen,
+        watch.entry_count);
 
     if(watch.duplicate_count > 0) {
-        furi_string_cat_printf(
-            app->tool_text, "\nDUPLICATE IPs: %d\n", watch.duplicate_count);
+        furi_string_cat_printf(app->tool_text, "\nDUPLICATE IPs: %d\n", watch.duplicate_count);
         for(uint16_t i = 0; i < watch.entry_count; i++) {
             if(watch.entries[i].is_duplicate) {
                 furi_string_cat_printf(
-                    app->tool_text, "  %d.%d.%d.%d (spoofed!)\n",
-                    watch.entries[i].ip[0], watch.entries[i].ip[1],
-                    watch.entries[i].ip[2], watch.entries[i].ip[3]);
+                    app->tool_text,
+                    "  %d.%d.%d.%d (spoofed!)\n",
+                    watch.entries[i].ip[0],
+                    watch.entries[i].ip[1],
+                    watch.entries[i].ip[2],
+                    watch.entries[i].ip[3]);
             }
         }
     }
 
     if(watch.gratuitous_count > 0) {
-        furi_string_cat_printf(
-            app->tool_text, "\nGratuitous ARP: %d\n", watch.gratuitous_count);
+        furi_string_cat_printf(app->tool_text, "\nGratuitous ARP: %d\n", watch.gratuitous_count);
     }
 
     if(watch.storm_detected) {
@@ -6271,11 +6396,16 @@ static void lan_tester_do_arp_watch(LanTesterApp* app) {
             furi_string_cat_printf(
                 app->tool_text,
                 "  %d.%d.%d.%d %02X:%02X:%02X:%02X:%02X:%02X (%d)\n",
-                watch.entries[i].ip[0], watch.entries[i].ip[1],
-                watch.entries[i].ip[2], watch.entries[i].ip[3],
-                watch.entries[i].mac[0], watch.entries[i].mac[1],
-                watch.entries[i].mac[2], watch.entries[i].mac[3],
-                watch.entries[i].mac[4], watch.entries[i].mac[5],
+                watch.entries[i].ip[0],
+                watch.entries[i].ip[1],
+                watch.entries[i].ip[2],
+                watch.entries[i].ip[3],
+                watch.entries[i].mac[0],
+                watch.entries[i].mac[1],
+                watch.entries[i].mac[2],
+                watch.entries[i].mac[3],
+                watch.entries[i].mac[4],
+                watch.entries[i].mac[5],
                 watch.entries[i].arp_count);
         }
     }
@@ -6301,8 +6431,10 @@ static void lan_tester_do_rogue_dhcp(LanTesterApp* app) {
 
     furi_string_reset(app->tool_text);
     furi_string_cat_printf(
-        app->tool_text, "[Rogue DHCP] %d offer, %d srv\n",
-        state.offers_received, state.server_count);
+        app->tool_text,
+        "[Rogue DHCP] %d offer, %d srv\n",
+        state.offers_received,
+        state.server_count);
 
     if(state.server_count == 0) {
         furi_string_cat(app->tool_text, "No DHCP servers.\n");
@@ -6310,22 +6442,35 @@ static void lan_tester_do_rogue_dhcp(LanTesterApp* app) {
         for(uint8_t i = 0; i < state.server_count; i++) {
             RogueDhcpServer* srv = &state.servers[i];
             furi_string_cat_printf(
-                app->tool_text, "#%d %d.%d.%d.%d",
-                i + 1, srv->server_ip[0], srv->server_ip[1],
-                srv->server_ip[2], srv->server_ip[3]);
+                app->tool_text,
+                "#%d %d.%d.%d.%d",
+                i + 1,
+                srv->server_ip[0],
+                srv->server_ip[1],
+                srv->server_ip[2],
+                srv->server_ip[3]);
             furi_string_cat_printf(
-                app->tool_text, " ->%d.%d.%d.%d\n",
-                srv->offered_ip[0], srv->offered_ip[1],
-                srv->offered_ip[2], srv->offered_ip[3]);
+                app->tool_text,
+                " ->%d.%d.%d.%d\n",
+                srv->offered_ip[0],
+                srv->offered_ip[1],
+                srv->offered_ip[2],
+                srv->offered_ip[3]);
             furi_string_cat_printf(
-                app->tool_text, " GW %d.%d.%d.%d",
-                srv->gateway[0], srv->gateway[1],
-                srv->gateway[2], srv->gateway[3]);
+                app->tool_text,
+                " GW %d.%d.%d.%d",
+                srv->gateway[0],
+                srv->gateway[1],
+                srv->gateway[2],
+                srv->gateway[3]);
             furi_string_cat_printf(
-                app->tool_text, " DNS %d.%d.%d.%d\n",
-                srv->dns[0], srv->dns[1], srv->dns[2], srv->dns[3]);
-            if(srv->domain[0])
-                furi_string_cat_printf(app->tool_text, " %s", srv->domain);
+                app->tool_text,
+                " DNS %d.%d.%d.%d\n",
+                srv->dns[0],
+                srv->dns[1],
+                srv->dns[2],
+                srv->dns[3]);
+            if(srv->domain[0]) furi_string_cat_printf(app->tool_text, " %s", srv->domain);
             uint32_t ls = srv->lease_time;
             if(ls > 0)
                 furi_string_cat_printf(app->tool_text, " %luh\n", (unsigned long)(ls / 3600));
@@ -6376,8 +6521,7 @@ static void lan_tester_do_rogue_ra(LanTesterApp* app) {
     w5500_hal_close_macraw();
 
     furi_string_cat_printf(
-        app->tool_text, "RA:%d Routers:%d\n",
-        state.total_ra_seen, state.router_count);
+        app->tool_text, "RA:%d Routers:%d\n", state.total_ra_seen, state.router_count);
 
     if(state.router_count == 0) {
         furi_string_cat(app->tool_text, "No IPv6 routers.\n");
@@ -6385,20 +6529,28 @@ static void lan_tester_do_rogue_ra(LanTesterApp* app) {
         for(uint8_t i = 0; i < state.router_count; i++) {
             RogueRaRouter* r = &state.routers[i];
             furi_string_cat_printf(
-                app->tool_text, "#%d %02X:%02X:%02X:%02X:%02X:%02X\n",
-                i + 1, r->src_mac[0], r->src_mac[1], r->src_mac[2],
-                r->src_mac[3], r->src_mac[4], r->src_mac[5]);
+                app->tool_text,
+                "#%d %02X:%02X:%02X:%02X:%02X:%02X\n",
+                i + 1,
+                r->src_mac[0],
+                r->src_mac[1],
+                r->src_mac[2],
+                r->src_mac[3],
+                r->src_mac[4],
+                r->src_mac[5]);
             furi_string_cat_printf(
-                app->tool_text, " TTL:%ds %s%s",
+                app->tool_text,
+                " TTL:%ds %s%s",
                 r->router_lifetime,
-                r->managed_flag ? "M" : "", r->other_flag ? "O" : "");
-            if(r->prefix_len > 0)
-                furi_string_cat_printf(app->tool_text, " /%d", r->prefix_len);
+                r->managed_flag ? "M" : "",
+                r->other_flag ? "O" : "");
+            if(r->prefix_len > 0) furi_string_cat_printf(app->tool_text, " /%d", r->prefix_len);
             furi_string_cat(app->tool_text, "\n");
         }
 
         if(state.multiple_routers) {
-            furi_string_cat(app->tool_text, "WARNING: Multiple IPv6\nrouters detected!\nPossible rogue RA.\n");
+            furi_string_cat(
+                app->tool_text, "WARNING: Multiple IPv6\nrouters detected!\nPossible rogue RA.\n");
         }
     }
 
@@ -6436,14 +6588,15 @@ static void lan_tester_do_dhcp_fingerprint(LanTesterApp* app) {
                 /* Update display when new client found */
                 furi_string_reset(app->tool_text);
                 furi_string_cat_printf(
-                    app->tool_text, "[DHCP FP] %d clients\n",
-                    state.client_count);
+                    app->tool_text, "[DHCP FP] %d clients\n", state.client_count);
                 for(uint16_t i = 0; i < state.client_count; i++) {
                     DhcpFpClient* c = &state.clients[i];
                     furi_string_cat_printf(
                         app->tool_text,
                         "..%02X:%02X:%02X %s\n",
-                        c->mac[3], c->mac[4], c->mac[5],
+                        c->mac[3],
+                        c->mac[4],
+                        c->mac[5],
                         c->os_guess);
                 }
                 lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -6473,9 +6626,13 @@ static void lan_tester_do_snmp_get(LanTesterApp* app) {
 
     char ip_str[16];
     snprintf(
-        ip_str, sizeof(ip_str), "%d.%d.%d.%d",
-        app->snmp_target[0], app->snmp_target[1],
-        app->snmp_target[2], app->snmp_target[3]);
+        ip_str,
+        sizeof(ip_str),
+        "%d.%d.%d.%d",
+        app->snmp_target[0],
+        app->snmp_target[1],
+        app->snmp_target[2],
+        app->snmp_target[3]);
     furi_string_cat_printf(app->tool_text, "[SNMP] %s\n", ip_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
@@ -6490,24 +6647,36 @@ static void lan_tester_do_snmp_get(LanTesterApp* app) {
 
     furi_string_reset(app->tool_text);
     furi_string_cat_printf(app->tool_text, "[SNMP] %s\n", ip_str);
-    if(result.has_sys_name)
-        furi_string_cat_printf(app->tool_text, "Name: %s\n", result.sys_name);
+    if(result.has_sys_name) furi_string_cat_printf(app->tool_text, "Name: %s\n", result.sys_name);
     if(result.has_sys_descr)
         furi_string_cat_printf(app->tool_text, "Desc: %s\n", result.sys_descr);
     if(result.has_sys_uptime) {
         uint32_t s = result.sys_uptime / 100;
-        furi_string_cat_printf(app->tool_text, "Up: %lud %luh %lum\n",
-            (unsigned long)(s / 86400), (unsigned long)((s % 86400) / 3600),
+        furi_string_cat_printf(
+            app->tool_text,
+            "Up: %lud %luh %lum\n",
+            (unsigned long)(s / 86400),
+            (unsigned long)((s % 86400) / 3600),
             (unsigned long)((s % 3600) / 60));
     }
     if(result.has_if_status) {
         const char* st = "?";
         switch(result.if_oper_status) {
-        case 1: st = "up"; break;
-        case 2: st = "down"; break;
-        case 3: st = "testing"; break;
-        case 5: st = "dormant"; break;
-        case 7: st = "lowerDown"; break;
+        case 1:
+            st = "up";
+            break;
+        case 2:
+            st = "down";
+            break;
+        case 3:
+            st = "testing";
+            break;
+        case 5:
+            st = "dormant";
+            break;
+        case 7:
+            st = "lowerDown";
+            break;
         }
         furi_string_cat_printf(app->tool_text, "ifStatus: %s\n", st);
     }
@@ -6527,9 +6696,13 @@ static void lan_tester_do_ntp_diag(LanTesterApp* app) {
 
     char ip_str[16];
     snprintf(
-        ip_str, sizeof(ip_str), "%d.%d.%d.%d",
-        app->ntp_target[0], app->ntp_target[1],
-        app->ntp_target[2], app->ntp_target[3]);
+        ip_str,
+        sizeof(ip_str),
+        "%d.%d.%d.%d",
+        app->ntp_target[0],
+        app->ntp_target[1],
+        app->ntp_target[2],
+        app->ntp_target[3]);
     furi_string_cat_printf(app->tool_text, "[NTP] %s\n", ip_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
@@ -6539,12 +6712,16 @@ static void lan_tester_do_ntp_diag(LanTesterApp* app) {
         return;
     }
 
-    furi_string_cat_printf(app->tool_text, "Stratum: %d (%s)\n", result.stratum, result.stratum_name);
+    furi_string_cat_printf(
+        app->tool_text, "Stratum: %d (%s)\n", result.stratum, result.stratum_name);
 
     const char* leap_str = "none";
-    if(result.leap == 1) leap_str = "+1 sec";
-    else if(result.leap == 2) leap_str = "-1 sec";
-    else if(result.leap == 3) leap_str = "unsync";
+    if(result.leap == 1)
+        leap_str = "+1 sec";
+    else if(result.leap == 2)
+        leap_str = "-1 sec";
+    else if(result.leap == 3)
+        leap_str = "unsync";
     furi_string_cat_printf(app->tool_text, "Leap: %s\n", leap_str);
 
     furi_string_cat_printf(app->tool_text, "Version: NTPv%d\n", result.version);
@@ -6555,13 +6732,18 @@ static void lan_tester_do_ntp_diag(LanTesterApp* app) {
         furi_string_cat_printf(app->tool_text, "Ref Clock: %s\n", result.ref_id_str);
     }
 
-    uint32_t root_delay_us = (result.root_delay >> 16) * 1000000 +
-                             ((result.root_delay & 0xFFFF) * 1000000 / 65536);
-    uint32_t root_disp_us = (result.root_disp >> 16) * 1000000 +
-                            ((result.root_disp & 0xFFFF) * 1000000 / 65536);
+    uint32_t root_delay_us =
+        (result.root_delay >> 16) * 1000000 + ((result.root_delay & 0xFFFF) * 1000000 / 65536);
+    uint32_t root_disp_us =
+        (result.root_disp >> 16) * 1000000 + ((result.root_disp & 0xFFFF) * 1000000 / 65536);
 
-    furi_string_cat_printf(app->tool_text, "Delay:%lu Disp:%lu us\n", (unsigned long)root_delay_us, (unsigned long)root_disp_us);
-    furi_string_cat_printf(app->tool_text, "RTT:%lu us Prec:2^%d\n", (unsigned long)result.rtt_us, result.precision);
+    furi_string_cat_printf(
+        app->tool_text,
+        "Delay:%lu Disp:%lu us\n",
+        (unsigned long)root_delay_us,
+        (unsigned long)root_disp_us);
+    furi_string_cat_printf(
+        app->tool_text, "RTT:%lu us Prec:2^%d\n", (unsigned long)result.rtt_us, result.precision);
 
     lan_tester_save_and_notify(app, "ntp.txt", app->tool_text);
 }
@@ -6578,9 +6760,13 @@ static void lan_tester_do_netbios_query(LanTesterApp* app) {
 
     char ip_str[16];
     snprintf(
-        ip_str, sizeof(ip_str), "%d.%d.%d.%d",
-        app->netbios_target[0], app->netbios_target[1],
-        app->netbios_target[2], app->netbios_target[3]);
+        ip_str,
+        sizeof(ip_str),
+        "%d.%d.%d.%d",
+        app->netbios_target[0],
+        app->netbios_target[1],
+        app->netbios_target[2],
+        app->netbios_target[3]);
     furi_string_cat_printf(app->tool_text, "[NetBIOS] %s\n", ip_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
@@ -6598,17 +6784,25 @@ static void lan_tester_do_netbios_query(LanTesterApp* app) {
     }
     if(result.has_unit_id) {
         furi_string_cat_printf(
-            app->tool_text, "MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-            result.unit_id[0], result.unit_id[1], result.unit_id[2],
-            result.unit_id[3], result.unit_id[4], result.unit_id[5]);
+            app->tool_text,
+            "MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+            result.unit_id[0],
+            result.unit_id[1],
+            result.unit_id[2],
+            result.unit_id[3],
+            result.unit_id[4],
+            result.unit_id[5]);
     }
 
     furi_string_cat_printf(app->tool_text, "Names(%d):\n", result.name_count);
     for(uint8_t i = 0; i < result.name_count; i++) {
         NetbiosName* n = &result.names[i];
         furi_string_cat_printf(
-            app->tool_text, "  %-15s <%02X> %s\n",
-            n->name, n->suffix, n->is_group ? "GROUP" : "UNIQUE");
+            app->tool_text,
+            "  %-15s <%02X> %s\n",
+            n->name,
+            n->suffix,
+            n->is_group ? "GROUP" : "UNIQUE");
     }
 
     lan_tester_save_and_notify(app, "netbios.txt", app->tool_text);
@@ -6624,13 +6818,13 @@ static void lan_tester_do_dns_poison_check(LanTesterApp* app) {
         return;
     }
 
-    furi_string_cat_printf(
-        app->tool_text, "[DNS Check] %s\n", app->dns_poison_host_input);
+    furi_string_cat_printf(app->tool_text, "[DNS Check] %s\n", app->dns_poison_host_input);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     /* Use DHCP DNS as local, 8.8.8.8 as public */
     uint8_t local_dns[4];
-    if(app->dhcp_valid && (app->dhcp_dns[0] | app->dhcp_dns[1] | app->dhcp_dns[2] | app->dhcp_dns[3])) {
+    if(app->dhcp_valid &&
+       (app->dhcp_dns[0] | app->dhcp_dns[1] | app->dhcp_dns[2] | app->dhcp_dns[3])) {
         memcpy(local_dns, app->dhcp_dns, 4);
     } else if(app->dns_custom_enabled) {
         memcpy(local_dns, app->dns_custom_server, 4);
@@ -6642,11 +6836,19 @@ static void lan_tester_do_dns_poison_check(LanTesterApp* app) {
     uint8_t public_dns[4] = {8, 8, 8, 8};
 
     furi_string_cat_printf(
-        app->tool_text, "Local: %d.%d.%d.%d\n",
-        local_dns[0], local_dns[1], local_dns[2], local_dns[3]);
+        app->tool_text,
+        "Local: %d.%d.%d.%d\n",
+        local_dns[0],
+        local_dns[1],
+        local_dns[2],
+        local_dns[3]);
     furi_string_cat_printf(
-        app->tool_text, "Public: %d.%d.%d.%d\n",
-        public_dns[0], public_dns[1], public_dns[2], public_dns[3]);
+        app->tool_text,
+        "Public: %d.%d.%d.%d\n",
+        public_dns[0],
+        public_dns[1],
+        public_dns[2],
+        public_dns[3]);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     DnsPoisonResult result;
@@ -6655,9 +6857,14 @@ static void lan_tester_do_dns_poison_check(LanTesterApp* app) {
     if(result.local_ok) {
         furi_string_cat(app->tool_text, "L: ");
         for(uint8_t i = 0; i < result.local_count; i++) {
-            furi_string_cat_printf(app->tool_text, "%s%d.%d.%d.%d",
-                i ? "," : "", result.local_addrs[i][0], result.local_addrs[i][1],
-                result.local_addrs[i][2], result.local_addrs[i][3]);
+            furi_string_cat_printf(
+                app->tool_text,
+                "%s%d.%d.%d.%d",
+                i ? "," : "",
+                result.local_addrs[i][0],
+                result.local_addrs[i][1],
+                result.local_addrs[i][2],
+                result.local_addrs[i][3]);
         }
         furi_string_cat(app->tool_text, "\n");
     } else {
@@ -6666,16 +6873,22 @@ static void lan_tester_do_dns_poison_check(LanTesterApp* app) {
     if(result.public_ok) {
         furi_string_cat(app->tool_text, "P: ");
         for(uint8_t i = 0; i < result.public_count; i++) {
-            furi_string_cat_printf(app->tool_text, "%s%d.%d.%d.%d",
-                i ? "," : "", result.public_addrs[i][0], result.public_addrs[i][1],
-                result.public_addrs[i][2], result.public_addrs[i][3]);
+            furi_string_cat_printf(
+                app->tool_text,
+                "%s%d.%d.%d.%d",
+                i ? "," : "",
+                result.public_addrs[i][0],
+                result.public_addrs[i][1],
+                result.public_addrs[i][2],
+                result.public_addrs[i][3]);
         }
         furi_string_cat(app->tool_text, "\n");
     } else {
         furi_string_cat(app->tool_text, "P: no response\n");
     }
     if(result.local_ok && result.public_ok)
-        furi_string_cat(app->tool_text, result.match ? "MATCH - clean\n" : "MISMATCH! Poisoned?\n");
+        furi_string_cat(
+            app->tool_text, result.match ? "MATCH - clean\n" : "MISMATCH! Poisoned?\n");
     else
         furi_string_cat(app->tool_text, "Incomplete comparison.\n");
 

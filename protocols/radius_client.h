@@ -4,11 +4,11 @@
 #include <stdbool.h>
 
 typedef struct {
-    uint8_t code;          /* 2=Accept, 3=Reject, 11=Challenge */
+    uint8_t code; /* 2=Accept, 3=Reject, 11=Challenge */
     uint8_t identifier;
     uint16_t length;
     bool response_received;
-    char status_str[32];   /* "Access-Accept", "Access-Reject", etc. */
+    char status_str[32]; /* "Access-Accept", "Access-Reject", etc. */
     bool valid;
 } RadiusResult;
 

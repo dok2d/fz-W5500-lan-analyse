@@ -12,7 +12,7 @@
 
 typedef struct {
     /* Chassis Status */
-    uint8_t power_state;    /* bit 0 = power on */
+    uint8_t power_state; /* bit 0 = power on */
     uint8_t last_event;
     uint8_t misc_state;
     bool chassis_ok;

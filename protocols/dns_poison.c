@@ -21,7 +21,8 @@ static void write_u16_be(uint8_t* p, uint16_t v) {
  * Build a minimal DNS A-record query.
  * Returns packet length.
  */
-static uint16_t dns_build_query(uint8_t* pkt, uint16_t pkt_size, const char* hostname, uint16_t txn_id) {
+static uint16_t
+    dns_build_query(uint8_t* pkt, uint16_t pkt_size, const char* hostname, uint16_t txn_id) {
     uint16_t idx = 0;
 
     /* Header */
@@ -125,7 +126,7 @@ static uint8_t dns_parse_response(
             }
             if(idx < len) idx++;
         }
-name_done:
+    name_done:
 
         if(idx + 10 > len) break;
         uint16_t rtype = read_u16_be(&buf[idx]);

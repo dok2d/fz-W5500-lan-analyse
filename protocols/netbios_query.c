@@ -10,7 +10,7 @@
 
 /* NetBIOS name suffix types */
 #define NB_SUFFIX_WORKSTATION 0x00
-#define NB_SUFFIX_DOMAIN      0x00  /* group */
+#define NB_SUFFIX_DOMAIN      0x00 /* group */
 #define NB_SUFFIX_SERVER      0x20
 
 static uint16_t read_u16_be(const uint8_t* p) {
@@ -163,8 +163,7 @@ static void nbns_parse_response(
         }
 
         /* Extract workgroup (first group name) */
-        if(n->is_group && n->suffix == NB_SUFFIX_DOMAIN &&
-           result->workgroup[0] == '\0') {
+        if(n->is_group && n->suffix == NB_SUFFIX_DOMAIN && result->workgroup[0] == '\0') {
             memcpy(result->workgroup, n->name, 16);
         }
 
@@ -200,7 +199,10 @@ bool netbios_node_status(const uint8_t target_ip[4], NetbiosQueryResult* result)
     }
 
     uint8_t* rx_buf = malloc(512);
-    if(!rx_buf) { close(NBNS_SOCK); return false; }
+    if(!rx_buf) {
+        close(NBNS_SOCK);
+        return false;
+    }
 
     uint32_t start = furi_get_tick();
     bool got_reply = false;

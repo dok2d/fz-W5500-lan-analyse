@@ -98,8 +98,7 @@ bool rogue_ra_process_frame(RogueRaState* state, const uint8_t* frame, uint16_t 
         if(opt_len_units == 0) break;
         uint16_t opt_len_bytes = opt_len_units * 8;
 
-        if(opt_type == ND_OPT_PREFIX_INFO && opt_len_bytes >= 32 &&
-           opt_offset + 32 <= remaining) {
+        if(opt_type == ND_OPT_PREFIX_INFO && opt_len_bytes >= 32 && opt_offset + 32 <= remaining) {
             router->prefix_len = payload[opt_offset + 2];
             /* Prefix starts at offset +16 within the option */
             memcpy(router->prefix, &payload[opt_offset + 16], 16);

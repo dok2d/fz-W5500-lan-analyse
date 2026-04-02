@@ -9,14 +9,14 @@
 #define SNMP_TIMEOUT_MS 3000
 
 /* ASN.1 / BER types */
-#define ASN_SEQUENCE    0x30
-#define ASN_INTEGER     0x02
-#define ASN_OCTET_STR   0x04
-#define ASN_NULL        0x05
-#define ASN_OBJ_ID      0x06
-#define ASN_GET_REQ     0xa0
-#define ASN_GET_RESP    0xa2
-#define ASN_TIMETICKS   0x43
+#define ASN_SEQUENCE  0x30
+#define ASN_INTEGER   0x02
+#define ASN_OCTET_STR 0x04
+#define ASN_NULL      0x05
+#define ASN_OBJ_ID    0x06
+#define ASN_GET_REQ   0xa0
+#define ASN_GET_RESP  0xa2
+#define ASN_TIMETICKS 0x43
 
 /* Standard OIDs (encoded BER) */
 /* 1.3.6.1.2.1.1.1.0 = sysDescr */
@@ -185,11 +185,8 @@ static uint16_t snmp_build_get(
 }
 
 /* Skip a TLV and return pointer past it; out_type/out_len filled */
-static const uint8_t* asn_skip_tlv(
-    const uint8_t* p,
-    const uint8_t* end,
-    uint8_t* out_type,
-    uint16_t* out_len) {
+static const uint8_t*
+    asn_skip_tlv(const uint8_t* p, const uint8_t* end, uint8_t* out_type, uint16_t* out_len) {
     if(p >= end) return NULL;
     *out_type = *p++;
     if(p >= end) return NULL;
@@ -221,7 +218,8 @@ static bool asn_parse_uint(const uint8_t* val, uint16_t len, uint32_t* out) {
 }
 
 /* Check if response OID matches a known OID */
-static bool oid_match(const uint8_t* resp_oid, uint16_t resp_len, const uint8_t* ref, uint8_t ref_len) {
+static bool
+    oid_match(const uint8_t* resp_oid, uint16_t resp_len, const uint8_t* ref, uint8_t ref_len) {
     if(resp_len != ref_len) return false;
     return memcmp(resp_oid, ref, ref_len) == 0;
 }
@@ -344,10 +342,16 @@ static bool snmp_query_oid(
     if(!pkt) return false;
 
     uint16_t pkt_len = snmp_build_get(pkt, 256, community, use_v2c, request_id, oid, oid_len);
-    if(pkt_len == 0) { free(pkt); return false; }
+    if(pkt_len == 0) {
+        free(pkt);
+        return false;
+    }
 
     close(SNMP_SOCK);
-    if(socket(SNMP_SOCK, Sn_MR_UDP, SNMP_LOCAL_PORT, 0) != SNMP_SOCK) { free(pkt); return false; }
+    if(socket(SNMP_SOCK, Sn_MR_UDP, SNMP_LOCAL_PORT, 0) != SNMP_SOCK) {
+        free(pkt);
+        return false;
+    }
 
     if(sendto(SNMP_SOCK, pkt, pkt_len, (uint8_t*)target_ip, SNMP_PORT) <= 0) {
         close(SNMP_SOCK);
@@ -389,22 +393,18 @@ bool snmp_client_get(
     uint32_t rid = 1;
 
     snmp_query_oid(
-        target_ip, community, use_v2c, rid++,
-        oid_sys_name, sizeof(oid_sys_name), result);
+        target_ip, community, use_v2c, rid++, oid_sys_name, sizeof(oid_sys_name), result);
 
     snmp_query_oid(
-        target_ip, community, use_v2c, rid++,
-        oid_sys_descr, sizeof(oid_sys_descr), result);
+        target_ip, community, use_v2c, rid++, oid_sys_descr, sizeof(oid_sys_descr), result);
 
     snmp_query_oid(
-        target_ip, community, use_v2c, rid++,
-        oid_sys_uptime, sizeof(oid_sys_uptime), result);
+        target_ip, community, use_v2c, rid++, oid_sys_uptime, sizeof(oid_sys_uptime), result);
 
     snmp_query_oid(
-        target_ip, community, use_v2c, rid++,
-        oid_if_status, sizeof(oid_if_status), result);
+        target_ip, community, use_v2c, rid++, oid_if_status, sizeof(oid_if_status), result);
 
-    result->valid = result->has_sys_name || result->has_sys_descr ||
-                    result->has_sys_uptime || result->has_if_status;
+    result->valid = result->has_sys_name || result->has_sys_descr || result->has_sys_uptime ||
+                    result->has_if_status;
     return result->valid;
 }
