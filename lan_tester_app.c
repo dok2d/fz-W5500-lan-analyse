@@ -4660,18 +4660,39 @@ static void lan_tester_history_file_callback(void* context, uint32_t index) {
 
     app->history_selected = index;
     app->tool_back_view = LanTesterViewHistory;
-    const char* filename = app->history_state->files[index].filename;
 
-    char* buf = malloc(1024);
+    /* Copy filename before freeing history_state */
+    char filename[HISTORY_FILENAME_LEN];
+    strncpy(filename, app->history_state->files[index].filename, sizeof(filename));
+
+    /* Free history_state to reclaim ~1 KB before reading file */
+    free(app->history_state);
+    app->history_state = NULL;
+
+    /* Shrink tool_text to release bloated FuriString buffer from prior tools */
+    furi_string_reset(app->tool_text);
+
+    /* Use frame_buf if available (W5500 was initialized), else small malloc */
+    char* buf;
+    uint16_t buf_size;
+    bool need_free = false;
+    if(app->frame_buf) {
+        buf = (char*)app->frame_buf;
+        buf_size = FRAME_BUF_SIZE;
+    } else {
+        buf = malloc(512);
+        buf_size = 512;
+        need_free = true;
+    }
+
     if(!buf) {
         furi_string_set(app->tool_text, "Out of memory!\n");
-    } else if(history_read_file(filename, buf, 1024)) {
+    } else if(history_read_file(filename, buf, buf_size)) {
         furi_string_set(app->tool_text, buf);
-        free(buf);
     } else {
         furi_string_printf(app->tool_text, "Read failed: %s\n", filename);
-        free(buf);
     }
+    if(need_free) free(buf);
 
     text_box_reset(app->text_box_tool);
     text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
