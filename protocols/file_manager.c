@@ -1154,14 +1154,14 @@ bool file_manager_start(FileManagerState* state) {
     strncpy(state->current_path, "/ext", sizeof(state->current_path));
     state->running = true;
 
-    /* Generate random 4-char hex auth token */
-    static const char hex[] = "0123456789abcdef";
-    uint8_t rnd[2];
-    furi_hal_random_fill_buf(rnd, 2);
-    state->auth_token[0] = hex[(rnd[0] >> 4) & 0x0F];
-    state->auth_token[1] = hex[rnd[0] & 0x0F];
-    state->auth_token[2] = hex[(rnd[1] >> 4) & 0x0F];
-    state->auth_token[3] = hex[rnd[1] & 0x0F];
+    /* Generate random 4-digit numeric auth token */
+    static const char digits[] = "0123456789";
+    uint8_t rnd[4];
+    furi_hal_random_fill_buf(rnd, 4);
+    state->auth_token[0] = digits[rnd[0] % 10];
+    state->auth_token[1] = digits[rnd[1] % 10];
+    state->auth_token[2] = digits[rnd[2] % 10];
+    state->auth_token[3] = digits[rnd[3] % 10];
     state->auth_token[4] = '\0';
     FURI_LOG_I(TAG, "File Manager token: %s", state->auth_token);
 
