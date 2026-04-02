@@ -72,6 +72,8 @@ typedef enum {
     LanTesterViewRogueRa,
     LanTesterViewDhcpFingerprint,
     LanTesterViewCatSecurity,
+    LanTesterViewEapolProbe,
+    LanTesterViewVlanHop,
     LanTesterViewCount,
 } LanTesterView;
 
@@ -109,6 +111,8 @@ typedef enum {
     LanTesterMenuItemRogueDhcp,
     LanTesterMenuItemRogueRa,
     LanTesterMenuItemDhcpFingerprint,
+    LanTesterMenuItemEapolProbe,
+    LanTesterMenuItemVlanHop,
 } LanTesterMenuItem;
 
 /* Packet statistics counters */
@@ -369,6 +373,14 @@ struct LanTesterApp {
     /* DHCP Fingerprint state */
     TextBox* text_box_dhcp_fp;
     FuriString* dhcp_fp_text;
+
+    /* 802.1X EAPOL Probe state */
+    TextBox* text_box_eapol;
+    FuriString* eapol_text;
+
+    /* VLAN Hopping Test state */
+    TextBox* text_box_vlan_hop;
+    FuriString* vlan_hop_text;
 
     /* Security category submenu */
     Submenu* submenu_cat_security;

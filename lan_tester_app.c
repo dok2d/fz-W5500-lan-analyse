@@ -24,6 +24,8 @@
 #include "protocols/rogue_dhcp.h"
 #include "protocols/rogue_ra.h"
 #include "protocols/dhcp_fingerprint.h"
+#include "protocols/eapol_probe.h"
+#include "protocols/vlan_hop.h"
 #include "bridge/eth_bridge.h"
 #include "usb_eth/usb_eth.h"
 #include "utils/packet_utils.h"
@@ -280,6 +282,8 @@ static void lan_tester_do_arp_watch(LanTesterApp* app);
 static void lan_tester_do_rogue_dhcp(LanTesterApp* app);
 static void lan_tester_do_rogue_ra(LanTesterApp* app);
 static void lan_tester_do_dhcp_fingerprint(LanTesterApp* app);
+static void lan_tester_do_eapol_probe(LanTesterApp* app);
+static void lan_tester_do_vlan_hop(LanTesterApp* app);
 static uint32_t lan_tester_nav_back_security(void* context);
 static void lan_tester_history_populate(LanTesterApp* app);
 static void lan_tester_history_file_callback(void* context, uint32_t index);
@@ -1203,6 +1207,8 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->rogue_dhcp_text = furi_string_alloc();
     app->rogue_ra_text = furi_string_alloc();
     app->dhcp_fp_text = furi_string_alloc();
+    app->eapol_text = furi_string_alloc();
+    app->vlan_hop_text = furi_string_alloc();
     /* history_text removed — history now uses submenu */
     app->history_file_text = furi_string_alloc();
 
@@ -1433,6 +1439,12 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         lan_tester_submenu_callback, app);
     submenu_add_item(
         app->submenu_cat_security, "DHCP Fingerprint", LanTesterMenuItemDhcpFingerprint,
+        lan_tester_submenu_callback, app);
+    submenu_add_item(
+        app->submenu_cat_security, "802.1X Probe", LanTesterMenuItemEapolProbe,
+        lan_tester_submenu_callback, app);
+    submenu_add_item(
+        app->submenu_cat_security, "VLAN Hopping", LanTesterMenuItemVlanHop,
         lan_tester_submenu_callback, app);
     view_set_previous_callback(
         submenu_get_view(app->submenu_cat_security), lan_tester_navigation_submenu_callback);
@@ -1906,6 +1918,22 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewDhcpFingerprint, text_box_get_view(app->text_box_dhcp_fp));
 
+    /* 802.1X EAPOL Probe view */
+    app->text_box_eapol = text_box_alloc();
+    text_box_set_font(app->text_box_eapol, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_eapol), lan_tester_nav_back_security);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewEapolProbe, text_box_get_view(app->text_box_eapol));
+
+    /* VLAN Hopping Test view */
+    app->text_box_vlan_hop = text_box_alloc();
+    text_box_set_font(app->text_box_vlan_hop, TextBoxFontText);
+    view_set_previous_callback(
+        text_box_get_view(app->text_box_vlan_hop), lan_tester_nav_back_security);
+    view_dispatcher_add_view(
+        app->view_dispatcher, LanTesterViewVlanHop, text_box_get_view(app->text_box_vlan_hop));
+
     /* Auto Test defaults */
     strncpy(app->autotest_dns_host, "google.com", sizeof(app->autotest_dns_host));
     app->autotest_lldp_wait_s = 30;
@@ -2148,6 +2176,8 @@ static void lan_tester_app_free(LanTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewRogueRa);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewDhcpFingerprint);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatSecurity);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewEapolProbe);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewVlanHop);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_portinfo);
@@ -2201,6 +2231,8 @@ static void lan_tester_app_free(LanTesterApp* app) {
     text_box_free(app->text_box_rogue_dhcp);
     text_box_free(app->text_box_rogue_ra);
     text_box_free(app->text_box_dhcp_fp);
+    text_box_free(app->text_box_eapol);
+    text_box_free(app->text_box_vlan_hop);
 
     view_dispatcher_free(app->view_dispatcher);
 
@@ -2227,6 +2259,8 @@ static void lan_tester_app_free(LanTesterApp* app) {
     furi_string_free(app->rogue_dhcp_text);
     furi_string_free(app->rogue_ra_text);
     furi_string_free(app->dhcp_fp_text);
+    furi_string_free(app->eapol_text);
+    furi_string_free(app->vlan_hop_text);
     /* history_text removed — history now uses submenu */
     furi_string_free(app->history_file_text);
     furi_string_free(app->pxe_text);
@@ -2546,6 +2580,14 @@ static int32_t lan_tester_worker_fn(void* context) {
     case LanTesterMenuItemDhcpFingerprint:
         lan_tester_do_dhcp_fingerprint(app);
         lan_tester_update_view(app->text_box_dhcp_fp, app->dhcp_fp_text);
+        break;
+    case LanTesterMenuItemEapolProbe:
+        lan_tester_do_eapol_probe(app);
+        lan_tester_update_view(app->text_box_eapol, app->eapol_text);
+        break;
+    case LanTesterMenuItemVlanHop:
+        lan_tester_do_vlan_hop(app);
+        lan_tester_update_view(app->text_box_vlan_hop, app->vlan_hop_text);
         break;
     case LanTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
@@ -3446,6 +3488,20 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
             app, app->text_box_dhcp_fp, LanTesterViewDhcpFingerprint,
             app->dhcp_fp_text, "Listening for DHCP...\n");
         lan_tester_worker_start(app, LanTesterMenuItemDhcpFingerprint, LanTesterViewDhcpFingerprint);
+        break;
+
+    case LanTesterMenuItemEapolProbe:
+        lan_tester_show_view(
+            app, app->text_box_eapol, LanTesterViewEapolProbe,
+            app->eapol_text, "Sending EAPOL-Start...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemEapolProbe, LanTesterViewEapolProbe);
+        break;
+
+    case LanTesterMenuItemVlanHop:
+        lan_tester_show_view(
+            app, app->text_box_vlan_hop, LanTesterViewVlanHop,
+            app->vlan_hop_text, "Testing VLAN isolation...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemVlanHop, LanTesterViewVlanHop);
         break;
 
     default:
@@ -5990,6 +6046,115 @@ static void lan_tester_do_file_manager(LanTesterApp* app) {
         (unsigned long)fm_state.bytes_sent,
         (unsigned long)fm_state.bytes_received);
     if(app->setting_sound) notification_message(app->notifications, &sequence_success);
+}
+
+/* ==================== 802.1X EAPOL Probe ==================== */
+
+static void lan_tester_do_eapol_probe(LanTesterApp* app) {
+    furi_string_reset(app->eapol_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->eapol_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    furi_string_cat(app->eapol_text, "[802.1X Probe]\n\n");
+    furi_string_cat(app->eapol_text, "Sending EAPOL-Start...\n");
+    furi_string_cat(app->eapol_text, "Listening 5 sec...\n\n");
+    lan_tester_update_view(app->text_box_eapol, app->eapol_text);
+
+    EapolProbeResult result;
+    eapol_probe_test(app->mac_addr, &result);
+
+    if(!result.eapol_response) {
+        furi_string_cat(app->eapol_text, "No EAPOL response.\n\n");
+        furi_string_cat(app->eapol_text, "802.1X is likely NOT\nenabled on this port.\n");
+    } else {
+        furi_string_cat(app->eapol_text, "802.1X DETECTED!\n\n");
+        furi_string_cat_printf(
+            app->eapol_text, "Authenticator MAC:\n  %02X:%02X:%02X:%02X:%02X:%02X\n\n",
+            result.auth_mac[0], result.auth_mac[1], result.auth_mac[2],
+            result.auth_mac[3], result.auth_mac[4], result.auth_mac[5]);
+
+        if(result.eap_request) {
+            furi_string_cat(app->eapol_text, "EAP-Request received.\n");
+            const char* eap_type_str = "Unknown";
+            switch(result.eap_type) {
+            case 1: eap_type_str = "Identity"; break;
+            case 4: eap_type_str = "MD5-Challenge"; break;
+            case 13: eap_type_str = "EAP-TLS"; break;
+            case 21: eap_type_str = "EAP-TTLS"; break;
+            case 25: eap_type_str = "PEAP"; break;
+            }
+            furi_string_cat_printf(
+                app->eapol_text, "EAP Type: %s (%d)\n", eap_type_str, result.eap_type);
+        }
+
+        if(result.eap_success) {
+            furi_string_cat(app->eapol_text, "EAP-Success (open!)\n");
+        }
+        if(result.eap_failure) {
+            furi_string_cat(app->eapol_text, "EAP-Failure received.\n");
+        }
+
+        furi_string_cat_printf(
+            app->eapol_text, "\nEAPOL frames: %d\n", result.frames_seen);
+    }
+
+    lan_tester_save_and_notify(app, "eapol.txt", app->eapol_text);
+}
+
+/* ==================== VLAN Hopping Test ==================== */
+
+static void lan_tester_do_vlan_hop(LanTesterApp* app) {
+    furi_string_reset(app->vlan_hop_text);
+
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->vlan_hop_text, "W5500 Not Found!\n");
+        return;
+    }
+
+    /* Use DHCP gateway as target, or 0.0.0.0 */
+    uint8_t target_ip[4] = {0, 0, 0, 0};
+    uint8_t our_ip[4] = {0, 0, 0, 0};
+    if(app->dhcp_valid) {
+        memcpy(target_ip, app->dhcp_gw, 4);
+        memcpy(our_ip, app->dhcp_ip, 4);
+    }
+
+    furi_string_cat(app->vlan_hop_text, "[VLAN Hopping Test]\n\n");
+
+    /* Test multiple VLANs */
+    uint16_t test_vlans[] = {1, 10, 20, 100, 200};
+    uint8_t num_tests = 5;
+
+    for(uint8_t t = 0; t < num_tests && app->worker_running; t++) {
+        uint16_t vlan = test_vlans[t];
+        furi_string_cat_printf(
+            app->vlan_hop_text, "Testing VLAN %d...\n", vlan);
+        lan_tester_update_view(app->text_box_vlan_hop, app->vlan_hop_text);
+
+        VlanHopResult result;
+        vlan_hop_test(app->mac_addr, our_ip, target_ip, vlan, &result);
+
+        if(result.tagged_reply) {
+            furi_string_cat_printf(
+                app->vlan_hop_text, "  VLAN %d: REPLY!\n  Isolation FAILED!\n", vlan);
+        } else if(result.native_reply) {
+            furi_string_cat_printf(
+                app->vlan_hop_text, "  VLAN %d: native reply\n  (tag stripped)\n", vlan);
+        } else {
+            furi_string_cat_printf(
+                app->vlan_hop_text, "  VLAN %d: no reply\n  (isolated OK)\n", vlan);
+        }
+
+        furi_string_cat_printf(
+            app->vlan_hop_text, "  Tagged: %d  Untagged: %d\n\n",
+            result.tagged_frames_seen, result.untagged_frames_seen);
+    }
+
+    furi_string_cat(app->vlan_hop_text, "Test complete.\n");
+    lan_tester_save_and_notify(app, "vlan_hop.txt", app->vlan_hop_text);
 }
 
 /* ==================== ARP Watch ==================== */
