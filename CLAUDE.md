@@ -9,9 +9,11 @@ Flipper Zero LAN Tester — portable Ethernet analyzer & security toolkit using 
 ```bash
 pip install ufbt    # install ufbt if not available
 ufbt build          # must pass with zero warnings (treated as errors)
+ufbt lint           # check code style (clang-format)
+ufbt format         # auto-fix code style
 ```
 
-Always build after changes. Never push code that doesn't compile.
+Always build and lint after changes. Never push code that doesn't compile or has style violations.
 
 ## Critical Constraints
 
