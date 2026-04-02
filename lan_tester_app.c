@@ -1967,10 +1967,9 @@ static void lan_tester_app_free(LanTesterApp* app) {
     furi_timer_stop(app->dhcp_timer);
     furi_timer_free(app->dhcp_timer);
 
-    /* Deinit W5500 if initialized */
-    if(app->w5500_initialized) {
-        w5500_hal_deinit();
-    }
+    /* Deinit W5500 — always call to release SPI bus and OTG power,
+     * even if init was partial (e.g. chip_init failed after SPI acquired) */
+    w5500_hal_deinit();
 
     furi_record_close(RECORD_GUI);
     furi_record_close(RECORD_NOTIFICATION);
