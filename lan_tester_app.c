@@ -6337,55 +6337,49 @@ static void lan_tester_do_rogue_dhcp(LanTesterApp* app) {
         return;
     }
 
-    furi_string_cat(app->tool_text, "[Rogue DHCP Detection]\n\n");
-    furi_string_cat(app->tool_text, "Sending Discover...\n");
-    furi_string_cat(app->tool_text, "Listening 5 sec...\n\n");
+    furi_string_cat(app->tool_text, "[Rogue DHCP] Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     RogueDhcpState state;
     rogue_dhcp_detect(app->mac_addr, &state, 5000);
 
+    furi_string_reset(app->tool_text);
     furi_string_cat_printf(
-        app->tool_text, "Offers received: %d\nDHCP servers: %d\n\n",
+        app->tool_text, "[Rogue DHCP] %d offer, %d srv\n",
         state.offers_received, state.server_count);
 
     if(state.server_count == 0) {
-        furi_string_cat(app->tool_text, "No DHCP servers found.\n");
+        furi_string_cat(app->tool_text, "No DHCP servers.\n");
     } else {
         for(uint8_t i = 0; i < state.server_count; i++) {
             RogueDhcpServer* srv = &state.servers[i];
             furi_string_cat_printf(
-                app->tool_text, "Server %d:\n", i + 1);
-            furi_string_cat_printf(
-                app->tool_text, "  IP: %d.%d.%d.%d\n",
-                srv->server_ip[0], srv->server_ip[1],
+                app->tool_text, "#%d %d.%d.%d.%d",
+                i + 1, srv->server_ip[0], srv->server_ip[1],
                 srv->server_ip[2], srv->server_ip[3]);
             furi_string_cat_printf(
-                app->tool_text, "  Offer: %d.%d.%d.%d\n",
+                app->tool_text, " ->%d.%d.%d.%d\n",
                 srv->offered_ip[0], srv->offered_ip[1],
                 srv->offered_ip[2], srv->offered_ip[3]);
             furi_string_cat_printf(
-                app->tool_text, "  GW: %d.%d.%d.%d\n",
+                app->tool_text, " GW %d.%d.%d.%d",
                 srv->gateway[0], srv->gateway[1],
                 srv->gateway[2], srv->gateway[3]);
             furi_string_cat_printf(
-                app->tool_text, "  DNS: %d.%d.%d.%d\n",
+                app->tool_text, " DNS %d.%d.%d.%d\n",
                 srv->dns[0], srv->dns[1], srv->dns[2], srv->dns[3]);
-            if(srv->domain[0]) {
-                furi_string_cat_printf(
-                    app->tool_text, "  Domain: %s\n", srv->domain);
-            }
-            furi_string_cat_printf(
-                app->tool_text, "  Lease: %lu sec\n",
-                (unsigned long)srv->lease_time);
-            furi_string_cat(app->tool_text, "\n");
+            if(srv->domain[0])
+                furi_string_cat_printf(app->tool_text, " %s", srv->domain);
+            uint32_t ls = srv->lease_time;
+            if(ls > 0)
+                furi_string_cat_printf(app->tool_text, " %luh\n", (unsigned long)(ls / 3600));
+            else
+                furi_string_cat(app->tool_text, "\n");
         }
-
-        if(state.multiple_servers) {
-            furi_string_cat(app->tool_text, "WARNING: Multiple DHCP\nservers detected!\nPossible rogue DHCP.\n");
-        } else {
-            furi_string_cat(app->tool_text, "Single DHCP server.\nNo rogue detected.\n");
-        }
+        if(state.multiple_servers)
+            furi_string_cat(app->tool_text, "ROGUE DETECTED!\n");
+        else
+            furi_string_cat(app->tool_text, "Single server, OK.\n");
     }
 
     lan_tester_save_and_notify(app, "rogue_dhcp.txt", app->tool_text);
