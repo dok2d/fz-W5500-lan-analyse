@@ -3897,7 +3897,7 @@ static void lan_tester_do_ping(LanTesterApp* app) {
     pkt_format_ip(target_ip, target_str);
     pkt_format_ip(net_info.ip, my_ip_str);
 
-    furi_string_printf(app->tool_text, "My IP: %s\nPing %s\n\n", my_ip_str, target_str);
+    furi_string_printf(app->tool_text, "Ping %s (me:%s)\n", target_str, my_ip_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     /* Send pings (count from settings) */
@@ -3951,35 +3951,19 @@ static void lan_tester_do_dns_lookup(LanTesterApp* app) {
     pkt_format_ip(dns_ip, dns_str);
 
     furi_string_printf(
-        app->tool_text, "Resolving:\n%s\nDNS: %s\n\n", app->dns_hostname_input, dns_str);
+        app->tool_text, "[DNS] %s via %s\n", app->dns_hostname_input, dns_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    /* Perform DNS lookup */
     DnsLookupResult dns_result;
     bool ok = dns_lookup(W5500_DNS_SOCKET, dns_ip, app->dns_hostname_input, &dns_result);
 
     if(ok) {
         char ip_str[16];
         pkt_format_ip(dns_result.resolved_ip, ip_str);
-        furi_string_printf(
-            app->tool_text,
-            "[DNS Lookup]\n"
-            "Host: %s\n"
-            "DNS: %s\n\n"
-            "Result: %s\n",
-            app->dns_hostname_input,
-            dns_str,
-            ip_str);
+        furi_string_cat_printf(app->tool_text, "-> %s\n", ip_str);
     } else {
-        furi_string_printf(
-            app->tool_text,
-            "[DNS Lookup]\n"
-            "Host: %s\n"
-            "DNS: %s\n\n"
-            "%s\n",
-            app->dns_hostname_input,
-            dns_str,
-            dns_result.rcode == DNS_RCODE_NXDOMAIN ? "NXDOMAIN (not found)" : "Timeout (3s)");
+        furi_string_cat_printf(app->tool_text, "%s\n",
+            dns_result.rcode == DNS_RCODE_NXDOMAIN ? "NXDOMAIN" : "Timeout");
     }
 
     lan_tester_save_and_notify(app, "dns_lookup.txt", app->tool_text);
@@ -4008,7 +3992,7 @@ static void lan_tester_do_wol(LanTesterApp* app) {
     char mac_str[18];
     pkt_format_mac(app->wol_mac_input, mac_str);
 
-    furi_string_printf(app->tool_text, "Sending WoL to:\n%s\n\n", mac_str);
+    furi_string_printf(app->tool_text, "[WoL] %s\n", mac_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     bool ok = wol_send(W5500_WOL_SOCKET, app->wol_mac_input);
@@ -6015,7 +5999,7 @@ static void lan_tester_do_ipmi_client(LanTesterApp* app) {
         if(pol == 0) policy = "Stay off";
         else if(pol == 1) policy = "Restore prev";
         else if(pol == 2) policy = "Always on";
-        furi_string_cat_printf(app->tool_text, "Policy: %s\n\n", policy);
+        furi_string_cat_printf(app->tool_text, "Policy: %s\n", policy);
     }
 
     if(result.device_ok) {
