@@ -19,11 +19,11 @@
 /* Maximum discovered hosts (hard cap for RAM: 128 × 16 = 2 KB) */
 #define ARP_MAX_HOSTS_CAP 128
 
-/* Batch size for sending ARP requests */
-#define ARP_BATCH_SIZE 16
+/* Batch size for sending ARP requests (keep low to stay under switch DAI limits) */
+#define ARP_BATCH_SIZE 2
 
-/* Delay between batches in ms */
-#define ARP_BATCH_DELAY_MS 15
+/* Delay between batches in ms (~4 pps, safe for Cisco DAI default 15 pps) */
+#define ARP_BATCH_DELAY_MS 500
 
 /* Wait time after all requests sent (ms) */
 #define ARP_TAIL_WAIT_MS 3000
