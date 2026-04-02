@@ -933,7 +933,7 @@ static void settings_enter_callback(void* context, uint32_t index) {
             app,
             app->mac_changer_input,
             6);
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolByteInput);
     } else if(index == LanTesterSettingsItemAutoTestDnsHost) {
         text_input_reset(app->text_input_tool);
         text_input_set_header_text(app->text_input_tool, "AutoTest DNS host:");
@@ -1508,10 +1508,12 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     strncpy(app->port_scan_start_input, "1", sizeof(app->port_scan_start_input));
     strncpy(app->port_scan_end_input, "1024", sizeof(app->port_scan_end_input));
 
-    /* MAC Changer — byte_input_tool is shared */
+    /* ByteInput for MAC address entry (WOL, MAC changer) */
+    view_set_previous_callback(
+        byte_input_get_view(app->byte_input_tool), lan_tester_nav_back_tool);
     view_dispatcher_add_view(
         app->view_dispatcher,
-        LanTesterViewToolInput,
+        LanTesterViewToolByteInput,
         byte_input_get_view(app->byte_input_tool));
 
     /* ETH Bridge view (custom View with draw_callback, no TextBox) */
@@ -1920,6 +1922,7 @@ static void lan_tester_app_free(LanTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHostActions);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewAutoTest);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatSecurity);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewToolByteInput);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_portinfo);
@@ -2960,7 +2963,7 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         byte_input_set_header_text(app->byte_input_tool, "Target MAC address:");
         byte_input_set_result_callback(
             app->byte_input_tool, lan_tester_wol_input_callback, NULL, app, app->wol_mac_input, 6);
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolByteInput);
         break;
 
     case LanTesterMenuItemHistory:
