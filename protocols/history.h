@@ -6,8 +6,8 @@
 /* History file storage path */
 #define HISTORY_DIR APP_DATA_PATH("")
 
-/* Max files to list */
-#define HISTORY_MAX_FILES 64
+/* Max files to list (16 × 68 = 1088 bytes) */
+#define HISTORY_MAX_FILES 16
 
 /* Max filename length */
 #define HISTORY_FILENAME_LEN 48
@@ -15,8 +15,7 @@
 /* History file entry */
 typedef struct {
     char filename[HISTORY_FILENAME_LEN];
-    char type[16]; /* Scan type extracted from filename */
-    char label[HISTORY_FILENAME_LEN]; /* Display label for submenu */
+    char label[20]; /* Short display label for submenu */
 } HistoryEntry;
 
 /* History browser state */

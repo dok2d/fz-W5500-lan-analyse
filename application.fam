@@ -8,8 +8,8 @@ App(
     fap_icon="assets/icon.png",
     fap_icon_assets="assets",
     fap_author="Dok2d",
-    fap_version="1.2.0",
-    fap_description="Portable LAN tester: ARP scan, ping, traceroute, DHCP, LLDP/CDP, port scan, packet capture via W5500",
+    fap_version="2.0.0",
+    fap_description="Portable LAN tester & security analyzer: ARP, ping, DHCP, LLDP/CDP, port scan, SNMP, NTP, IPMI, RADIUS, TFTP, 802.1X, VLAN, rogue DHCP/RA detection via W5500",
     fap_weburl="https://github.com/dok2d/fz-W5500-lan-analyse",
     requires=[
         "gui",

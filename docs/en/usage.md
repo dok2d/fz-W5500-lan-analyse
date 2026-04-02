@@ -12,7 +12,7 @@
 
 ![Main menu](../screenshots/main_menu.png)
 
-The menu is organized into four categories: **Network Info**, **Discovery**, **Diagnostics**, and **Tools**. Most features that need an IP address will run DHCP automatically on first use, then cache the result for all subsequent operations.
+The menu is organized into six categories: **Port Info**, **Scan**, **Diagnostics**, **Traffic**, **Utilities**, and **Settings**. An **Auto Test** entry sits at the very top of the menu for quick cable-in diagnostics. Most features that need an IP address will run DHCP automatically on first use, then cache the result for all subsequent operations.
 
 ### Navigation
 
@@ -23,7 +23,52 @@ The menu is organized into four categories: **Network Info**, **Discovery**, **D
 
 ---
 
-## Network Info
+## Auto Test
+
+Auto Test is the first item in the main menu. It provides a fully automatic network diagnostic sequence that runs as soon as an Ethernet cable is plugged in -- no manual navigation required.
+
+### Test Sequence
+
+When a cable is detected, Auto Test executes the following steps in order:
+
+1. **Link Info** -- read link speed and duplex
+2. **DHCP** -- obtain IP configuration (Discover/Offer, no lease consumed)
+3. **Ping Gateway** -- ICMP ping to the DHCP gateway
+4. **DNS Resolve** -- resolve a configurable hostname (default: `google.com`)
+5. **Internet Ping** -- ICMP ping to the resolved IP
+6. **LLDP/CDP** -- passive listen for switch discovery frames (runs in parallel with the next step)
+7. **ARP Scan** -- scan the local subnet for active hosts (optional, configurable)
+
+### Verdict
+
+After all steps complete, the screen shows one of two results:
+
+- **`[Auto Test] OK`** -- all mandatory steps passed
+- **`[Auto Test]`** followed by the name of the first step that failed
+
+### Auto-Cycle Behavior
+
+Auto Test continuously cycles through cable states:
+
+1. Cable removed -- screen shows "Waiting for cable..."
+2. Cable plugged in -- test sequence runs automatically
+3. Cable removed again -- returns to waiting state
+
+This makes it ideal for quickly testing multiple cable drops or switch ports in succession.
+
+### Auto Test Settings
+
+Three settings in **Settings** control Auto Test behavior:
+
+| Setting | Values | Default | Description |
+|---------|--------|---------|-------------|
+| AT DNS host | hostname | `google.com` | Hostname resolved during the DNS step |
+| AT LLDP wait | 10 / 20 / 30 / 60 s | 30 | How long to listen for LLDP/CDP frames |
+| AT ARP scan | ON / OFF | ON | Whether to include the ARP scan step |
+
+---
+
+## Port Info
 
 ### Link Info
 
@@ -57,20 +102,51 @@ Sends a DHCP Discover and parses the Offer response **without accepting the leas
 
 The DHCP result is cached and reused by all other features that need network configuration.
 
-### Statistics
+### LLDP/CDP
 
-Captures all Ethernet frames for 10 seconds and shows a breakdown.
+Passive listener for switch neighbor discovery protocols.
 
-**Output:**
-- Total frame count
-- By destination: unicast, broadcast, multicast
-- By EtherType: IPv4, ARP, IPv6, LLDP, CDP, unknown
+**LLDP** (Link Layer Discovery Protocol, IEEE 802.1AB): used by most managed switches to advertise their identity. **CDP** (Cisco Discovery Protocol): Cisco-proprietary equivalent.
 
-Uses MACRAW socket in promiscuous mode, so it sees all traffic on the wire, not just traffic addressed to the Flipper.
+**How it works:**
+1. Opens MACRAW socket in promiscuous mode
+2. Listens for up to 60 seconds (countdown shown on screen)
+3. Parses received LLDP/CDP frames
+
+**LLDP output** (TLV types 0-8, 127):
+- System name, description
+- Port ID, port description
+- Management IP address
+- System capabilities (bridge, router, etc.)
+- VLAN name and ID (802.1Q TLV)
+
+**CDP output**:
+- Device ID, platform
+- Port ID
+- Management IP
+- Software version
+- Native VLAN
+
+![LLDP neighbor result](../screenshots/lldp_result.png)
+
+Press **Back** to stop listening early.
+
+### STP/VLAN
+
+Passive listener for Spanning Tree Protocol and VLAN tags.
+
+**STP/RSTP/MSTP**: listens for BPDU (Bridge Protocol Data Unit) frames for 30 seconds. Shows:
+- Root bridge ID and priority
+- Bridge ID of the sending switch
+- Port role and state
+- Path cost
+- Protocol version (STP/RSTP/MSTP)
+
+**802.1Q VLAN**: detects VLAN tags on any Ethernet frame passing through. Shows VLAN ID and priority.
 
 ---
 
-## Discovery
+## Scan
 
 ### ARP Scan
 
@@ -107,35 +183,6 @@ ICMP sweep of an entire CIDR range.
 
 Discovered hosts feed into the interactive host list.
 
-### LLDP/CDP
-
-Passive listener for switch neighbor discovery protocols.
-
-**LLDP** (Link Layer Discovery Protocol, IEEE 802.1AB): used by most managed switches to advertise their identity. **CDP** (Cisco Discovery Protocol): Cisco-proprietary equivalent.
-
-**How it works:**
-1. Opens MACRAW socket in promiscuous mode
-2. Listens for up to 60 seconds (countdown shown on screen)
-3. Parses received LLDP/CDP frames
-
-**LLDP output** (TLV types 0-8, 127):
-- System name, description
-- Port ID, port description
-- Management IP address
-- System capabilities (bridge, router, etc.)
-- VLAN name and ID (802.1Q TLV)
-
-**CDP output**:
-- Device ID, platform
-- Port ID
-- Management IP
-- Software version
-- Native VLAN
-
-![LLDP neighbor result](../screenshots/lldp_result.png)
-
-Press **Back** to stop listening early.
-
 ### mDNS/SSDP Discovery
 
 Discovers services and devices on the local network using two multicast protocols.
@@ -146,18 +193,22 @@ Discovers services and devices on the local network using two multicast protocol
 
 Collects responses for approximately 10 seconds.
 
-### STP/VLAN
+### Port Scan
 
-Passive listener for Spanning Tree Protocol and VLAN tags.
+TCP connect scan to discover open ports on a target.
 
-**STP/RSTP/MSTP**: listens for BPDU (Bridge Protocol Data Unit) frames for 30 seconds. Shows:
-- Root bridge ID and priority
-- Bridge ID of the sending switch
-- Port role and state
-- Path cost
-- Protocol version (STP/RSTP/MSTP)
+**Input**: target IP (default: DHCP gateway).
 
-**802.1Q VLAN**: detects VLAN tags on any Ethernet frame passing through. Shows VLAN ID and priority.
+**Scan modes** (submenu):
+- **Top 20**: 18 most common ports (SSH, HTTP, HTTPS, SMB, RDP, etc.) -- fast scan
+- **Top 100**: 100 common ports -- comprehensive scan
+- **Custom**: any range from 1 to 65535
+
+**How it works:**
+1. Attempts TCP connect to each port
+2. Short timeout per port (~2-3 seconds)
+3. Shows progress bar
+4. Lists open ports with service names
 
 ---
 
@@ -225,34 +276,9 @@ ICMP-based hop-by-hop path discovery.
 Done: 4 hops
 ```
 
-### Port Scanner
-
-TCP connect scan to discover open ports on a target.
-
-**Input**: target IP (default: DHCP gateway).
-
-**Scan modes:**
-- **Top 20**: 18 most common ports (SSH, HTTP, HTTPS, SMB, RDP, etc.) -- fast scan
-- **Top 100**: 100 common ports -- comprehensive scan
-- **Custom**: any range from 1 to 65535
-
-**How it works:**
-1. Attempts TCP connect to each port
-2. Short timeout per port (~2-3 seconds)
-3. Shows progress bar
-4. Lists open ports with service names
-
 ---
 
-## Tools
-
-### Wake-on-LAN
-
-Sends a WoL magic packet to wake a device on the network.
-
-**Input**: target MAC address (via byte input).
-
-The magic packet is sent as a broadcast UDP packet on port 9. The target machine must have WoL enabled in its BIOS/UEFI and network adapter settings.
+## Traffic
 
 ### Packet Capture
 
@@ -264,9 +290,35 @@ The `.pcap` files are compatible with Wireshark and tcpdump.
 
 Press **OK** to start/stop recording. Press **Back** to exit.
 
-### Other Tools
+### ETH Bridge
 
-- **[ETH Bridge](eth-bridge.md)** -- USB-to-Ethernet bridge with optional PCAP recording
+USB-to-Ethernet bridge with optional PCAP recording. See [ETH Bridge](eth-bridge.md) for details.
+
+### Statistics
+
+Captures all Ethernet frames for 10 seconds and shows a breakdown.
+
+**Output:**
+- Total frame count
+- By destination: unicast, broadcast, multicast
+- By EtherType: IPv4, ARP, IPv6, LLDP, CDP, unknown
+
+Uses MACRAW socket in promiscuous mode, so it sees all traffic on the wire, not just traffic addressed to the Flipper.
+
+---
+
+## Utilities
+
+### Wake-on-LAN
+
+Sends a WoL magic packet to wake a device on the network.
+
+**Input**: target MAC address (via byte input).
+
+The magic packet is sent as a broadcast UDP packet on port 9. The target machine must have WoL enabled in its BIOS/UEFI and network adapter settings.
+
+### Other Utilities
+
 - **[PXE Server](pxe-server.md)** -- network boot server with DHCP + TFTP
 - **[File Manager](file-manager.md)** -- web-based SD card management via HTTP
 
@@ -290,7 +342,7 @@ Up to 64 hosts can be stored in the list.
 
 ## Settings
 
-Access via the main menu → **Settings**.
+Access via the main menu → **Settings**. The **About** screen (app version, author, links) is also located inside Settings.
 
 | Setting | Values | Default | Description |
 |---------|--------|---------|-------------|
@@ -301,6 +353,9 @@ Access via the main menu → **Settings**.
 | Ping Count | 1-100 | 4 | Number of ICMP packets for Ping |
 | Ping Timeout | 500-10000 ms | 3000 | Per-packet reply timeout |
 | Cont. Ping Interval | 200-5000 ms | 1000 | Interval between pings in Continuous Ping |
+| AT DNS host | hostname | `google.com` | Hostname resolved during Auto Test DNS step |
+| AT LLDP wait | 10 / 20 / 30 / 60 s | 30 | How long Auto Test listens for LLDP/CDP frames |
+| AT ARP scan | ON / OFF | ON | Whether Auto Test includes the ARP scan step |
 | Clear History | action | -- | Delete all saved result files |
 | MAC Changer | action | -- | Generate random MAC or enter custom; saved to SD |
 

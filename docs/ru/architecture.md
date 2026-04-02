@@ -115,6 +115,17 @@
 
 Worker thread имеет собственный стек 8 КБ, достаточный для самых глубоких цепочек вызовов парсеров протоколов.
 
+### Поток LLDP в Auto Test (3 КБ стек)
+
+Auto Test запускает дополнительный поток для прослушивания LLDP/CDP параллельно с основными тестами. Этот поток:
+
+- Имеет стек 3 КБ (меньше основного worker -- парсит только LLDP/CDP TLV)
+- Использует Socket 0 в режиме MACRAW для приёма LLDP/CDP-фреймов
+- Выделяет собственный malloc-буфер для приёма фреймов (не использует общий `frame_buf`)
+- Работает параллельно с основным worker thread, который выполняет остальные тесты Auto Test
+
+> **Примечание о Socket 0**: в Auto Test Socket 0 разделяется между LLDP-потоком и ARP-сканированием. Эти операции выполняются **последовательно, не параллельно**: LLDP-поток завершается (или прерывается по таймауту AT LLDP wait) до начала ARP-сканирования. Одновременный доступ к MACRAW-сокету не допускается.
+
 ## Кеширование DHCP
 
 DHCP-согласование занимает 3-15 секунд в зависимости от условий сети. Чтобы не повторять его для каждой функции, приложение кеширует первый успешный результат:
@@ -132,31 +143,33 @@ DHCP-согласование занимает 3-15 секунд в зависи
 
 ```
 Главное меню
-├── Network Info (подменю)
+├── Auto Test
+├── Port Info (подменю)
 │   ├── Link Info
 │   ├── DHCP Analyze
-│   └── Statistics
-├── Discovery (подменю)
+│   ├── LLDP/CDP
+│   └── STP/VLAN
+├── Scan (подменю)
 │   ├── ARP Scan
 │   ├── Ping Sweep
-│   ├── LLDP/CDP
 │   ├── mDNS/SSDP
-│   └── STP/VLAN
+│   └── Port Scan
 ├── Diagnostics (подменю)
 │   ├── Ping
 │   ├── Continuous Ping
 │   ├── DNS Lookup
-│   ├── Traceroute
-│   └── Port Scan
-├── Tools (подменю)
-│   ├── Wake-on-LAN
+│   └── Traceroute
+├── Traffic (подменю)
+│   ├── Packet Capture
 │   ├── ETH Bridge
+│   └── Statistics
+├── Utilities (подменю)
+│   ├── Wake-on-LAN
 │   ├── PXE Server
-│   ├── File Manager
-│   └── Packet Capture
+│   └── File Manager
 ├── History
-├── Settings
-└── About
+└── Settings
+    └── About
 ```
 
 Заголовок меню динамически показывает статус линка: `LAN [UP 100M FD]` или `LAN [DOWN]`.

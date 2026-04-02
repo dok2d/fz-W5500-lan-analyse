@@ -83,18 +83,25 @@ uint16_t history_list(HistoryState* state) {
             HistoryEntry* e = &state->files[state->file_count];
             strncpy(e->filename, name, HISTORY_FILENAME_LEN - 1);
 
-            /* Extract type from filename: YYYYMMDD_HHMMSS_type.txt */
-            const char* type_start = name;
-            /* Skip past the timestamp prefix if present */
+            /* Build short label: "MM-DD HH:MM type" from YYYYMMDD_HHMMSS_type.txt */
             if(nlen > 16 && name[8] == '_' && name[15] == '_') {
-                type_start = &name[16];
+                const char* type_start = &name[16];
+                uint16_t type_len = strlen(type_start);
+                if(type_len > 4) type_len -= 4;
+                if(type_len > 8) type_len = 8;
+                snprintf(
+                    e->label,
+                    sizeof(e->label),
+                    "%.2s-%.2s %.2s:%.2s %.*s",
+                    name + 4,
+                    name + 6,
+                    name + 9,
+                    name + 11,
+                    type_len,
+                    type_start);
+            } else {
+                strncpy(e->label, name, sizeof(e->label) - 1);
             }
-            /* Copy type without .txt extension */
-            uint16_t type_len = strlen(type_start);
-            if(type_len > 4) type_len -= 4; /* Remove .txt */
-            if(type_len > 15) type_len = 15;
-            memcpy(e->type, type_start, type_len);
-            e->type[type_len] = '\0';
 
             state->file_count++;
         }

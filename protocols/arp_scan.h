@@ -16,8 +16,8 @@
 #define ARP_HLEN_ETHERNET  6
 #define ARP_PLEN_IPV4      4
 
-/* Maximum discovered hosts (hard cap for RAM safety, ~14 KB) */
-#define ARP_MAX_HOSTS_CAP 384
+/* Maximum discovered hosts (hard cap for RAM: 128 × 16 = 2 KB) */
+#define ARP_MAX_HOSTS_CAP 128
 
 /* Batch size for sending ARP requests */
 #define ARP_BATCH_SIZE 16
@@ -31,7 +31,7 @@
 typedef struct {
     uint8_t ip[4];
     uint8_t mac[6];
-    char vendor[24]; /* OUI vendor name */
+    const char* vendor; /* pointer to OUI string in flash (not copied) */
     bool responded;
 } ArpHost;
 

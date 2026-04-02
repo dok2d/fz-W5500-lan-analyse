@@ -1,3 +1,54 @@
+# 2.0.0
+
+## Improved
+- Significantly reduced memory usage — app is stable during prolonged use
+- Compact output for all tools — results fit on screen without scrolling
+- Safe W5500 init/deinit — no hangs when reopening app after crash
+- History: fixed browsing after heavy tool usage
+
+## Changed
+- VLAN Hop: Top 10 and Custom modes (like Port Scan)
+- Rogue DHCP: concise output with key details per server
+
+# 1.5.0
+
+## Added
+- New menu category: **Security**
+- **SNMP v1/v2c GET** — query sysName, sysDescr, sysUpTime, ifStatus
+- **NTP Diagnostics** — stratum, offset, root delay, reference ID
+- **NetBIOS Name Query** — discover Windows machine names and workgroups
+- **DNS Poisoning Check** — compare local vs public DNS responses
+- **ARP Watch** — detect spoofing, duplicate IPs, ARP storms
+- **Rogue DHCP Detection** — find unauthorized DHCP servers
+- **Rogue RA Detection** — find unauthorized IPv6 routers
+- **DHCP Fingerprinting** — identify client OS by option 55
+- **802.1X Probe** — check if port authentication is enabled
+- **VLAN Hopping Test** — verify VLAN isolation
+- **TFTP Client** — download config files from network equipment
+- **IPMI v1.5** — chassis status, BMC device info
+- **RADIUS Test Client** — send Access-Request, check Accept/Reject
+
+# 1.4.0
+
+## Added
+- **Auto Test**: one-touch automated network diagnostics — plug cable, get results
+  - Tests: Link Info → DHCP → Ping Gateway → DNS Resolve → Internet Ping → LLDP/CDP → ARP Host Count
+  - LLDP listener runs in a parallel thread (Socket 0) alongside DHCP/Ping/DNS (Sockets 1-3)
+  - ARP scan runs only after LLDP thread completes (Socket 0 shared, sequential access)
+  - Verdict: `[Auto Test] OK` if DHCP + GW ping + DNS all pass; internet ping is informational only
+  - Auto-cycles: cable removed → "Waiting for link..." → cable inserted → new test
+  - Settings: AT DNS host (default: google.com), AT LLDP wait (10/20/30/60s), AT ARP scan (On/Off)
+
+## Changed
+- **Menu restructured**:
+  - Network Info → **Port Info** (Link Info, DHCP Analyze, LLDP/CDP, STP/VLAN)
+  - Discovery → **Scan** (ARP Scan, Ping Sweep, mDNS/SSDP, Port Scan submenu)
+  - **Traffic** (new): Packet Capture, ETH Bridge, Statistics
+  - Tools → **Utilities** (Wake-on-LAN, PXE Server, File Manager)
+  - **Port Scan**: consolidated into submenu (Top 20 / Top 100 / Custom Range)
+  - **About**: moved from main menu to last item in Settings
+- **Settings**: replaced magic index numbers with `LanTesterSettingsItem` enum for maintainability
+
 # 1.2.0
 
 ## Changed
