@@ -1860,7 +1860,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "802.1X, VLAN, IPMI,\n"
         "RADIUS, TFTP, NTP,\n"
         "rogue DHCP/RA detect.\n"
-        "v2.0.0 | by dok2d\n"
+        "v2.2.1 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
