@@ -5026,7 +5026,7 @@ static bool lan_tester_save_results(const char* type, const char* content) {
 static void lan_tester_save_and_notify(LanTesterApp* app, const char* type, FuriString* text) {
     if(app->setting_autosave) {
         bool ok = lan_tester_save_results(type, furi_string_get_cstr(text));
-        furi_string_cat_str(text, ok ? "\nSaved to History\n" : "\nHistory save failed\n");
+        furi_string_cat_str(text, ok ? "Saved to History\n" : "Save failed\n");
     }
     if(app->setting_sound) {
         notification_message(app->notifications, &sequence_success);
