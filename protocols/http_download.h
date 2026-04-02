@@ -3,8 +3,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* W5500 socket for HTTP client (sockets 6-7 are unused by other tools) */
-#define HTTP_CLIENT_SOCKET 6
+/* W5500 socket for HTTP client.
+ * Reuses PXE_TFTP_DATA_SOCKET (5) — PXE server and HTTP download
+ * never run simultaneously (both are worker-thread operations). */
+#define HTTP_CLIENT_SOCKET 5
 #define HTTP_PORT          80
 
 typedef struct {
