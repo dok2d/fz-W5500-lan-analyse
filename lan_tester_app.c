@@ -6214,44 +6214,31 @@ static void lan_tester_do_vlan_hop(LanTesterApp* app) {
 
     /* Compact output */
     furi_string_reset(app->tool_text);
-    furi_string_cat_printf(
-        app->tool_text, "[VLAN Hop] %d tested\n\n", num_tests);
-
+    furi_string_cat_printf(app->tool_text, "[VLAN Hop] %d tested\n", num_tests);
     if(failed_count > 0) {
-        furi_string_cat(app->tool_text, "FAILED (reply): ");
-        for(uint8_t i = 0; i < failed_count; i++) {
-            furi_string_cat_printf(
-                app->tool_text, "%s%d", i > 0 ? "," : "", failed_vlans[i]);
-        }
+        furi_string_cat(app->tool_text, "FAIL: ");
+        for(uint8_t i = 0; i < failed_count; i++)
+            furi_string_cat_printf(app->tool_text, "%s%d", i ? "," : "", failed_vlans[i]);
         furi_string_cat(app->tool_text, "\n");
     }
-
     if(stripped_count > 0) {
         furi_string_cat(app->tool_text, "Stripped: ");
-        for(uint8_t i = 0; i < stripped_count; i++) {
-            furi_string_cat_printf(
-                app->tool_text, "%s%d", i > 0 ? "," : "", stripped_vlans[i]);
-        }
+        for(uint8_t i = 0; i < stripped_count; i++)
+            furi_string_cat_printf(app->tool_text, "%s%d", i ? "," : "", stripped_vlans[i]);
         furi_string_cat(app->tool_text, "\n");
     }
-
     if(isolated_count > 0) {
         furi_string_cat(app->tool_text, "OK: ");
-        for(uint8_t i = 0; i < isolated_count; i++) {
-            furi_string_cat_printf(
-                app->tool_text, "%s%d", i > 0 ? "," : "", isolated_vlans[i]);
-        }
+        for(uint8_t i = 0; i < isolated_count; i++)
+            furi_string_cat_printf(app->tool_text, "%s%d", i ? "," : "", isolated_vlans[i]);
         furi_string_cat(app->tool_text, "\n");
     }
-
-    furi_string_cat(app->tool_text, "\n");
-    if(failed_count > 0) {
-        furi_string_cat(app->tool_text, "VLAN isolation BROKEN!\n");
-    } else if(stripped_count > 0) {
-        furi_string_cat(app->tool_text, "Tags stripped by switch.\n");
-    } else {
-        furi_string_cat(app->tool_text, "All VLANs isolated OK.\n");
-    }
+    if(failed_count > 0)
+        furi_string_cat(app->tool_text, "Isolation BROKEN!\n");
+    else if(stripped_count > 0)
+        furi_string_cat(app->tool_text, "Tags stripped.\n");
+    else
+        furi_string_cat(app->tool_text, "All isolated OK.\n");
 
     lan_tester_save_and_notify(app, "vlan_hop.txt", app->tool_text);
 }
