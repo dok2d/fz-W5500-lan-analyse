@@ -38,9 +38,9 @@ jobs:
 
           # Extract changelog section for this version
           NOTES=$(awk -v ver="$VERSION" '
-            /^## \[/ {
+            /^# [0-9]/ {
               if (found) exit
-              if (index($0, "[" ver "]")) { found=1; next }
+              if (index($0, ver)) { found=1; next }
             }
             found { print }
           ' CHANGELOG.md)
