@@ -3942,8 +3942,8 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
     /* Save results to SD card */
     lan_tester_save_and_notify(app, "arp_scan.txt", app->tool_text);
 
-    /* Show interactive host list if hosts were found */
-    if(app->discovered_host_count > 0 && app->worker_running) {
+    /* Show interactive host list if hosts were found (even if scan was interrupted) */
+    if(app->discovered_host_count > 0) {
         view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_SHOW_HOST_LIST);
     }
 }
@@ -4526,8 +4526,8 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app) {
     furi_string_free(results);
     lan_tester_save_and_notify(app, "ping_sweep.txt", app->tool_text);
 
-    /* Show interactive host list if hosts were found */
-    if(app->discovered_host_count > 0 && app->worker_running) {
+    /* Show interactive host list if hosts were found (even if scan was interrupted) */
+    if(app->discovered_host_count > 0) {
         view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_SHOW_HOST_LIST);
     }
 }
