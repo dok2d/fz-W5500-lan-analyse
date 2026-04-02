@@ -199,8 +199,10 @@ bool netbios_node_status(const uint8_t target_ip[4], NetbiosQueryResult* result)
         return false;
     }
 
+    uint8_t* rx_buf = malloc(512);
+    if(!rx_buf) { close(NBNS_SOCK); return false; }
+
     uint32_t start = furi_get_tick();
-    uint8_t rx_buf[512];
     bool got_reply = false;
 
     while((furi_get_tick() - start) < NBNS_TIMEOUT_MS) {
@@ -208,7 +210,7 @@ bool netbios_node_status(const uint8_t target_ip[4], NetbiosQueryResult* result)
         if(rx_len > 0) {
             uint8_t from_ip[4];
             uint16_t from_port;
-            int32_t recv_len = recvfrom(NBNS_SOCK, rx_buf, sizeof(rx_buf), from_ip, &from_port);
+            int32_t recv_len = recvfrom(NBNS_SOCK, rx_buf, 512, from_ip, &from_port);
             if(recv_len > 0) {
                 nbns_parse_response(rx_buf, (uint16_t)recv_len, txn_id, result);
                 if(result->valid) {
@@ -220,6 +222,7 @@ bool netbios_node_status(const uint8_t target_ip[4], NetbiosQueryResult* result)
         furi_delay_ms(10);
     }
 
+    free(rx_buf);
     close(NBNS_SOCK);
     return got_reply;
 }

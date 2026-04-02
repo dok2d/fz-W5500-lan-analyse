@@ -87,10 +87,19 @@ bool tftp_client_get(
     }
 
     /* Send RRQ */
-    uint8_t pkt[600];
-    uint16_t pkt_len = tftp_build_rrq(pkt, sizeof(pkt), filename);
+    uint8_t* pkt = malloc(600);
+    if(!pkt) {
+        strncpy(result->error_msg, "Memory alloc failed", sizeof(result->error_msg));
+        storage_file_close(file);
+        storage_file_free(file);
+        furi_record_close(RECORD_STORAGE);
+        close(TFTP_SOCK);
+        return false;
+    }
+    uint16_t pkt_len = tftp_build_rrq(pkt, 600, filename);
     if(pkt_len == 0) {
         strncpy(result->error_msg, "Filename too long", sizeof(result->error_msg));
+        free(pkt);
         storage_file_close(file);
         storage_file_free(file);
         furi_record_close(RECORD_STORAGE);
@@ -181,6 +190,7 @@ bool tftp_client_get(
     }
 
 done:
+    free(pkt);
     storage_file_close(file);
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);

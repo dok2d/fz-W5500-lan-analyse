@@ -340,15 +340,18 @@ static bool snmp_query_oid(
     const uint8_t* oid,
     uint8_t oid_len,
     SnmpGetResult* result) {
-    uint8_t pkt[256];
-    uint16_t pkt_len = snmp_build_get(pkt, sizeof(pkt), community, use_v2c, request_id, oid, oid_len);
-    if(pkt_len == 0) return false;
+    uint8_t* pkt = malloc(256);
+    if(!pkt) return false;
+
+    uint16_t pkt_len = snmp_build_get(pkt, 256, community, use_v2c, request_id, oid, oid_len);
+    if(pkt_len == 0) { free(pkt); return false; }
 
     close(SNMP_SOCK);
-    if(socket(SNMP_SOCK, Sn_MR_UDP, SNMP_LOCAL_PORT, 0) != SNMP_SOCK) return false;
+    if(socket(SNMP_SOCK, Sn_MR_UDP, SNMP_LOCAL_PORT, 0) != SNMP_SOCK) { free(pkt); return false; }
 
     if(sendto(SNMP_SOCK, pkt, pkt_len, (uint8_t*)target_ip, SNMP_PORT) <= 0) {
         close(SNMP_SOCK);
+        free(pkt);
         return false;
     }
 
@@ -360,7 +363,7 @@ static bool snmp_query_oid(
         if(rx_len > 0) {
             uint8_t from_ip[4];
             uint16_t from_port;
-            int32_t recv_len = recvfrom(SNMP_SOCK, pkt, sizeof(pkt), from_ip, &from_port);
+            int32_t recv_len = recvfrom(SNMP_SOCK, pkt, 256, from_ip, &from_port);
             if(recv_len > 0) {
                 snmp_parse_response(pkt, (uint16_t)recv_len, result);
                 got_reply = true;
@@ -371,6 +374,7 @@ static bool snmp_query_oid(
     }
 
     close(SNMP_SOCK);
+    free(pkt);
     return got_reply;
 }
 

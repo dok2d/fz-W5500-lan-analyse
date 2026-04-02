@@ -223,7 +223,12 @@ bool radius_test(
     }
 
     /* Build Access-Request */
-    uint8_t pkt[300];
+    uint8_t* pkt = malloc(300);
+    if(!pkt) {
+        strncpy(result->status_str, "Memory failed", sizeof(result->status_str));
+        close(RADIUS_SOCK);
+        return false;
+    }
     uint16_t idx = 0;
 
     /* Code: Access-Request */
@@ -272,6 +277,7 @@ bool radius_test(
 
     /* Send */
     if(sendto(RADIUS_SOCK, pkt, idx, (uint8_t*)server_ip, RADIUS_PORT) <= 0) {
+        free(pkt);
         close(RADIUS_SOCK);
         strncpy(result->status_str, "Send failed", sizeof(result->status_str));
         return false;
@@ -311,6 +317,7 @@ bool radius_test(
         furi_delay_ms(10);
     }
 
+    free(pkt);
     close(RADIUS_SOCK);
 
     if(!result->response_received) {

@@ -1177,9 +1177,8 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     memset(app, 0, sizeof(LanTesterApp));
     g_app = app;
 
-    /* Allocate frame buffer on heap */
-    app->frame_buf = malloc(FRAME_BUF_SIZE);
-    furi_assert(app->frame_buf);
+    /* Frame buffer lazy-allocated in ensure_w5500() to save 1.6KB at idle */
+    app->frame_buf = NULL;
 
     /* Set default MAC (derived from device UID for uniqueness) */
     lan_tester_generate_default_mac(app->mac_addr);
@@ -2333,6 +2332,16 @@ static bool lan_tester_ensure_w5500(LanTesterApp* app) {
         FURI_LOG_E(TAG, "W5500 not found (bad VERSIONR)");
         w5500_hal_deinit();
         return false;
+    }
+
+    /* Lazy-allocate frame buffer on first W5500 use */
+    if(!app->frame_buf) {
+        app->frame_buf = malloc(FRAME_BUF_SIZE);
+        if(!app->frame_buf) {
+            FURI_LOG_E(TAG, "frame_buf malloc failed");
+            w5500_hal_deinit();
+            return false;
+        }
     }
 
     w5500_hal_set_mac(app->mac_addr);

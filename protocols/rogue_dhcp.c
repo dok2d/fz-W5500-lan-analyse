@@ -158,9 +158,12 @@ bool rogue_dhcp_detect(const uint8_t our_mac[6], RogueDhcpState* state, uint32_t
     uint32_t xid;
     furi_hal_random_fill_buf((uint8_t*)&xid, 4);
 
-    uint8_t pkt[512];
-    uint16_t pkt_len = build_discover(pkt, sizeof(pkt), our_mac, xid);
+    uint8_t* pkt = malloc(512);
+    if(!pkt) { close(DHCP_SOCK); return false; }
+
+    uint16_t pkt_len = build_discover(pkt, 512, our_mac, xid);
     if(pkt_len == 0) {
+        free(pkt);
         close(DHCP_SOCK);
         return false;
     }
@@ -200,6 +203,7 @@ bool rogue_dhcp_detect(const uint8_t our_mac[6], RogueDhcpState* state, uint32_t
         furi_delay_ms(10);
     }
 
+    free(pkt);
     close(DHCP_SOCK);
 
     state->multiple_servers = (state->server_count > 1);
