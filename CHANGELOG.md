@@ -1,6 +1,7 @@
 # 2.4.1
 
 ## Fixed
+- **Auto Test** instant out-of-memory when launched — worker thread stack reduced from 8 KB to 4 KB and Auto Test LLDP thread from 3 KB to 2 KB, so they fit on a fragmented heap
 - **Settings load/save** stack overflow on main thread (384 and 320 byte buffers moved to heap)
 - **LLDP/CDP** stack overflow during neighbor formatting (two 512 byte buffers replaced with one heap buffer)
 - **STP/VLAN** stack overflow when displaying BPDU details (256 byte buffers moved off stack)

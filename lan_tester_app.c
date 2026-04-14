@@ -2452,7 +2452,11 @@ static void lan_tester_worker_start(LanTesterApp* app, uint32_t op, LanTesterVie
     /* Switch to result view BEFORE starting thread */
     view_dispatcher_switch_to_view(app->view_dispatcher, result_view);
 
-    app->worker_thread = furi_thread_alloc_ex("LanWorker", 8 * 1024, lan_tester_worker_fn, app);
+    /* 4 KB worker stack: with all >128B stack arrays moved to heap/static,
+     * workers no longer need 8 KB. Smaller contiguous allocation greatly
+     * reduces OOM risk on a fragmented 130 KB heap, especially for Auto
+     * Test which also spawns a second (AutoLLDP) thread. */
+    app->worker_thread = furi_thread_alloc_ex("LanWorker", 4 * 1024, lan_tester_worker_fn, app);
     furi_thread_start(app->worker_thread);
 }
 
@@ -5757,8 +5761,10 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
             furi_mutex_acquire(app->autotest_lldp_mutex, FuriWaitForever);
             furi_string_reset(app->autotest_lldp_result);
             furi_mutex_release(app->autotest_lldp_mutex);
+            /* 2 KB: thread only runs the MACRAW recv loop + LLDP/CDP parse,
+             * which use no large stack buffers after the crash-fix audit. */
             app->autotest_lldp_thread =
-                furi_thread_alloc_ex("AutoLLDP", 3 * 1024, autotest_lldp_thread_fn, app);
+                furi_thread_alloc_ex("AutoLLDP", 2 * 1024, autotest_lldp_thread_fn, app);
             furi_thread_start(app->autotest_lldp_thread);
 
             /* Step 2: DHCP (Socket 1 — no conflict with LLDP) */
