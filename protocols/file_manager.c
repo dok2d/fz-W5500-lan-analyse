@@ -385,8 +385,9 @@ static void
             entries[j] = tmp;
         }
 
-        /* Stream each row directly — no HTML accumulation */
-        char esc_name[FM_NAME_MAX * 5]; /* worst case: every char escaped */
+        /* Stream each row directly — no HTML accumulation
+         * Static to avoid 320B stack usage; worker is single-threaded */
+        static char esc_name[FM_NAME_MAX * 5]; /* worst case: every char escaped */
         for(uint16_t i = 0; i < entry_count; i++) {
             html_escape(entries[i].name, esc_name, sizeof(esc_name));
             if(entries[i].is_dir) {
@@ -502,8 +503,9 @@ static void handle_download(
     }
     safe_name[si] = '\0';
 
-    /* Send response headers */
-    char hdr[192];
+    /* Send response headers
+     * Static to avoid 192B stack usage; worker is single-threaded */
+    static char hdr[192];
     snprintf(
         hdr,
         sizeof(hdr),

@@ -140,8 +140,15 @@ static void lan_tester_settings_load(LanTesterApp* app) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);
     if(storage_file_open(file, SETTINGS_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
-        char buf[384];
-        uint16_t read = storage_file_read(file, buf, sizeof(buf) - 1);
+        /* Heap-allocated to avoid 384-byte stack usage on 4KB main thread */
+        char* buf = malloc(384);
+        if(!buf) {
+            storage_file_close(file);
+            storage_file_free(file);
+            furi_record_close(RECORD_STORAGE);
+            return;
+        }
+        uint16_t read = storage_file_read(file, buf, 383);
         buf[read] = '\0';
         storage_file_close(file);
         if(strstr(buf, "autosave=0")) app->setting_autosave = false;
@@ -192,6 +199,7 @@ static void lan_tester_settings_load(LanTesterApp* app) {
             if(val >= 10 && val <= 60) app->autotest_lldp_wait_s = (uint8_t)val;
         }
         if(strstr(buf, "autotest_arp=0")) app->autotest_arp_enabled = false;
+        free(buf);
     }
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
@@ -202,10 +210,17 @@ static void lan_tester_settings_save(LanTesterApp* app) {
     storage_simply_mkdir(storage, APP_DATA_PATH(""));
     File* file = storage_file_alloc(storage);
     if(storage_file_open(file, SETTINGS_PATH, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
-        char buf[320];
+        /* Heap-allocated to avoid 320-byte stack usage on 4KB main thread */
+        char* buf = malloc(320);
+        if(!buf) {
+            storage_file_close(file);
+            storage_file_free(file);
+            furi_record_close(RECORD_STORAGE);
+            return;
+        }
         snprintf(
             buf,
-            sizeof(buf),
+            320,
             "autosave=%d\nsound=%d\ndns_custom=%d\ndns_ip=%s\n"
             "ping_count=%d\nping_timeout=%d\nping_interval=%d\n"
             "autotest_dns=%s\nautotest_lldp_wait=%d\nautotest_arp=%d\n",
@@ -221,6 +236,7 @@ static void lan_tester_settings_save(LanTesterApp* app) {
             app->autotest_arp_enabled ? 1 : 0);
         storage_file_write(file, buf, strlen(buf));
         storage_file_close(file);
+        free(buf);
     }
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
@@ -1646,6 +1662,9 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         false);
     view_dispatcher_add_view(app->view_dispatcher, LanTesterViewEthBridge, app->view_bridge);
     app->bridge_state = malloc(sizeof(EthBridgeState));
+    if(app->bridge_state) {
+        memset(app->bridge_state, 0, sizeof(EthBridgeState));
+    }
 
     /* PXE Server views */
 
@@ -1872,7 +1891,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "RADIUS, TFTP, NTP,\n"
         "PXE boot/download,\n"
         "rogue DHCP/RA detect.\n"
-        "v2.4.0 | by dok2d\n"
+        "v2.4.1 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
@@ -3738,17 +3757,21 @@ static void lan_tester_do_lldp_cdp(LanTesterApp* app) {
     /* Format results */
     furi_string_reset(app->tool_text);
 
-    if(lldp_neighbor.valid) {
-        char lldp_buf[512];
-        lldp_format_neighbor(&lldp_neighbor, lldp_buf, sizeof(lldp_buf));
-        furi_string_cat_str(app->tool_text, lldp_buf);
-    }
-
-    if(cdp_neighbor.valid) {
-        char cdp_buf[512];
-        cdp_format_neighbor(&cdp_neighbor, cdp_buf, sizeof(cdp_buf));
-        if(lldp_neighbor.valid) furi_string_cat_str(app->tool_text, "\n");
-        furi_string_cat_str(app->tool_text, cdp_buf);
+    /* Heap-allocate formatting buffer to avoid 1 KB of stack usage (2x512) */
+    if(lldp_neighbor.valid || cdp_neighbor.valid) {
+        char* fmt_buf = malloc(512);
+        if(fmt_buf) {
+            if(lldp_neighbor.valid) {
+                lldp_format_neighbor(&lldp_neighbor, fmt_buf, 512);
+                furi_string_cat_str(app->tool_text, fmt_buf);
+            }
+            if(cdp_neighbor.valid) {
+                cdp_format_neighbor(&cdp_neighbor, fmt_buf, 512);
+                if(lldp_neighbor.valid) furi_string_cat_str(app->tool_text, "\n");
+                furi_string_cat_str(app->tool_text, fmt_buf);
+            }
+            free(fmt_buf);
+        }
     }
 
     if(!found) {
@@ -4772,7 +4795,8 @@ static void lan_tester_do_stp_vlan(LanTesterApp* app) {
                 (unsigned long)(timeout_ms / 1000));
 
             if(bpdu.valid) {
-                char bpdu_buf[256];
+                /* Static to avoid 256B stack usage; worker is single-threaded */
+                static char bpdu_buf[256];
                 stp_format_bpdu(&bpdu, bpdu_buf, sizeof(bpdu_buf));
                 furi_string_cat_str(app->tool_text, bpdu_buf);
             } else {
@@ -4804,7 +4828,8 @@ static void lan_tester_do_stp_vlan(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     if(bpdu.valid) {
-        char bpdu_buf[256];
+        /* Static to avoid 256B stack usage; worker is single-threaded */
+        static char bpdu_buf[256];
         stp_format_bpdu(&bpdu, bpdu_buf, sizeof(bpdu_buf));
         furi_string_cat_str(app->tool_text, bpdu_buf);
     } else {
@@ -5275,6 +5300,13 @@ static void lan_tester_do_eth_bridge(LanTesterApp* app) {
             vm->status_line = (msg); \
         },                           \
         true)
+
+    /* Guard: bridge_state must have been allocated at startup */
+    if(!app->bridge_state) {
+        BRIDGE_SET_STATUS("Bridge state alloc\nfailed at startup.");
+        if(app->setting_sound) notification_message(app->notifications, &sequence_error);
+        return;
+    }
 
     /* Step 1: Initialize W5500 */
     if(!lan_tester_ensure_w5500(app)) {

@@ -215,7 +215,8 @@ static uint8_t radius_encode_password(
     memcpy(padded, password, pw_len);
 
     uint8_t secret_len = (uint8_t)strlen(secret);
-    uint8_t hash_input[180]; /* secret + authenticator or previous block */
+    /* Static to avoid 180B stack usage; worker is single-threaded */
+    static uint8_t hash_input[180]; /* secret + authenticator or previous block */
 
     /* First block: MD5(secret + authenticator) */
     memcpy(hash_input, secret, secret_len);
@@ -324,7 +325,9 @@ bool radius_test(
         if(rx_len > 0) {
             uint8_t from_ip[4];
             uint16_t from_port;
-            int32_t recv_len = recvfrom(RADIUS_SOCK, pkt, sizeof(pkt), from_ip, &from_port);
+            /* pkt is a pointer here (malloc'd 300 bytes), so we must pass the
+             * explicit buffer size — sizeof(pkt) would be 4 (pointer size). */
+            int32_t recv_len = recvfrom(RADIUS_SOCK, pkt, 300, from_ip, &from_port);
             if(recv_len >= 20) {
                 result->code = pkt[0];
                 result->identifier = pkt[1];

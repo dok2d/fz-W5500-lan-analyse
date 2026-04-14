@@ -8,7 +8,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Build](https://img.shields.io/badge/build-ufbt-yellow)
-![Version](https://img.shields.io/badge/version-2.4.0-brightgreen)
+![Version](https://img.shields.io/badge/version-2.4.1-brightgreen)
 
 **[English docs](docs/en/README.md)** | **[Документация на русском](docs/ru/README.md)**
 

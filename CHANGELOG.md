@@ -1,3 +1,18 @@
+# 2.4.1
+
+## Fixed
+- **Settings load/save** stack overflow on main thread (384 and 320 byte buffers moved to heap)
+- **LLDP/CDP** stack overflow during neighbor formatting (two 512 byte buffers replaced with one heap buffer)
+- **STP/VLAN** stack overflow when displaying BPDU details (256 byte buffers moved off stack)
+- **DNS poison check** stack overflow in query buffer (256 bytes)
+- **VLAN hopping** stack overflow in receive buffer (256 bytes)
+- **EAPOL probe** stack overflow in receive buffer (256 bytes)
+- **RADIUS client** stack overflow in MD5 hash buffer (180 bytes) and broken response parsing
+- **Rogue DHCP** detection broken response parsing — receive size was pointer size, not buffer size
+- **TFTP client** broken file download — receive size was pointer size, not buffer size
+- **File Manager** stack overflow in HTML escape buffer (320 bytes) and response header (192 bytes)
+- **ETH Bridge** crash if bridge state allocation failed at startup — now guarded
+
 # 2.4.0
 
 ## Added
