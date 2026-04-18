@@ -45,7 +45,6 @@ typedef enum {
     LanTesterViewToolResult, /* shared TextBox for all tools */
     LanTesterViewToolInput, /* shared TextInput for all tools */
     LanTesterViewToolByteInput, /* shared ByteInput for MAC entry */
-    LanTesterViewCount,
 } LanTesterView;
 
 /* Main menu item indices */
@@ -87,7 +86,6 @@ typedef enum {
     LanTesterMenuItemVlanHopCustom,
     LanTesterMenuItemTftpClient,
     LanTesterMenuItemIpmiClient,
-    LanTesterMenuItemRadiusClient,
     LanTesterMenuItemPxeDownload,
 } LanTesterMenuItem;
 
@@ -153,7 +151,6 @@ struct LanTesterApp {
 
     /* W5500 state */
     bool w5500_initialized;
-    bool spi_acquired;
     bool link_up;
     uint8_t link_speed; /* 0 = 10M, 1 = 100M */
     uint8_t link_duplex; /* 0 = half, 1 = full */
@@ -284,16 +281,9 @@ struct LanTesterApp {
     char tftp_filename_input[64];
     uint8_t ipmi_target[4];
     char ipmi_ip_input[16];
-    uint8_t radius_target[4];
-    char radius_ip_input[16];
     /* VLAN Hop state */
     bool vlan_hop_custom;
     char vlan_hop_input[32]; /* comma-separated VLAN IDs */
-
-    char radius_secret_input[32];
-    char radius_user_input[32];
-    char radius_pass_input[32];
-    uint8_t radius_input_step;
 
     /* Security category submenu */
     Submenu* submenu_cat_security;

@@ -195,8 +195,6 @@ bool ipmi_query(const uint8_t target_ip[4], IpmiResult* result) {
            target_ip, IPMI_NETFN_CHASSIS, IPMI_CMD_GET_CHASSIS_STATUS, 1, &data, &data_len)) {
         if(data_len >= 3) {
             result->power_state = data[0];
-            result->last_event = data[1];
-            result->misc_state = data[2];
             result->chassis_ok = true;
         }
     }
