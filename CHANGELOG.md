@@ -1,3 +1,26 @@
+# 2.6.0
+
+## Added
+- **Port Scan (Custom)** available from Discovered Hosts actions menu
+- **Discovered Hosts pagination** — browse all found hosts in pages of 24
+- **Ping Sweep** and **ARP Scan** no longer have host count limits (results stored on SD card)
+- **ARP Scan** dedup array supports up to 1024 hosts (was 128)
+
+## Improved
+- **Ping Sweep** progress bar on header line, compact format: found/scanned/total
+- **Ping Sweep** BACK button now interrupts immediately (was blocked by ping timeout)
+- **ARP Scan** results written to SD during scan (no large heap buffer at finish)
+- **ARP Scan** dedup uses 2 bytes per host instead of 16 (same 2 KB, 4x more hosts)
+- Worker thread allocated once at startup, reused for all tools (eliminates heap fragmentation)
+- Discovered Hosts loaded from SD card in single file pass per page (was N file opens per host)
+- Storage API opened once per scan, not per host (was 176 open/close cycles)
+- Progress bar uses fixed-width characters (no visual jitter on Flipper font)
+
+## Fixed
+- **Ping Sweep** crash when clicking host after large scan (worker thread OOM)
+- **ARP Scan** out of memory on networks with >128 hosts
+- **Discovered Hosts** out of memory with >64 hosts in submenu
+
 # 2.5.0
 
 ## Improved

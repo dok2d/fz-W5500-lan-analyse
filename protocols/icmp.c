@@ -23,7 +23,8 @@ bool icmp_ping(
     const uint8_t target_ip[4],
     uint16_t seq,
     uint32_t timeout_ms,
-    PingResult* result) {
+    PingResult* result,
+    const volatile bool* running) {
     furi_assert(result);
 
     memcpy(result->target_ip, target_ip, 4);
@@ -82,6 +83,10 @@ bool icmp_ping(
     uint16_t from_port;
 
     while(furi_get_tick() - start_tick < timeout_ms) {
+        if(running && !*running) {
+            close(socket_num);
+            return false;
+        }
         uint16_t rx_size = getSn_RX_RSR(socket_num);
         if(rx_size > 0) {
             int32_t received =

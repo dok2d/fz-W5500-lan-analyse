@@ -62,6 +62,137 @@
 #define CUSTOM_EVENT_CONT_PING_BACK   3
 #define CUSTOM_EVENT_SHOW_HOST_LIST   4
 
+/* File-backed discovered hosts (replaces in-memory array) */
+#define SCAN_RESULTS_PATH APP_DATA_PATH("last_scan.txt")
+
+/* Pagination for host list submenu */
+#define HOST_LIST_PAGE_SIZE 24
+#define HOST_LIST_IDX_PREV  0xFFFE
+#define HOST_LIST_IDX_NEXT  0xFFFF
+
+/** Clear scan results file. */
+static void scan_results_clear(void) {
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    storage_simply_remove(storage, SCAN_RESULTS_PATH);
+    furi_record_close(RECORD_STORAGE);
+}
+
+/* Persistent scan results writer — opened once, closed after scan */
+static Storage* scan_storage = NULL;
+static File* scan_file = NULL;
+
+static bool scan_results_open_writer(void) {
+    scan_storage = furi_record_open(RECORD_STORAGE);
+    scan_file = storage_file_alloc(scan_storage);
+    if(!storage_file_open(scan_file, SCAN_RESULTS_PATH, FSAM_WRITE, FSOM_OPEN_APPEND)) {
+        storage_file_free(scan_file);
+        scan_file = NULL;
+        furi_record_close(RECORD_STORAGE);
+        scan_storage = NULL;
+        return false;
+    }
+    return true;
+}
+
+static void scan_results_close_writer(void) {
+    if(scan_file) {
+        storage_file_close(scan_file);
+        storage_file_free(scan_file);
+        scan_file = NULL;
+    }
+    if(scan_storage) {
+        furi_record_close(RECORD_STORAGE);
+        scan_storage = NULL;
+    }
+}
+
+/** Append one host. Call between open_writer/close_writer. */
+static void scan_results_add(const uint8_t ip[4], const uint8_t* mac) {
+    if(!scan_file) return;
+    char line[36];
+    int len;
+    if(mac) {
+        len = snprintf(
+            line,
+            sizeof(line),
+            "%d.%d.%d.%d,%02X:%02X:%02X:%02X:%02X:%02X\n",
+            ip[0],
+            ip[1],
+            ip[2],
+            ip[3],
+            mac[0],
+            mac[1],
+            mac[2],
+            mac[3],
+            mac[4],
+            mac[5]);
+    } else {
+        len = snprintf(line, sizeof(line), "%d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
+    }
+    storage_file_write(scan_file, line, (uint16_t)len);
+}
+
+/** Read host at index from scan results. Returns false if index out of range. */
+static bool
+    scan_results_read(uint16_t index, uint8_t ip_out[4], uint8_t mac_out[6], bool* has_mac) {
+    bool found = false;
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* f = storage_file_alloc(storage);
+    if(storage_file_open(f, SCAN_RESULTS_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        char line[36];
+        uint16_t line_idx = 0;
+        uint16_t pos = 0;
+        char ch;
+        while(storage_file_read(f, &ch, 1) == 1) {
+            if(ch == '\n') {
+                if(line_idx == index) {
+                    line[pos] = '\0';
+                    /* Parse IP */
+                    unsigned a, b, c, d;
+                    if(sscanf(line, "%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
+                        ip_out[0] = a;
+                        ip_out[1] = b;
+                        ip_out[2] = c;
+                        ip_out[3] = d;
+                        /* Check for MAC after comma */
+                        char* comma = strchr(line, ',');
+                        if(comma && mac_out) {
+                            unsigned m[6];
+                            if(sscanf(
+                                   comma + 1,
+                                   "%02X:%02X:%02X:%02X:%02X:%02X",
+                                   &m[0],
+                                   &m[1],
+                                   &m[2],
+                                   &m[3],
+                                   &m[4],
+                                   &m[5]) == 6) {
+                                for(int i = 0; i < 6; i++)
+                                    mac_out[i] = (uint8_t)m[i];
+                                if(has_mac) *has_mac = true;
+                            } else {
+                                if(has_mac) *has_mac = false;
+                            }
+                        } else {
+                            if(has_mac) *has_mac = false;
+                        }
+                        found = true;
+                    }
+                    break;
+                }
+                line_idx++;
+                pos = 0;
+            } else if(pos < sizeof(line) - 1) {
+                line[pos++] = ch;
+            }
+        }
+    }
+    storage_file_close(f);
+    storage_file_free(f);
+    furi_record_close(RECORD_STORAGE);
+    return found;
+}
+
 /* Global app pointer for navigation callbacks (single-instance app) */
 static LanTesterApp* g_app = NULL;
 
@@ -258,6 +389,7 @@ static uint32_t lan_tester_nav_back_host_list(void* context);
 static uint32_t lan_tester_nav_back_host_actions(void* context);
 static bool lan_tester_nav_event_cb(void* context);
 static bool lan_tester_custom_event_cb(void* context, uint32_t event);
+static int32_t lan_tester_worker_fn(void* context);
 static void lan_tester_worker_stop(LanTesterApp* app);
 static void lan_tester_worker_start(LanTesterApp* app, uint32_t op, LanTesterView result_view);
 static void lan_tester_update_view(TextBox* tb, FuriString* text);
@@ -307,6 +439,8 @@ static void lan_tester_do_ipmi_client(LanTesterApp* app);
 static void lan_tester_do_pxe_download(LanTesterApp* app);
 static uint32_t lan_tester_nav_back_tool(void* context);
 static void lan_tester_history_populate(LanTesterApp* app);
+static void lan_tester_populate_host_list(LanTesterApp* app);
+static void lan_tester_port_scan_start_callback(void* context);
 static void lan_tester_history_file_callback(void* context, uint32_t index);
 static void lan_tester_mac_changer_input_callback(void* context);
 static void lan_tester_stop_worker_on_back(void);
@@ -439,7 +573,8 @@ static bool bridge_input_callback(InputEvent* event, void* context) {
 #define HOST_ACTION_NETBIOS       6
 #define HOST_ACTION_SNMP          7
 #define HOST_ACTION_IPMI          8
-#define HOST_ACTION_WOL           9
+#define HOST_ACTION_PORT_SCAN_CUS 9
+#define HOST_ACTION_WOL           10
 
 static uint32_t lan_tester_nav_back_host_list(void* context) {
     UNUSED(context);
@@ -455,10 +590,11 @@ static void lan_tester_host_action_callback(void* context, uint32_t index) {
     LanTesterApp* app = context;
     if(app->selected_host_idx >= app->discovered_host_count) return;
 
-    DiscoveredHost* host = &app->discovered_hosts[app->selected_host_idx];
+    uint8_t host_ip[4], host_mac[6];
+    bool host_has_mac = false;
+    if(!scan_results_read(app->selected_host_idx, host_ip, host_mac, &host_has_mac)) return;
     char ip_str[16];
-    snprintf(
-        ip_str, sizeof(ip_str), "%d.%d.%d.%d", host->ip[0], host->ip[1], host->ip[2], host->ip[3]);
+    pkt_format_ip(host_ip, ip_str);
 
     /* Back from tool result returns to host actions menu */
     app->tool_back_view = LanTesterViewHostActions;
@@ -467,11 +603,11 @@ static void lan_tester_host_action_callback(void* context, uint32_t index) {
     case HOST_ACTION_INFO: {
         furi_string_reset(app->tool_text);
         furi_string_cat_printf(app->tool_text, "Host Info\n\nIP: %s\n", ip_str);
-        if(host->has_mac) {
+        if(host_has_mac) {
             char mac_str[18];
-            pkt_format_mac(host->mac, mac_str);
+            pkt_format_mac(host_mac, mac_str);
             furi_string_cat_printf(app->tool_text, "MAC: %s\n", mac_str);
-            const char* vendor = oui_lookup(host->mac);
+            const char* vendor = oui_lookup(host_mac);
             furi_string_cat_printf(app->tool_text, "Vendor: %s\n", vendor);
         } else {
             furi_string_cat(app->tool_text, "MAC: unknown\n");
@@ -481,20 +617,20 @@ static void lan_tester_host_action_callback(void* context, uint32_t index) {
         break;
     }
     case HOST_ACTION_PING:
-        memcpy(app->ping_ip_custom, host->ip, 4);
+        memcpy(app->ping_ip_custom, host_ip, 4);
         strncpy(app->ping_ip_input, ip_str, sizeof(app->ping_ip_input));
         lan_tester_show_view(
             app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Initializing...\n");
         lan_tester_worker_start(app, LanTesterMenuItemPing, LanTesterViewToolResult);
         break;
     case HOST_ACTION_CONT_PING:
-        memcpy(app->cont_ping_target, host->ip, 4);
+        memcpy(app->cont_ping_target, host_ip, 4);
         strncpy(app->cont_ping_ip_input, ip_str, sizeof(app->cont_ping_ip_input));
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewContPing);
         lan_tester_worker_start(app, LanTesterMenuItemContPing, LanTesterViewContPing);
         break;
     case HOST_ACTION_TRACEROUTE:
-        memcpy(app->traceroute_target, host->ip, 4);
+        memcpy(app->traceroute_target, host_ip, 4);
         strncpy(app->traceroute_host_input, ip_str, sizeof(app->traceroute_host_input));
         app->traceroute_is_hostname = false;
         furi_string_set(app->tool_text, "Initializing...\n");
@@ -502,7 +638,7 @@ static void lan_tester_host_action_callback(void* context, uint32_t index) {
         lan_tester_worker_start(app, LanTesterMenuItemTraceroute, LanTesterViewToolResult);
         break;
     case HOST_ACTION_PORT_SCAN_20:
-        memcpy(app->port_scan_target, host->ip, 4);
+        memcpy(app->port_scan_target, host_ip, 4);
         strncpy(app->port_scan_ip_input, ip_str, sizeof(app->port_scan_ip_input));
         app->port_scan_top100 = false;
         app->port_scan_custom = false;
@@ -511,7 +647,7 @@ static void lan_tester_host_action_callback(void* context, uint32_t index) {
         lan_tester_worker_start(app, LanTesterMenuItemPortScan, LanTesterViewToolResult);
         break;
     case HOST_ACTION_PORT_SCAN_100:
-        memcpy(app->port_scan_target, host->ip, 4);
+        memcpy(app->port_scan_target, host_ip, 4);
         strncpy(app->port_scan_ip_input, ip_str, sizeof(app->port_scan_ip_input));
         app->port_scan_top100 = true;
         app->port_scan_custom = false;
@@ -519,8 +655,24 @@ static void lan_tester_host_action_callback(void* context, uint32_t index) {
         text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
         lan_tester_worker_start(app, LanTesterMenuItemPortScan, LanTesterViewToolResult);
         break;
+    case HOST_ACTION_PORT_SCAN_CUS:
+        memcpy(app->port_scan_target, host_ip, 4);
+        strncpy(app->port_scan_ip_input, ip_str, sizeof(app->port_scan_ip_input));
+        app->port_scan_custom = true;
+        app->tool_back_view = LanTesterViewHostActions;
+        text_input_reset(app->text_input_tool);
+        text_input_set_header_text(app->text_input_tool, "Start port (1-65535):");
+        text_input_set_result_callback(
+            app->text_input_tool,
+            lan_tester_port_scan_start_callback,
+            app,
+            app->port_scan_start_input,
+            sizeof(app->port_scan_start_input),
+            false);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
+        break;
     case HOST_ACTION_NETBIOS:
-        memcpy(app->netbios_target, host->ip, 4);
+        memcpy(app->netbios_target, host_ip, 4);
         strncpy(app->netbios_ip_input, ip_str, sizeof(app->netbios_ip_input));
         lan_tester_show_view(
             app,
@@ -531,22 +683,22 @@ static void lan_tester_host_action_callback(void* context, uint32_t index) {
         lan_tester_worker_start(app, LanTesterMenuItemNetbiosQuery, LanTesterViewToolResult);
         break;
     case HOST_ACTION_SNMP:
-        memcpy(app->snmp_target, host->ip, 4);
+        memcpy(app->snmp_target, host_ip, 4);
         strncpy(app->snmp_ip_input, ip_str, sizeof(app->snmp_ip_input));
         lan_tester_show_view(
             app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Querying SNMP...\n");
         lan_tester_worker_start(app, LanTesterMenuItemSnmpGet, LanTesterViewToolResult);
         break;
     case HOST_ACTION_IPMI:
-        memcpy(app->ipmi_target, host->ip, 4);
+        memcpy(app->ipmi_target, host_ip, 4);
         strncpy(app->ipmi_ip_input, ip_str, sizeof(app->ipmi_ip_input));
         lan_tester_show_view(
             app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Querying IPMI...\n");
         lan_tester_worker_start(app, LanTesterMenuItemIpmiClient, LanTesterViewToolResult);
         break;
     case HOST_ACTION_WOL:
-        if(host->has_mac) {
-            memcpy(app->wol_mac_input, host->mac, 6);
+        if(host_has_mac) {
+            memcpy(app->wol_mac_input, host_mac, 6);
             furi_string_set(app->tool_text, "Sending WOL...\n");
             text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
             lan_tester_worker_start(app, LanTesterMenuItemWol, LanTesterViewToolResult);
@@ -557,17 +709,32 @@ static void lan_tester_host_action_callback(void* context, uint32_t index) {
 
 static void lan_tester_host_list_callback(void* context, uint32_t index) {
     LanTesterApp* app = context;
+
+    /* Handle pagination */
+    if(index == HOST_LIST_IDX_PREV) {
+        if(app->host_list_page > 0) app->host_list_page--;
+        lan_tester_populate_host_list(app);
+        return;
+    }
+    if(index == HOST_LIST_IDX_NEXT) {
+        app->host_list_page++;
+        lan_tester_populate_host_list(app);
+        return;
+    }
+
     if(index >= app->discovered_host_count) return;
 
     app->selected_host_idx = (uint16_t)index;
-    DiscoveredHost* host = &app->discovered_hosts[index];
+
+    uint8_t host_ip[4], host_mac[6];
+    bool host_has_mac = false;
+    if(!scan_results_read(index, host_ip, host_mac, &host_has_mac)) return;
 
     /* Populate host actions submenu */
     submenu_reset(app->submenu_host_actions);
 
     char ip_str[16];
-    snprintf(
-        ip_str, sizeof(ip_str), "%d.%d.%d.%d", host->ip[0], host->ip[1], host->ip[2], host->ip[3]);
+    pkt_format_ip(host_ip, ip_str);
     submenu_set_header(app->submenu_host_actions, ip_str);
 
     submenu_add_item(
@@ -604,6 +771,12 @@ static void lan_tester_host_list_callback(void* context, uint32_t index) {
         app);
     submenu_add_item(
         app->submenu_host_actions,
+        "Port Scan (Custom)",
+        HOST_ACTION_PORT_SCAN_CUS,
+        lan_tester_host_action_callback,
+        app);
+    submenu_add_item(
+        app->submenu_host_actions,
         "NetBIOS Query",
         HOST_ACTION_NETBIOS,
         lan_tester_host_action_callback,
@@ -621,7 +794,7 @@ static void lan_tester_host_list_callback(void* context, uint32_t index) {
         lan_tester_host_action_callback,
         app);
 
-    if(host->has_mac) {
+    if(host_has_mac) {
         submenu_add_item(
             app->submenu_host_actions,
             "Wake-on-LAN",
@@ -633,30 +806,101 @@ static void lan_tester_host_list_callback(void* context, uint32_t index) {
     view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewHostActions);
 }
 
-/* Populate host list submenu from discovered_hosts array */
+/* Populate host list submenu from scan results file (one page, single file read) */
 static void lan_tester_populate_host_list(LanTesterApp* app) {
     submenu_reset(app->submenu_host_list);
-    submenu_set_header(app->submenu_host_list, "Discovered Hosts");
 
-    for(uint16_t i = 0; i < app->discovered_host_count; i++) {
-        DiscoveredHost* h = &app->discovered_hosts[i];
-        /* Use a static buffer — submenu copies the string */
-        char label[40];
-        if(h->has_mac) {
-            const char* vendor = oui_lookup(h->mac);
-            snprintf(
-                label,
-                sizeof(label),
-                "%d.%d.%d.%d (%s)",
-                h->ip[0],
-                h->ip[1],
-                h->ip[2],
-                h->ip[3],
-                vendor);
-        } else {
-            snprintf(label, sizeof(label), "%d.%d.%d.%d", h->ip[0], h->ip[1], h->ip[2], h->ip[3]);
+    uint16_t total = app->discovered_host_count;
+    uint16_t page = app->host_list_page;
+    uint16_t start = page * HOST_LIST_PAGE_SIZE;
+    uint16_t end = start + HOST_LIST_PAGE_SIZE;
+    if(end > total) end = total;
+    uint16_t total_pages = (total + HOST_LIST_PAGE_SIZE - 1) / HOST_LIST_PAGE_SIZE;
+
+    char header[32];
+    if(total_pages <= 1) {
+        snprintf(header, sizeof(header), "Hosts: %d", total);
+    } else {
+        snprintf(header, sizeof(header), "Hosts: %d (%d/%d)", total, page + 1, total_pages);
+    }
+    submenu_set_header(app->submenu_host_list, header);
+
+    if(page > 0) {
+        submenu_add_item(
+            app->submenu_host_list,
+            "< Prev page",
+            HOST_LIST_IDX_PREV,
+            lan_tester_host_list_callback,
+            app);
+    }
+
+    /* Read one page in a single file pass */
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* f = storage_file_alloc(storage);
+    if(storage_file_open(f, SCAN_RESULTS_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        char line[36];
+        uint16_t line_idx = 0;
+        uint16_t pos = 0;
+        char ch;
+        while(storage_file_read(f, &ch, 1) == 1) {
+            if(ch == '\n') {
+                if(line_idx >= start && line_idx < end) {
+                    line[pos] = '\0';
+                    /* Parse IP and optional MAC */
+                    unsigned a, b, c, d;
+                    if(sscanf(line, "%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
+                        char label[40];
+                        char* comma = strchr(line, ',');
+                        if(comma) {
+                            unsigned m[6];
+                            if(sscanf(
+                                   comma + 1,
+                                   "%02X:%02X:%02X:%02X:%02X:%02X",
+                                   &m[0],
+                                   &m[1],
+                                   &m[2],
+                                   &m[3],
+                                   &m[4],
+                                   &m[5]) == 6) {
+                                uint8_t mac[6];
+                                for(int i = 0; i < 6; i++)
+                                    mac[i] = (uint8_t)m[i];
+                                const char* vendor = oui_lookup(mac);
+                                snprintf(
+                                    label, sizeof(label), "%u.%u.%u.%u (%s)", a, b, c, d, vendor);
+                            } else {
+                                snprintf(label, sizeof(label), "%u.%u.%u.%u", a, b, c, d);
+                            }
+                        } else {
+                            snprintf(label, sizeof(label), "%u.%u.%u.%u", a, b, c, d);
+                        }
+                        submenu_add_item(
+                            app->submenu_host_list,
+                            label,
+                            line_idx,
+                            lan_tester_host_list_callback,
+                            app);
+                    }
+                }
+                line_idx++;
+                pos = 0;
+                if(line_idx >= end) break;
+            } else if(pos < sizeof(line) - 1) {
+                line[pos++] = ch;
+            }
         }
-        submenu_add_item(app->submenu_host_list, label, i, lan_tester_host_list_callback, app);
+    }
+    storage_file_close(f);
+    storage_file_free(f);
+    furi_record_close(RECORD_STORAGE);
+
+    if(end < total) {
+        submenu_add_item(
+            app->submenu_host_list,
+            "Next page >",
+            HOST_LIST_IDX_NEXT,
+            lan_tester_host_list_callback,
+            app);
     }
 }
 
@@ -1658,6 +1902,10 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         memset(app->bridge_state, 0, sizeof(EthBridgeState));
     }
 
+    /* Persistent worker thread — allocated once, reused for all tools.
+     * Eliminates 4 KB alloc/free per tool launch (prevents heap fragmentation). */
+    app->worker_thread = furi_thread_alloc_ex("LanWorker", 4 * 1024, lan_tester_worker_fn, app);
+
     /* PXE Server views */
 
     /* PXE defaults */
@@ -1756,6 +2004,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         submenu_get_view(app->submenu_host_actions));
 
     app->discovered_host_count = 0;
+    app->host_list_page = 0;
 
     /* Traceroute views */
     /* Traceroute text input (supports hostnames and IPs) */
@@ -1822,7 +2071,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "TFTP, NTP,\n"
         "PXE boot/download,\n"
         "rogue DHCP/RA detect.\n"
-        "v2.5.0 | by dok2d\n"
+        "v2.6.0 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
@@ -1964,8 +2213,12 @@ static LanTesterApp* lan_tester_app_alloc(void) {
 static void lan_tester_app_free(LanTesterApp* app) {
     furi_assert(app);
 
-    /* Stop worker thread */
+    /* Stop and free worker thread */
     lan_tester_worker_stop(app);
+    if(app->worker_thread) {
+        furi_thread_free(app->worker_thread);
+        app->worker_thread = NULL;
+    }
 
     /* Remove and free views */
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewMainMenu);
@@ -2344,8 +2597,6 @@ static void lan_tester_worker_stop(LanTesterApp* app) {
             close(HTTP_CLIENT_SOCKET);
         }
         furi_thread_join(app->worker_thread);
-        furi_thread_free(app->worker_thread);
-        app->worker_thread = NULL;
     }
 }
 
@@ -2365,8 +2616,8 @@ static void lan_tester_cleanup_tool_state(LanTesterApp* app) {
 }
 
 static void lan_tester_worker_start(LanTesterApp* app, uint32_t op, LanTesterView result_view) {
-    /* If old worker is done, clean it up (non-blocking) */
-    if(app->worker_thread) {
+    /* Wait for previous worker to finish */
+    if(app->worker_thread && furi_thread_get_state(app->worker_thread) != FuriThreadStateStopped) {
         app->worker_running = false;
         if(app->worker_op == LanTesterMenuItemFileManager) {
             close(FILEMGR_HTTP_SOCKET);
@@ -2374,19 +2625,10 @@ static void lan_tester_worker_start(LanTesterApp* app, uint32_t op, LanTesterVie
         if(app->worker_op == LanTesterMenuItemPxeDownload) {
             close(HTTP_CLIENT_SOCKET);
         }
-        if(furi_thread_get_state(app->worker_thread) == FuriThreadStateStopped) {
-            furi_thread_join(app->worker_thread);
-            furi_thread_free(app->worker_thread);
-            app->worker_thread = NULL;
-        } else {
-            /* Old worker still running — force stop and wait (brief) */
-            furi_thread_join(app->worker_thread);
-            furi_thread_free(app->worker_thread);
-            app->worker_thread = NULL;
-        }
+        furi_thread_join(app->worker_thread);
     }
 
-    /* Free leftover state from previous tools before allocating new thread */
+    /* Free leftover state from previous tools */
     lan_tester_cleanup_tool_state(app);
 
     app->worker_op = op;
@@ -2395,8 +2637,7 @@ static void lan_tester_worker_start(LanTesterApp* app, uint32_t op, LanTesterVie
     /* Switch to result view BEFORE starting thread */
     view_dispatcher_switch_to_view(app->view_dispatcher, result_view);
 
-    /* 4 KB worker stack: all >128B stack arrays are heap/static. */
-    app->worker_thread = furi_thread_alloc_ex("LanWorker", 4 * 1024, lan_tester_worker_fn, app);
+    /* Reuse persistent worker thread (allocated once in app_alloc, 4 KB stack) */
     furi_thread_start(app->worker_thread);
 }
 
@@ -2557,20 +2798,20 @@ static bool lan_tester_check_dhcp(LanTesterApp* app) {
 /* ==================== ASCII progress bar ==================== */
 
 /**
- * Generate an ASCII progress bar like "[=========>    ] 75%"
- * buf must be at least 28 bytes.
+ * Generate a fixed-width progress bar: "######======45%"
+ * bar_len: number of #/= chars (pick to fit remaining line width).
+ * buf must be at least bar_len + 4 bytes.
  */
-static void lan_tester_progress_bar(char* buf, size_t buf_size, uint16_t current, uint16_t total) {
+static void lan_tester_progress_bar(char* buf, uint8_t bar_len, uint16_t current, uint16_t total) {
     if(total == 0) total = 1;
     uint8_t pct = (uint8_t)((current * 100) / total);
-    uint8_t filled = (uint8_t)((current * 16) / total);
-    if(filled > 16) filled = 16;
-    char bar[18];
-    for(uint8_t i = 0; i < 16; i++) {
-        bar[i] = (i < filled) ? '#' : '.';
+    if(pct > 99) pct = 99;
+    uint8_t filled = (uint8_t)((uint32_t)current * bar_len / total);
+    if(filled > bar_len) filled = bar_len;
+    for(uint8_t i = 0; i < bar_len; i++) {
+        buf[i] = (i < filled) ? '#' : '=';
     }
-    bar[16] = '\0';
-    snprintf(buf, buf_size, "[%s] %d%%", bar, pct);
+    snprintf(buf + bar_len, 5, "%02d%%", pct);
 }
 
 /* ==================== View update helpers ==================== */
@@ -3691,8 +3932,8 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
         return;
     }
 
-    /* Cap discoverable hosts to ARP_MAX_HOSTS_CAP for RAM safety */
-    uint16_t max_hosts = (num_hosts < ARP_MAX_HOSTS_CAP) ? num_hosts : ARP_MAX_HOSTS_CAP;
+    /* Dedup array: 2 bytes per host (last 2 octets). 1024 hosts = 2 KB. */
+    uint16_t max_dedup = (num_hosts < 1024) ? num_hosts : 1024;
 
     char ip_str[16];
     pkt_format_ip(net_info.ip, ip_str);
@@ -3706,27 +3947,22 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
         return;
     }
 
-    /* Allocate scan state + hosts array on heap */
-    ArpScanState* scan = malloc(sizeof(ArpScanState));
-    if(!scan) {
+    /* Allocate dedup array: last 2 octets per host (same subnet, first 2 always match) */
+    uint8_t(*dedup_ips)[2] = malloc(2 * max_dedup);
+    if(!dedup_ips) {
         furi_string_set(app->tool_text, "Memory alloc failed!\n");
         w5500_hal_close_macraw();
         return;
     }
-    memset(scan, 0, sizeof(ArpScanState));
-    scan->hosts = malloc(sizeof(ArpHost) * max_hosts);
-    if(!scan->hosts) {
-        furi_string_set(app->tool_text, "Memory alloc failed!\n");
-        free(scan);
-        w5500_hal_close_macraw();
-        return;
-    }
-    memset(scan->hosts, 0, sizeof(ArpHost) * max_hosts);
-    scan->max_hosts = max_hosts;
-    scan->scanning = true;
-    scan->start_tick = furi_get_tick();
+    uint16_t found_count = 0;
+    uint16_t total_sent = 0;
+    scan_results_clear();
+    app->discovered_host_count = 0;
+    app->host_list_page = 0;
+    scan_results_open_writer();
 
     /* Send ARP requests in batches */
+    uint32_t scan_start_tick = furi_get_tick();
     uint8_t arp_frame[42];
     uint32_t current_ip = pkt_read_u32_be(start_ip);
     uint32_t last_ip = pkt_read_u32_be(end_ip);
@@ -3738,7 +3974,7 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
         pkt_write_u32_be(target, current_ip);
         arp_build_request(arp_frame, net_info.mac, net_info.ip, target);
         w5500_hal_macraw_send(arp_frame, 42);
-        scan->total_sent++;
+        total_sent++;
         current_ip++;
         batch_count++;
 
@@ -3753,9 +3989,9 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
                 "My IP: %s/%d\nScanning: %d/%d sent\nFound: %d hosts\n",
                 ip_str,
                 prefix,
-                scan->total_sent,
+                total_sent,
                 num_hosts,
-                scan->count);
+                found_count);
             lan_tester_update_view(app->text_box_tool, app->tool_text);
 
             /* Collect any pending replies */
@@ -3765,50 +4001,47 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
 
                 uint8_t sender_mac[6], sender_ip[4];
                 if(arp_parse_reply(app->frame_buf, recv_len, sender_mac, sender_ip)) {
-                    if(scan->count < scan->max_hosts) {
-                        ArpHost* host = &scan->hosts[scan->count];
-                        memcpy(host->ip, sender_ip, 4);
-                        memcpy(host->mac, sender_mac, 6);
-                        const char* vendor = oui_lookup(sender_mac);
-                        host->vendor = vendor;
-                        host->responded = true;
-                        scan->count++;
+                    if(found_count < max_dedup) {
+                        memcpy(dedup_ips[found_count], sender_ip + 2, 2);
+                        scan_results_add(sender_ip, sender_mac);
+                        found_count++;
+                        app->discovered_host_count++;
                     }
                 }
             }
         }
     }
 
-    /* Wait for late replies */
-    furi_string_printf(
-        app->tool_text,
-        "My IP: %s/%d\nAll %d sent, waiting\nfor replies... (%d found)\n",
-        ip_str,
-        prefix,
-        num_hosts,
-        scan->count);
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
+    /* Wait for late replies (skip if interrupted) */
     uint32_t tail_start = furi_get_tick();
+    if(app->worker_running) {
+        furi_string_printf(
+            app->tool_text,
+            "My IP: %s/%d\nAll %d sent, waiting\nfor replies... (%d found)\n",
+            ip_str,
+            prefix,
+            num_hosts,
+            found_count);
+        lan_tester_update_view(app->text_box_tool, app->tool_text);
+    }
     while(furi_get_tick() - tail_start < ARP_TAIL_WAIT_MS && app->worker_running) {
         uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
         if(recv_len > 0) {
             uint8_t sender_mac[6], sender_ip[4];
             if(arp_parse_reply(app->frame_buf, recv_len, sender_mac, sender_ip)) {
-                /* Check for duplicate */
+                /* Check for duplicate (compare last 2 octets — same subnet) */
                 bool duplicate = false;
-                for(uint16_t j = 0; j < scan->count; j++) {
-                    if(memcmp(scan->hosts[j].ip, sender_ip, 4) == 0) {
+                for(uint16_t j = 0; j < found_count; j++) {
+                    if(memcmp(dedup_ips[j], sender_ip + 2, 2) == 0) {
                         duplicate = true;
                         break;
                     }
                 }
-                if(!duplicate && scan->count < scan->max_hosts) {
-                    ArpHost* host = &scan->hosts[scan->count];
-                    memcpy(host->ip, sender_ip, 4);
-                    memcpy(host->mac, sender_mac, 6);
-                    host->vendor = oui_lookup(sender_mac);
-                    host->responded = true;
-                    scan->count++;
+                if(!duplicate && found_count < max_dedup) {
+                    memcpy(dedup_ips[found_count], sender_ip + 2, 2);
+                    scan_results_add(sender_ip, sender_mac);
+                    found_count++;
+                    app->discovered_host_count++;
                 }
             }
         }
@@ -3816,53 +4049,30 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
     }
 
     w5500_hal_close_macraw();
+    scan_results_close_writer();
+    free(dedup_ips);
 
-    scan->elapsed_ms = furi_get_tick() - scan->start_tick;
-    scan->scanning = false;
-    scan->complete = true;
+    uint32_t elapsed_ms = furi_get_tick() - scan_start_tick;
 
-    /* Format results */
-    furi_string_reset(app->tool_text);
+    /* Summary only — full host list available in Discovered Hosts */
     furi_string_printf(
         app->tool_text,
-        "Found %d hosts in %lu.%lus\n\n",
-        scan->count,
-        (unsigned long)(scan->elapsed_ms / 1000),
-        (unsigned long)((scan->elapsed_ms % 1000) / 100));
+        "[ARP Scan] Done\n"
+        "%s/%d\n"
+        "Found: %d hosts\n"
+        "Time: %lu.%lus\n",
+        ip_str,
+        prefix,
+        found_count,
+        (unsigned long)(elapsed_ms / 1000),
+        (unsigned long)((elapsed_ms % 1000) / 100));
 
-    for(uint16_t i = 0; i < scan->count; i++) {
-        ArpHost* h = &scan->hosts[i];
-        char ip_buf[16];
-        pkt_format_ip(h->ip, ip_buf);
-        furi_string_cat_printf(
-            app->tool_text,
-            "%s ..%02X:%02X:%02X\n %s\n",
-            ip_buf,
-            h->mac[3],
-            h->mac[4],
-            h->mac[5],
-            h->vendor);
+    if(found_count == 0) {
+        furi_string_cat(app->tool_text, "No hosts found.\n");
     }
 
-    if(scan->count == 0) {
-        furi_string_cat_str(app->tool_text, "No hosts found.\n");
-    }
-
-    /* Populate discovered hosts for interactive list */
-    app->discovered_host_count = 0;
-    for(uint16_t i = 0; i < scan->count && i < MAX_DISCOVERED_HOSTS; i++) {
-        DiscoveredHost* dh = &app->discovered_hosts[i];
-        memcpy(dh->ip, scan->hosts[i].ip, 4);
-        memcpy(dh->mac, scan->hosts[i].mac, 6);
-        dh->has_mac = true;
-        app->discovered_host_count++;
-    }
-
-    free(scan->hosts);
-    free(scan);
-
-    /* Save results to SD card */
     lan_tester_save_and_notify(app, "arp_scan.txt", app->tool_text);
+    furi_string_reset(app->tool_text);
 
     /* Show interactive host list if hosts were found (even if scan was interrupted) */
     if(app->discovered_host_count > 0) {
@@ -4000,7 +4210,8 @@ static void lan_tester_do_ping(LanTesterApp* app) {
     /* Send pings (count from settings) */
     for(uint16_t i = 1; i <= app->ping_count && app->worker_running; i++) {
         PingResult result;
-        bool ok = icmp_ping(W5500_PING_SOCKET, target_ip, i, app->ping_timeout_ms, &result);
+        bool ok = icmp_ping(
+            W5500_PING_SOCKET, target_ip, i, app->ping_timeout_ms, &result, &app->worker_running);
         if(ok) {
             furi_string_cat_printf(
                 app->tool_text, "#%d: %lu ms\n", i, (unsigned long)result.rtt_ms);
@@ -4309,25 +4520,26 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app) {
         return;
     }
 
-    /* Cap to reasonable number */
-    if(num_hosts > 254) num_hosts = 254;
-
     furi_string_printf(
         app->tool_text,
-        "[Ping Sweep]\n"
-        "Range: %s\n"
-        "Hosts: %d\n\n",
-        app->ping_sweep_ip_input,
+        "[PingSweep]=======00%%\n"
+        "Alive: 0/0/%d\n",
         num_hosts);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    /* Sweep */
+    /* Sweep — results written to file, no memory cap */
     uint32_t current = pkt_read_u32_be(start_ip);
     uint32_t last = pkt_read_u32_be(end_ip);
     uint16_t scanned = 0;
     uint16_t alive = 0;
+    scan_results_clear();
     app->discovered_host_count = 0;
-    FuriString* results = furi_string_alloc();
+    app->host_list_page = 0;
+    scan_results_open_writer();
+
+    /* Keep last 4 IPs in a ring for on-screen display */
+    uint8_t recent_ips[4][4];
+    uint8_t recent_count = 0;
 
     while(current <= last && scanned < num_hosts && app->worker_running) {
         uint8_t target[4];
@@ -4335,64 +4547,70 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app) {
 
         PingResult result;
         bool ok = icmp_ping(
-            W5500_PING_SOCKET, target, (uint16_t)(scanned + 1), app->ping_timeout_ms, &result);
+            W5500_PING_SOCKET,
+            target,
+            (uint16_t)(scanned + 1),
+            app->ping_timeout_ms,
+            &result,
+            &app->worker_running);
         scanned++;
 
         if(ok) {
-            char ip_str[16];
-            pkt_format_ip(target, ip_str);
-            furi_string_cat_printf(
-                results, "  %s: %lu ms\n", ip_str, (unsigned long)result.rtt_ms);
             alive++;
-
-            /* Store for interactive host list */
-            if(app->discovered_host_count < MAX_DISCOVERED_HOSTS) {
-                DiscoveredHost* dh = &app->discovered_hosts[app->discovered_host_count];
-                memcpy(dh->ip, target, 4);
-                memset(dh->mac, 0, 6);
-                dh->has_mac = false;
-                app->discovered_host_count++;
-            }
+            scan_results_add(target, NULL);
+            app->discovered_host_count++;
+            /* Update ring of recent IPs */
+            memcpy(recent_ips[recent_count % 4], target, 4);
+            recent_count++;
         }
 
         /* Update progress every 5 hosts */
         if(scanned % 5 == 0 || current == last) {
-            char progress[28];
-            lan_tester_progress_bar(progress, sizeof(progress), scanned, num_hosts);
+            char progress[20];
+            lan_tester_progress_bar(progress, 7, scanned, num_hosts);
+
             furi_string_printf(
                 app->tool_text,
-                "[Ping Sweep]\n"
-                "%s\n"
-                "Alive: %d/%d scanned\n\n%s",
+                "[PingSweep]%s\n"
+                "Alive: %d/%d/%d\n",
                 progress,
                 alive,
                 scanned,
-                furi_string_get_cstr(results));
+                num_hosts);
+
+            /* Show last few discovered hosts from ring */
+            uint8_t show = recent_count < 4 ? recent_count : 4;
+            uint8_t start = recent_count < 4 ? 0 : recent_count % 4;
+            for(uint8_t j = 0; j < show; j++) {
+                char ip_str[16];
+                pkt_format_ip(recent_ips[(start + j) % 4], ip_str);
+                furi_string_cat_printf(app->tool_text, "%s\n", ip_str);
+            }
             lan_tester_update_view(app->text_box_tool, app->tool_text);
         }
 
         current++;
     }
 
+    scan_results_close_writer();
+
     /* Final results */
     furi_string_printf(
         app->tool_text,
-        "[Ping Sweep]\n"
-        "Range: %s\n"
+        "[PingSweep] Done\n"
+        "%s\n"
         "Scanned: %d\n"
-        "Alive: %d\n\n"
-        "Responding hosts:\n%s",
+        "Alive: %d\n",
         app->ping_sweep_ip_input,
         scanned,
-        alive,
-        furi_string_get_cstr(results));
+        alive);
 
     if(alive == 0) {
-        furi_string_cat_str(app->tool_text, "  (none)\n");
+        furi_string_cat(app->tool_text, "(none)\n");
     }
 
-    furi_string_free(results);
     lan_tester_save_and_notify(app, "ping_sweep.txt", app->tool_text);
+    furi_string_reset(app->tool_text);
 
     /* Show interactive host list if hosts were found (even if scan was interrupted) */
     if(app->discovered_host_count > 0) {
@@ -4848,7 +5066,7 @@ static void lan_tester_do_port_scan(LanTesterApp* app) {
         /* Update progress */
         {
             char progress[28];
-            lan_tester_progress_bar(progress, sizeof(progress), i + 1, port_count);
+            lan_tester_progress_bar(progress, 16, i + 1, port_count);
             furi_string_printf(
                 app->tool_text,
                 "[Port Scan] %s\n"
@@ -4906,7 +5124,12 @@ static void lan_tester_do_cont_ping(LanTesterApp* app) {
     while(app->worker_running) {
         PingResult result;
         bool ok = icmp_ping(
-            W5500_PING_SOCKET, app->cont_ping_target, seq, app->ping_timeout_ms, &result);
+            W5500_PING_SOCKET,
+            app->cont_ping_target,
+            seq,
+            app->ping_timeout_ms,
+            &result,
+            &app->worker_running);
 
         if(ok) {
             ping_graph_add_sample(pg, result.rtt_ms);
@@ -5531,7 +5754,13 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
             /* Step 3: Ping Gateway (Socket 2 — no conflict) */
             if(dhcp_ok && w5500_hal_get_link_status() && app->autotest_running) {
                 PingResult pr;
-                gw_ok = icmp_ping(W5500_PING_SOCKET, app->dhcp_gw, 1, app->ping_timeout_ms, &pr);
+                gw_ok = icmp_ping(
+                    W5500_PING_SOCKET,
+                    app->dhcp_gw,
+                    1,
+                    app->ping_timeout_ms,
+                    &pr,
+                    &app->worker_running);
                 if(gw_ok) {
                     furi_string_cat_printf(body, "GW ping: %lums\n", (unsigned long)pr.rtt_ms);
                 } else {
@@ -5581,8 +5810,13 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                     inet_target[3] = 8;
                 }
                 PingResult ir;
-                bool inet_ok =
-                    icmp_ping(W5500_PING_SOCKET, inet_target, 2, app->ping_timeout_ms, &ir);
+                bool inet_ok = icmp_ping(
+                    W5500_PING_SOCKET,
+                    inet_target,
+                    2,
+                    app->ping_timeout_ms,
+                    &ir,
+                    &app->worker_running);
                 if(inet_ok) {
                     furi_string_cat_printf(body, "Internet: %lums\n", (unsigned long)ir.rtt_ms);
                 } else {

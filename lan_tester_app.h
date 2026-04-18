@@ -103,15 +103,6 @@ typedef struct {
     uint32_t unknown_frames;
 } PacketStats;
 
-/* Discovered host from scan results */
-typedef struct {
-    uint8_t ip[4];
-    uint8_t mac[6];
-    bool has_mac;
-} DiscoveredHost;
-
-#define MAX_DISCOVERED_HOSTS 64
-
 /* Application state */
 struct LanTesterApp {
     Gui* gui;
@@ -240,9 +231,9 @@ struct LanTesterApp {
     /* Discovered hosts from scans */
     Submenu* submenu_host_list;
     Submenu* submenu_host_actions;
-    DiscoveredHost discovered_hosts[MAX_DISCOVERED_HOSTS];
-    uint16_t discovered_host_count;
+    uint16_t discovered_host_count; /* lines in last_scan.txt */
     uint16_t selected_host_idx;
+    uint16_t host_list_page; /* current page in Discovered Hosts (0-based) */
 
     /* Packet Capture state */
     View* view_packet_capture;
