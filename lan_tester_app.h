@@ -258,10 +258,6 @@ struct LanTesterApp {
 
     /* Auto Test runtime */
     volatile bool autotest_running;
-    FuriThread* autotest_lldp_thread;
-    FuriString* autotest_lldp_result;
-    FuriMutex* autotest_lldp_mutex;
-    volatile bool autotest_lldp_done;
 
     /* Auto Test settings */
     char autotest_dns_host[64];

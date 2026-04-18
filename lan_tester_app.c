@@ -140,8 +140,15 @@ static void lan_tester_settings_load(LanTesterApp* app) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);
     if(storage_file_open(file, SETTINGS_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
-        char buf[384];
-        uint16_t read = storage_file_read(file, buf, sizeof(buf) - 1);
+        /* Heap-allocated to avoid 384-byte stack usage on 4KB main thread */
+        char* buf = malloc(384);
+        if(!buf) {
+            storage_file_close(file);
+            storage_file_free(file);
+            furi_record_close(RECORD_STORAGE);
+            return;
+        }
+        uint16_t read = storage_file_read(file, buf, 383);
         buf[read] = '\0';
         storage_file_close(file);
         if(strstr(buf, "autosave=0")) app->setting_autosave = false;
@@ -192,6 +199,7 @@ static void lan_tester_settings_load(LanTesterApp* app) {
             if(val >= 10 && val <= 60) app->autotest_lldp_wait_s = (uint8_t)val;
         }
         if(strstr(buf, "autotest_arp=0")) app->autotest_arp_enabled = false;
+        free(buf);
     }
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
@@ -202,10 +210,17 @@ static void lan_tester_settings_save(LanTesterApp* app) {
     storage_simply_mkdir(storage, APP_DATA_PATH(""));
     File* file = storage_file_alloc(storage);
     if(storage_file_open(file, SETTINGS_PATH, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
-        char buf[320];
+        /* Heap-allocated to avoid 320-byte stack usage on 4KB main thread */
+        char* buf = malloc(320);
+        if(!buf) {
+            storage_file_close(file);
+            storage_file_free(file);
+            furi_record_close(RECORD_STORAGE);
+            return;
+        }
         snprintf(
             buf,
-            sizeof(buf),
+            320,
             "autosave=%d\nsound=%d\ndns_custom=%d\ndns_ip=%s\n"
             "ping_count=%d\nping_timeout=%d\nping_interval=%d\n"
             "autotest_dns=%s\nautotest_lldp_wait=%d\nautotest_arp=%d\n",
@@ -221,6 +236,7 @@ static void lan_tester_settings_save(LanTesterApp* app) {
             app->autotest_arp_enabled ? 1 : 0);
         storage_file_write(file, buf, strlen(buf));
         storage_file_close(file);
+        free(buf);
     }
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
@@ -988,14 +1004,15 @@ static void settings_enter_callback(void* context, uint32_t index) {
         /* Delete all .txt files from history dir without loading full list into RAM */
         Storage* storage = furi_record_open(RECORD_STORAGE);
         File* dir = storage_file_alloc(storage);
-        char dir_path[128];
+        /* Static to avoid 256B combined stack usage (dir_path + fpath) */
+        static char dir_path[128];
         snprintf(dir_path, sizeof(dir_path), "%s", HISTORY_DIR);
         size_t plen = strlen(dir_path);
         if(plen > 1 && dir_path[plen - 1] == '/') dir_path[plen - 1] = '\0';
         if(storage_dir_open(dir, dir_path)) {
             FileInfo finfo;
             char name[HISTORY_FILENAME_LEN];
-            char fpath[128];
+            static char fpath[128];
             while(storage_dir_read(dir, &finfo, name, sizeof(name))) {
                 if(finfo.flags & FSF_DIRECTORY) continue;
                 uint16_t nlen = strlen(name);
@@ -1268,6 +1285,7 @@ static void pxe_settings_refresh(LanTesterApp* app) {
 
 static LanTesterApp* lan_tester_app_alloc(void) {
     LanTesterApp* app = malloc(sizeof(LanTesterApp));
+    if(!app) return NULL;
     memset(app, 0, sizeof(LanTesterApp));
     g_app = app;
 
@@ -1646,6 +1664,9 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         false);
     view_dispatcher_add_view(app->view_dispatcher, LanTesterViewEthBridge, app->view_bridge);
     app->bridge_state = malloc(sizeof(EthBridgeState));
+    if(app->bridge_state) {
+        memset(app->bridge_state, 0, sizeof(EthBridgeState));
+    }
 
     /* PXE Server views */
 
@@ -1811,8 +1832,6 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* mDNS/SSDP Discovery view */
     /* Auto Test view */
     app->autotest_text = furi_string_alloc();
-    app->autotest_lldp_result = furi_string_alloc();
-    app->autotest_lldp_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
     app->text_box_autotest = text_box_alloc();
     text_box_set_font(app->text_box_autotest, TextBoxFontText);
     view_set_previous_callback(
@@ -1845,8 +1864,6 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->autotest_lldp_wait_s = 30;
     app->autotest_arp_enabled = true;
     app->autotest_running = false;
-    app->autotest_lldp_thread = NULL;
-    app->autotest_lldp_done = false;
 
     /* History views */
     app->submenu_history = submenu_alloc();
@@ -1872,7 +1889,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "RADIUS, TFTP, NTP,\n"
         "PXE boot/download,\n"
         "rogue DHCP/RA detect.\n"
-        "v2.4.0 | by dok2d\n"
+        "v2.4.1 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
@@ -2074,8 +2091,6 @@ static void lan_tester_app_free(LanTesterApp* app) {
     furi_string_free(app->tool_text);
     /* history_text removed — history now uses submenu */
     furi_string_free(app->autotest_text);
-    furi_string_free(app->autotest_lldp_result);
-    furi_mutex_free(app->autotest_lldp_mutex);
 
     /* Stop and free DHCP timer */
     furi_timer_stop(app->dhcp_timer);
@@ -2405,6 +2420,21 @@ static void lan_tester_worker_stop(LanTesterApp* app) {
     }
 }
 
+/* Free leftover tool state to reclaim heap before launching a new tool.
+ * Called from lan_tester_worker_start() so every tool starts with maximum
+ * available memory and minimal fragmentation. */
+static void lan_tester_cleanup_tool_state(LanTesterApp* app) {
+    if(app->history_state) {
+        free(app->history_state);
+        app->history_state = NULL;
+    }
+    if(app->ping_graph) {
+        free(app->ping_graph);
+        app->ping_graph = NULL;
+    }
+    furi_string_reset(app->tool_text);
+}
+
 static void lan_tester_worker_start(LanTesterApp* app, uint32_t op, LanTesterView result_view) {
     /* If old worker is done, clean it up (non-blocking) */
     if(app->worker_thread) {
@@ -2427,13 +2457,17 @@ static void lan_tester_worker_start(LanTesterApp* app, uint32_t op, LanTesterVie
         }
     }
 
+    /* Free leftover state from previous tools before allocating new thread */
+    lan_tester_cleanup_tool_state(app);
+
     app->worker_op = op;
     app->worker_running = true;
 
     /* Switch to result view BEFORE starting thread */
     view_dispatcher_switch_to_view(app->view_dispatcher, result_view);
 
-    app->worker_thread = furi_thread_alloc_ex("LanWorker", 8 * 1024, lan_tester_worker_fn, app);
+    /* 4 KB worker stack: all >128B stack arrays are heap/static. */
+    app->worker_thread = furi_thread_alloc_ex("LanWorker", 4 * 1024, lan_tester_worker_fn, app);
     furi_thread_start(app->worker_thread);
 }
 
@@ -2930,7 +2964,8 @@ static void lan_tester_vlan_hop_custom_input_callback(void* context) {
 static void lan_tester_tftp_filename_input_callback(void* context) {
     LanTesterApp* app = context;
     furi_assert(app);
-    char save_path[128];
+    /* Static to avoid 128B stack usage */
+    static char save_path[128];
     snprintf(save_path, sizeof(save_path), APP_DATA_PATH("tftp/%s"), app->tftp_filename_input);
     lan_tester_show_view(
         app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Downloading...\n");
@@ -3738,17 +3773,21 @@ static void lan_tester_do_lldp_cdp(LanTesterApp* app) {
     /* Format results */
     furi_string_reset(app->tool_text);
 
-    if(lldp_neighbor.valid) {
-        char lldp_buf[512];
-        lldp_format_neighbor(&lldp_neighbor, lldp_buf, sizeof(lldp_buf));
-        furi_string_cat_str(app->tool_text, lldp_buf);
-    }
-
-    if(cdp_neighbor.valid) {
-        char cdp_buf[512];
-        cdp_format_neighbor(&cdp_neighbor, cdp_buf, sizeof(cdp_buf));
-        if(lldp_neighbor.valid) furi_string_cat_str(app->tool_text, "\n");
-        furi_string_cat_str(app->tool_text, cdp_buf);
+    /* Heap-allocate formatting buffer to avoid 1 KB of stack usage (2x512) */
+    if(lldp_neighbor.valid || cdp_neighbor.valid) {
+        char* fmt_buf = malloc(512);
+        if(fmt_buf) {
+            if(lldp_neighbor.valid) {
+                lldp_format_neighbor(&lldp_neighbor, fmt_buf, 512);
+                furi_string_cat_str(app->tool_text, fmt_buf);
+            }
+            if(cdp_neighbor.valid) {
+                cdp_format_neighbor(&cdp_neighbor, fmt_buf, 512);
+                if(lldp_neighbor.valid) furi_string_cat_str(app->tool_text, "\n");
+                furi_string_cat_str(app->tool_text, fmt_buf);
+            }
+            free(fmt_buf);
+        }
     }
 
     if(!found) {
@@ -4577,34 +4616,33 @@ static void lan_tester_do_discovery(LanTesterApp* app) {
     furi_string_set(app->tool_text, "Sending mDNS + SSDP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    /* Allocate device array */
-    DiscoveryDevice* devices = malloc(sizeof(DiscoveryDevice) * DISCOVERY_MAX_DEVICES);
-    if(!devices) {
-        furi_string_set(app->tool_text, "Memory alloc failed!\n");
-        return;
-    }
-    memset(devices, 0, sizeof(DiscoveryDevice) * DISCOVERY_MAX_DEVICES);
-    uint16_t device_count = 0;
-
     /* Send both queries */
     bool mdns_ok = mdns_send_query(W5500_MDNS_SOCKET);
     bool ssdp_ok = ssdp_send_msearch(W5500_SSDP_SOCKET);
 
     if(!mdns_ok && !ssdp_ok) {
         furi_string_set(app->tool_text, "Failed to send queries!\n");
-        free(devices);
         return;
     }
 
-    furi_string_set(app->tool_text, "Listening for responses...\n(5 seconds)\n");
+    furi_string_set(app->tool_text, "[Discovery]\nListening...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    /* Listen for responses — reuse frame_buf */
+/* Compact dedup array: only IP+source (5 bytes each vs 88 bytes per DiscoveryDevice).
+     * Static to keep it off the 4KB worker stack. */
+#define DISCOVERY_MAX_SEEN 32
+    static struct {
+        uint8_t ip[4];
+        uint8_t source;
+    } seen[DISCOVERY_MAX_SEEN];
+    uint16_t seen_count = 0;
+    uint16_t device_count = 0;
+
     uint8_t* recv_buf = app->frame_buf;
     uint32_t start_tick = furi_get_tick();
 
-    while(furi_get_tick() - start_tick < DISCOVERY_TIMEOUT_MS &&
-          device_count < DISCOVERY_MAX_DEVICES && app->worker_running) {
+    while(furi_get_tick() - start_tick < DISCOVERY_TIMEOUT_MS && seen_count < DISCOVERY_MAX_SEEN &&
+          app->worker_running) {
         /* Check mDNS socket */
         if(mdns_ok) {
             uint16_t rx = getSn_RX_RSR(W5500_MDNS_SOCKET);
@@ -4616,17 +4654,28 @@ static void lan_tester_do_discovery(LanTesterApp* app) {
                 if(received > 0) {
                     DiscoveryDevice dev;
                     if(mdns_parse_response(recv_buf, (uint16_t)received, from_ip, &dev)) {
-                        /* Check for duplicate IP */
                         bool dup = false;
-                        for(uint16_t i = 0; i < device_count; i++) {
-                            if(memcmp(devices[i].ip, dev.ip, 4) == 0 &&
-                               devices[i].source == dev.source) {
+                        for(uint16_t i = 0; i < seen_count; i++) {
+                            if(memcmp(seen[i].ip, dev.ip, 4) == 0 &&
+                               seen[i].source == (uint8_t)dev.source) {
                                 dup = true;
                                 break;
                             }
                         }
                         if(!dup) {
-                            memcpy(&devices[device_count++], &dev, sizeof(dev));
+                            memcpy(seen[seen_count].ip, dev.ip, 4);
+                            seen[seen_count].source = (uint8_t)dev.source;
+                            seen_count++;
+                            device_count++;
+                            char ip_str[16];
+                            pkt_format_ip(dev.ip, ip_str);
+                            furi_string_cat_printf(
+                                app->tool_text,
+                                "%s [mDNS]\n %s\n %s\n",
+                                ip_str,
+                                dev.name,
+                                dev.service_type);
+                            lan_tester_update_view(app->text_box_tool, app->tool_text);
                         }
                     }
                 }
@@ -4644,17 +4693,28 @@ static void lan_tester_do_discovery(LanTesterApp* app) {
                 if(received > 0) {
                     DiscoveryDevice dev;
                     if(ssdp_parse_response(recv_buf, (uint16_t)received, from_ip, &dev)) {
-                        /* Check for duplicate IP + source */
                         bool dup = false;
-                        for(uint16_t i = 0; i < device_count; i++) {
-                            if(memcmp(devices[i].ip, dev.ip, 4) == 0 &&
-                               devices[i].source == dev.source) {
+                        for(uint16_t i = 0; i < seen_count; i++) {
+                            if(memcmp(seen[i].ip, dev.ip, 4) == 0 &&
+                               seen[i].source == (uint8_t)dev.source) {
                                 dup = true;
                                 break;
                             }
                         }
                         if(!dup) {
-                            memcpy(&devices[device_count++], &dev, sizeof(dev));
+                            memcpy(seen[seen_count].ip, dev.ip, 4);
+                            seen[seen_count].source = (uint8_t)dev.source;
+                            seen_count++;
+                            device_count++;
+                            char ip_str[16];
+                            pkt_format_ip(dev.ip, ip_str);
+                            furi_string_cat_printf(
+                                app->tool_text,
+                                "%s [SSDP]\n %s\n %s\n",
+                                ip_str,
+                                dev.name,
+                                dev.service_type);
+                            lan_tester_update_view(app->text_box_tool, app->tool_text);
                         }
                     }
                 }
@@ -4668,31 +4728,25 @@ static void lan_tester_do_discovery(LanTesterApp* app) {
     if(mdns_ok) close(W5500_MDNS_SOCKET);
     if(ssdp_ok) close(W5500_SSDP_SOCKET);
 
-    /* Format results */
-    furi_string_printf(
-        app->tool_text,
-        "[Discovery]\n"
-        "Found %d device(s)\n\n",
-        device_count);
-
-    for(uint16_t i = 0; i < device_count; i++) {
-        DiscoveryDevice* d = &devices[i];
-        char ip_str[16];
-        pkt_format_ip(d->ip, ip_str);
-        furi_string_cat_printf(
-            app->tool_text,
-            "%s [%s]\n %s\n %s\n\n",
-            ip_str,
-            d->source == DiscoverySourceMdns ? "mDNS" : "SSDP",
-            d->name,
-            d->service_type);
+    /* Final header with count */
+    {
+        FuriString* result = furi_string_alloc();
+        furi_string_printf(result, "[Discovery]\nFound %d device(s)\n", device_count);
+        /* Append the accumulated device lines (skip the old header) */
+        const char* body = furi_string_get_cstr(app->tool_text);
+        const char* first_dev = strchr(body, '\n');
+        if(first_dev) {
+            first_dev = strchr(first_dev + 1, '\n');
+            if(first_dev) furi_string_cat_str(result, first_dev);
+        }
+        furi_string_set(app->tool_text, result);
+        furi_string_free(result);
     }
 
     if(device_count == 0) {
         furi_string_cat_str(app->tool_text, "No devices found.\n");
     }
 
-    free(devices);
     lan_tester_save_and_notify(app, "discovery.txt", app->tool_text);
 }
 
@@ -4772,7 +4826,8 @@ static void lan_tester_do_stp_vlan(LanTesterApp* app) {
                 (unsigned long)(timeout_ms / 1000));
 
             if(bpdu.valid) {
-                char bpdu_buf[256];
+                /* Static to avoid 256B stack usage; worker is single-threaded */
+                static char bpdu_buf[256];
                 stp_format_bpdu(&bpdu, bpdu_buf, sizeof(bpdu_buf));
                 furi_string_cat_str(app->tool_text, bpdu_buf);
             } else {
@@ -4804,7 +4859,8 @@ static void lan_tester_do_stp_vlan(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     if(bpdu.valid) {
-        char bpdu_buf[256];
+        /* Static to avoid 256B stack usage; worker is single-threaded */
+        static char bpdu_buf[256];
         stp_format_bpdu(&bpdu, bpdu_buf, sizeof(bpdu_buf));
         furi_string_cat_str(app->tool_text, bpdu_buf);
     } else {
@@ -5276,6 +5332,13 @@ static void lan_tester_do_eth_bridge(LanTesterApp* app) {
         },                           \
         true)
 
+    /* Guard: bridge_state must have been allocated at startup */
+    if(!app->bridge_state) {
+        BRIDGE_SET_STATUS("Bridge state alloc\nfailed at startup.");
+        if(app->setting_sound) notification_message(app->notifications, &sequence_error);
+        return;
+    }
+
     /* Step 1: Initialize W5500 */
     if(!lan_tester_ensure_w5500(app)) {
         BRIDGE_SET_STATUS("W5500 Not Found!\nCheck SPI wiring.");
@@ -5581,88 +5644,6 @@ typedef enum {
     AutoTestStateDone,
 } AutoTestState;
 
-static int32_t autotest_lldp_thread_fn(void* context) {
-    LanTesterApp* app = context;
-
-    /* Allocate a private buffer — do NOT use app->frame_buf (shared) */
-    uint8_t* lbuf = malloc(FRAME_BUF_SIZE);
-    if(!lbuf) {
-        furi_mutex_acquire(app->autotest_lldp_mutex, FuriWaitForever);
-        furi_string_set(app->autotest_lldp_result, "LLDP: alloc err\n");
-        furi_mutex_release(app->autotest_lldp_mutex);
-        app->autotest_lldp_done = true;
-        return 0;
-    }
-
-    if(!w5500_hal_open_macraw()) {
-        furi_mutex_acquire(app->autotest_lldp_mutex, FuriWaitForever);
-        furi_string_set(app->autotest_lldp_result, "LLDP: sock err\n");
-        furi_mutex_release(app->autotest_lldp_mutex);
-        free(lbuf);
-        app->autotest_lldp_done = true;
-        return 0;
-    }
-
-    LldpNeighbor lldp = {0};
-    CdpNeighbor cdp = {0};
-    bool found_lldp = false;
-    bool found_cdp = false;
-
-    uint32_t start = furi_get_tick();
-    uint32_t timeout_ms = (uint32_t)app->autotest_lldp_wait_s * 1000;
-
-    while(app->autotest_running && (furi_get_tick() - start < timeout_ms)) {
-        uint16_t recv_len = w5500_hal_macraw_recv(lbuf, FRAME_BUF_SIZE);
-        if(recv_len >= ETH_HEADER_SIZE) {
-            uint16_t ethertype = pkt_get_ethertype(lbuf);
-
-            if(ethertype == ETHERTYPE_LLDP && !found_lldp) {
-                if(lldp_parse(lbuf + ETH_HEADER_SIZE, recv_len - ETH_HEADER_SIZE, &lldp)) {
-                    found_lldp = true;
-                    break; /* Got LLDP — no need to wait further */
-                }
-            }
-
-            if(!found_cdp) {
-                uint16_t cdp_offset = cdp_check_frame(lbuf, recv_len);
-                if(cdp_offset > 0) {
-                    if(cdp_parse(lbuf + cdp_offset, recv_len - cdp_offset, &cdp)) {
-                        found_cdp = true;
-                        /* Keep listening for LLDP — it takes priority */
-                    }
-                }
-            }
-        } else {
-            furi_delay_ms(50);
-        }
-    }
-
-    w5500_hal_close_macraw();
-    free(lbuf);
-
-    /* Write result */
-    furi_mutex_acquire(app->autotest_lldp_mutex, FuriWaitForever);
-    if(found_lldp) {
-        furi_string_printf(
-            app->autotest_lldp_result,
-            "LLDP: %s %s\n",
-            lldp.system_name[0] ? lldp.system_name : "?",
-            lldp.port_id[0] ? lldp.port_id : "");
-    } else if(found_cdp) {
-        furi_string_printf(
-            app->autotest_lldp_result,
-            "CDP: %s %s\n",
-            cdp.device_id[0] ? cdp.device_id : "?",
-            cdp.port_id[0] ? cdp.port_id : "");
-    } else {
-        furi_string_set(app->autotest_lldp_result, "LLDP: none\n");
-    }
-    furi_mutex_release(app->autotest_lldp_mutex);
-
-    app->autotest_lldp_done = true;
-    return 0;
-}
-
 static void lan_tester_do_autotest(LanTesterApp* app) {
     if(!lan_tester_ensure_w5500(app)) {
         furi_string_set(app->autotest_text, "W5500 Not Found!\nCheck SPI wiring.\n");
@@ -5720,22 +5701,8 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
             furi_string_cat(app->autotest_text, body);
             lan_tester_update_view(app->text_box_autotest, app->autotest_text);
 
-            /* Start LLDP thread in parallel (uses Socket 0 / MACRAW) */
-            app->autotest_lldp_done = false;
-            furi_mutex_acquire(app->autotest_lldp_mutex, FuriWaitForever);
-            furi_string_reset(app->autotest_lldp_result);
-            furi_mutex_release(app->autotest_lldp_mutex);
-            app->autotest_lldp_thread =
-                furi_thread_alloc_ex("AutoLLDP", 3 * 1024, autotest_lldp_thread_fn, app);
-            furi_thread_start(app->autotest_lldp_thread);
-
-            /* Step 2: DHCP (Socket 1 — no conflict with LLDP) */
+            /* Step 2: DHCP */
             if(!w5500_hal_get_link_status() || !app->autotest_running) {
-                /* Clean up LLDP thread before bailing */
-                app->autotest_lldp_done = false; /* signal thread to stop via autotest_running */
-                furi_thread_join(app->autotest_lldp_thread);
-                furi_thread_free(app->autotest_lldp_thread);
-                app->autotest_lldp_thread = NULL;
                 furi_string_free(body);
                 state = AutoTestStateIdle;
                 continue;
@@ -5834,24 +5801,74 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                 lan_tester_update_view(app->text_box_autotest, app->autotest_text);
             }
 
-            /* Step 6: Wait for LLDP thread to finish */
-            {
-                uint32_t lldp_wait_start = furi_get_tick();
-                uint32_t lldp_max_wait_ms = (uint32_t)app->autotest_lldp_wait_s * 1000 + 2000;
-                while(!app->autotest_lldp_done && app->autotest_running &&
-                      (furi_get_tick() - lldp_wait_start < lldp_max_wait_ms)) {
-                    furi_delay_ms(100);
-                }
-                furi_thread_join(app->autotest_lldp_thread);
-                furi_thread_free(app->autotest_lldp_thread);
-                app->autotest_lldp_thread = NULL;
+            /* Step 6: LLDP/CDP (inline, uses frame_buf — no extra alloc) */
+            if(w5500_hal_get_link_status() && app->autotest_running) {
+                furi_string_set(app->autotest_text, "[Auto Test]\n");
+                furi_string_cat(app->autotest_text, body);
+                furi_string_cat_str(app->autotest_text, "LLDP: listening...\n");
+                lan_tester_update_view(app->text_box_autotest, app->autotest_text);
 
-                furi_mutex_acquire(app->autotest_lldp_mutex, FuriWaitForever);
-                furi_string_cat(body, app->autotest_lldp_result);
-                furi_mutex_release(app->autotest_lldp_mutex);
+                if(w5500_hal_open_macraw()) {
+                    LldpNeighbor lldp = {0};
+                    CdpNeighbor cdp = {0};
+                    bool found_lldp = false;
+                    bool found_cdp = false;
+                    uint32_t lldp_start = furi_get_tick();
+                    uint32_t lldp_timeout_ms = (uint32_t)app->autotest_lldp_wait_s * 1000;
+
+                    while(app->autotest_running &&
+                          (furi_get_tick() - lldp_start < lldp_timeout_ms)) {
+                        uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+                        if(recv_len >= ETH_HEADER_SIZE) {
+                            uint16_t ethertype = pkt_get_ethertype(app->frame_buf);
+                            if(ethertype == ETHERTYPE_LLDP && !found_lldp) {
+                                if(lldp_parse(
+                                       app->frame_buf + ETH_HEADER_SIZE,
+                                       recv_len - ETH_HEADER_SIZE,
+                                       &lldp)) {
+                                    found_lldp = true;
+                                    break;
+                                }
+                            }
+                            if(!found_cdp) {
+                                uint16_t cdp_offset = cdp_check_frame(app->frame_buf, recv_len);
+                                if(cdp_offset > 0) {
+                                    if(cdp_parse(
+                                           app->frame_buf + cdp_offset,
+                                           recv_len - cdp_offset,
+                                           &cdp)) {
+                                        found_cdp = true;
+                                    }
+                                }
+                            }
+                        } else {
+                            furi_delay_ms(50);
+                        }
+                    }
+                    w5500_hal_close_macraw();
+
+                    if(found_lldp) {
+                        furi_string_cat_printf(
+                            body,
+                            "LLDP: %s %s\n",
+                            lldp.system_name[0] ? lldp.system_name : "?",
+                            lldp.port_id[0] ? lldp.port_id : "");
+                    } else if(found_cdp) {
+                        furi_string_cat_printf(
+                            body,
+                            "CDP: %s %s\n",
+                            cdp.device_id[0] ? cdp.device_id : "?",
+                            cdp.port_id[0] ? cdp.port_id : "");
+                    } else {
+                        furi_string_cat_str(body, "LLDP: none\n");
+                    }
+                    furi_string_set(app->autotest_text, "[Auto Test]\n");
+                    furi_string_cat(app->autotest_text, body);
+                    lan_tester_update_view(app->text_box_autotest, app->autotest_text);
+                }
             }
 
-            /* Step 7: ARP Host Count (Socket 0 — AFTER LLDP thread join) */
+            /* Step 7: ARP Host Count (Socket 0 — AFTER LLDP) */
             if(dhcp_ok && app->autotest_arp_enabled && w5500_hal_get_link_status() &&
                app->autotest_running) {
                 wiz_NetInfo net_info;
@@ -5935,13 +5952,6 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                 furi_delay_ms(200);
             }
         }
-    }
-
-    /* Safety cleanup: join LLDP thread if still running (e.g. user pressed Back mid-test) */
-    if(app->autotest_lldp_thread) {
-        furi_thread_join(app->autotest_lldp_thread);
-        furi_thread_free(app->autotest_lldp_thread);
-        app->autotest_lldp_thread = NULL;
     }
 }
 
@@ -6147,7 +6157,8 @@ static void lan_tester_do_pxe_download(LanTesterApp* app) {
     lan_tester_update_view(app->text_box_tool, out);
 
     for(uint8_t i = 0; i < file_count && app->worker_running; i++) {
-        char save_path[128];
+        /* Static to avoid 128B stack usage; worker is single-threaded */
+        static char save_path[128];
         snprintf(save_path, sizeof(save_path), PXE_BOOT_DIR "/%s", filenames[i]);
 
         /* Check if file already exists */
@@ -6237,7 +6248,8 @@ static void lan_tester_do_tftp_client(LanTesterApp* app) {
     furi_string_cat(app->tool_text, "Downloading...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    char save_path[128];
+    /* Static to avoid 128B stack usage; worker is single-threaded */
+    static char save_path[128];
     snprintf(save_path, sizeof(save_path), APP_DATA_PATH("tftp/%s"), app->tftp_filename_input);
 
     TftpClientResult result;
@@ -7132,6 +7144,11 @@ int32_t lan_tester_app(void* p) {
     furi_hal_power_insomnia_enter();
 
     LanTesterApp* app = lan_tester_app_alloc();
+    if(!app) {
+        FURI_LOG_E(TAG, "Failed to allocate app struct");
+        furi_hal_power_insomnia_exit();
+        return -1;
+    }
 
     /* Start on main menu */
     lan_tester_update_menu_header(app);

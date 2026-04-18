@@ -146,7 +146,8 @@ static bool ipmi_send_recv(
     uint8_t rq_seq,
     const uint8_t** resp_data,
     uint8_t* resp_len) {
-    uint8_t pkt[128];
+    /* Static to avoid 128B stack usage; worker is single-threaded */
+    static uint8_t pkt[128];
     uint16_t pkt_len = ipmi_build_request(pkt, sizeof(pkt), netfn, cmd, rq_seq);
     if(pkt_len == 0) return false;
 
