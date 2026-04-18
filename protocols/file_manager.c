@@ -131,6 +131,23 @@ static void http_send_path(uint8_t sn, const char* web_path, const char* name, c
     http_send_str(sn, tsuf);
 }
 
+/* Stream file contents from SD directly into HTTP socket (no heap buffer needed).
+ * Uses a small stack buffer for chunked reading. */
+static void http_send_file_inline(uint8_t sn, const char* path) {
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* f = storage_file_alloc(storage);
+    if(storage_file_open(f, path, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        char chunk[128];
+        uint16_t rd;
+        while((rd = storage_file_read(f, chunk, sizeof(chunk))) > 0) {
+            http_send_buf(sn, (const uint8_t*)chunk, rd);
+        }
+    }
+    storage_file_close(f);
+    storage_file_free(f);
+    furi_record_close(RECORD_STORAGE);
+}
+
 /*
  * Wait for ALL pending data to be transmitted before closing connection.
  * 1. Wait for SEND_OK (last send command completed)
@@ -174,17 +191,18 @@ static const char css[] =
     ".uf{margin:12px 0;padding:10px;background:#2a2a4a;border:1px solid #444}"
     ".mf{margin:8px 0}"
     ".ft{margin-top:16px;color:#888}"
-    "</style>"
-    "<script>"
-    "onload=()=>{let t=document.querySelector('table');"
-    "if(!t)return;let r=[...t.rows].slice(1),"
-    "d=r.filter(e=>e.querySelector('.d')),"
-    "f=r.filter(e=>!e.querySelector('.d'));"
-    "let s=e=>e.cells[0].textContent.toLowerCase();"
-    "d.sort((a,b)=>s(a).localeCompare(s(b)));"
-    "f.sort((a,b)=>s(a).localeCompare(s(b)));"
-    "[...d,...f].forEach(e=>t.tBodies[0].appendChild(e))}"
-    "</script>";
+    "</style>";
+
+static const char default_js[] = "<script>"
+                                 "onload=()=>{let t=document.querySelector('table');"
+                                 "if(!t)return;let r=[...t.rows].slice(1),"
+                                 "d=r.filter(e=>e.querySelector('.d')),"
+                                 "f=r.filter(e=>!e.querySelector('.d'));"
+                                 "let s=e=>e.cells[0].textContent.toLowerCase();"
+                                 "d.sort((a,b)=>s(a).localeCompare(s(b)));"
+                                 "f.sort((a,b)=>s(a).localeCompare(s(b)));"
+                                 "[...d,...f].forEach(e=>t.tBodies[0].appendChild(e))}"
+                                 "</script>";
 
 /* Format file size human-readable */
 static void format_size(uint64_t size, char* buf, size_t buf_size) {
@@ -265,8 +283,12 @@ static void get_parent_path(const char* path, char* parent, size_t parent_size) 
  * Uses Connection: close without Content-Length so the browser reads
  * until the server closes the connection.
  */
-static void
-    handle_list_dir(uint8_t sn, const char* sd_path, const char* web_path, const char* token) {
+static void handle_list_dir(
+    uint8_t sn,
+    const char* sd_path,
+    const char* web_path,
+    const char* token,
+    const FileManagerState* fms) {
     /* Token suffix for all URLs */
     char tsuf[16];
     snprintf(tsuf, sizeof(tsuf), "?t=%s", token);
@@ -283,7 +305,13 @@ static void
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<title>Flipper File Manager</title>");
-    http_send_str(sn, css);
+    if(fms->has_custom_css) {
+        http_send_str(sn, "<style>");
+        http_send_file_inline(sn, APP_DATA_PATH("web/custom.css"));
+        http_send_str(sn, "</style>");
+    } else {
+        http_send_str(sn, css);
+    }
     http_send_str(sn, "</head><body>");
 
     /* Title */
@@ -408,7 +436,15 @@ static void
             (unsigned long)(st_total / (1024 * 1024)));
         http_send_str(sn, ft);
     }
-    http_send_str(sn, "</div></body></html>");
+    http_send_str(sn, "</div>");
+    if(fms->has_custom_js) {
+        http_send_str(sn, "<script>");
+        http_send_file_inline(sn, APP_DATA_PATH("web/custom.js"));
+        http_send_str(sn, "</script>");
+    } else {
+        http_send_str(sn, default_js);
+    }
+    http_send_str(sn, "</body></html>");
     http_flush(sn);
 }
 
@@ -447,19 +483,44 @@ static void handle_download(
     }
     safe_name[si] = '\0';
 
+    /* Detect MIME type for CSS/JS (inline), everything else as download */
+    const char* content_type = "application/octet-stream";
+    bool inline_file = false;
+    size_t name_len = strlen(safe_name);
+    if(name_len > 4 && strcmp(safe_name + name_len - 4, ".css") == 0) {
+        content_type = "text/css";
+        inline_file = true;
+    } else if(name_len > 3 && strcmp(safe_name + name_len - 3, ".js") == 0) {
+        content_type = "text/javascript";
+        inline_file = true;
+    }
+
     /* Send response headers
      * Static to avoid 192B stack usage; worker is single-threaded */
     static char hdr[192];
-    snprintf(
-        hdr,
-        sizeof(hdr),
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: application/octet-stream\r\n"
-        "Content-Disposition: attachment; filename=\"%.48s\"\r\n"
-        "Content-Length: %lu\r\n"
-        "Connection: close\r\n\r\n",
-        safe_name,
-        (unsigned long)file_size);
+    if(inline_file) {
+        snprintf(
+            hdr,
+            sizeof(hdr),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: %s\r\n"
+            "Content-Length: %lu\r\n"
+            "Connection: close\r\n\r\n",
+            content_type,
+            (unsigned long)file_size);
+    } else {
+        snprintf(
+            hdr,
+            sizeof(hdr),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: %s\r\n"
+            "Content-Disposition: attachment; filename=\"%.48s\"\r\n"
+            "Content-Length: %lu\r\n"
+            "Connection: close\r\n\r\n",
+            content_type,
+            safe_name,
+            (unsigned long)file_size);
+    }
     http_send_str(sn, hdr);
 
     /* Stream file in chunks */
@@ -939,7 +1000,7 @@ static void handle_request(
         furi_record_close(RECORD_STORAGE);
 
         if(is_dir) {
-            handle_list_dir(sn, sd_path, web_path, state->auth_token);
+            handle_list_dir(sn, sd_path, web_path, state->auth_token, state);
         } else {
             http_send_str(
                 sn,
@@ -1110,6 +1171,14 @@ bool file_manager_start(FileManagerState* state) {
     state->auth_token[3] = digits[rnd[3] % 10];
     state->auth_token[4] = '\0';
     FURI_LOG_I(TAG, "File Manager token: %s", state->auth_token);
+
+    /* Check for custom CSS/JS on SD (once at startup) */
+    Storage* st = furi_record_open(RECORD_STORAGE);
+    state->has_custom_css =
+        (storage_common_stat(st, APP_DATA_PATH("web/custom.css"), NULL) == FSE_OK);
+    state->has_custom_js =
+        (storage_common_stat(st, APP_DATA_PATH("web/custom.js"), NULL) == FSE_OK);
+    furi_record_close(RECORD_STORAGE);
 
     int8_t ret = socket(FILEMGR_HTTP_SOCKET, Sn_MR_TCP, FILEMGR_HTTP_PORT, 0);
     if(ret != FILEMGR_HTTP_SOCKET) {
