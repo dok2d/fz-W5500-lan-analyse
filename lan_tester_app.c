@@ -1889,7 +1889,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "RADIUS, TFTP, NTP,\n"
         "PXE boot/download,\n"
         "rogue DHCP/RA detect.\n"
-        "v2.4.1 | by dok2d\n"
+        "v2.4.5 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
@@ -5494,18 +5494,25 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
     state.boot_file_size = app->pxe_scan.boot_file_size;
     state.boot_file_found = true;
 
-    /* Step 4: Build config from settings (IPs already populated from DHCP probe) */
+    /* Step 4: Build config from settings */
     state.config.dhcp_enabled = app->pxe_dhcp_enabled;
-    memcpy(state.config.server_ip, app->pxe_server_ip, 4);
     memcpy(state.config.client_ip, app->pxe_client_ip, 4);
     memcpy(state.config.subnet, app->pxe_subnet, 4);
 
-    /* Step 5: Configure W5500 with server IP (static) */
-    w5500_hal_set_net_info(
-        state.config.server_ip,
-        state.config.subnet,
-        state.config.server_ip,
-        state.config.server_ip);
+    /* Step 5: When built-in DHCP is OFF and we already have a DHCP lease,
+     * use the real IP so the network can reach our TFTP server. */
+    if(!state.config.dhcp_enabled && app->dhcp_valid) {
+        memcpy(state.config.server_ip, app->dhcp_ip, 4);
+        memcpy(state.config.subnet, app->dhcp_mask, 4);
+        w5500_hal_set_net_info(app->dhcp_ip, app->dhcp_mask, app->dhcp_gw, app->dhcp_dns);
+    } else {
+        memcpy(state.config.server_ip, app->pxe_server_ip, 4);
+        w5500_hal_set_net_info(
+            state.config.server_ip,
+            state.config.subnet,
+            state.config.server_ip,
+            state.config.server_ip);
+    }
 
     /* Step 6: Open sockets */
     if(!pxe_server_start(&state)) {
@@ -5519,16 +5526,14 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
         out,
         "[PXE Server]\n"
         "IP: %d.%d.%d.%d\n"
-        "DHCP: %s\n"
-        "Boot: %s (%lu B)\n"
+        "DHCP: %s  Files: %d\n"
         "Waiting for client...\n",
         state.config.server_ip[0],
         state.config.server_ip[1],
         state.config.server_ip[2],
         state.config.server_ip[3],
         state.config.dhcp_enabled ? "ON" : "OFF",
-        state.boot_filename,
-        state.boot_file_size);
+        state.boot_file_count);
     lan_tester_update_view(app->text_box_tool, out);
 
     /* Step 8: Main loop */
@@ -5556,7 +5561,11 @@ static void lan_tester_do_pxe_server(LanTesterApp* app) {
                 state.config.server_ip[2],
                 state.config.server_ip[3],
                 state.config.dhcp_enabled ? "ON" : "OFF");
-            furi_string_cat_printf(out, "Boot: %s\n", state.boot_filename);
+            if(state.boot_file_count > 1) {
+                furi_string_cat_printf(out, "Boot: auto (%d files)\n", state.boot_file_count);
+            } else {
+                furi_string_cat_printf(out, "Boot: %s\n", state.boot_filename);
+            }
 
             switch(state.state) {
             case PxeStateIdle:
@@ -6142,14 +6151,18 @@ static void lan_tester_do_pxe_download(LanTesterApp* app) {
     furi_record_close(RECORD_STORAGE);
 
     /* Step 5: Download each boot file.
-     * EFI files are in arch-specific subdirectories on boot.ipxe.org. */
-    static const char* filenames[] = {"undionly.kpxe", "ipxe.efi", "snponly.efi"};
+     * ipxe.pxe = native driver (best for Legacy BIOS)
+     * undionly.kpxe = UNDI fallback (Legacy BIOS)
+     * snponly.efi = UEFI (small, uses firmware SNP)
+     * ipxe.efi = UEFI (full native drivers) */
+    static const char* filenames[] = {"ipxe.pxe", "undionly.kpxe", "snponly.efi", "ipxe.efi"};
     static const char* url_paths[] = {
+        "/ipxe.pxe",
         "/undionly.kpxe",
-        "/x86_64-efi/ipxe.efi",
         "/x86_64-efi/snponly.efi",
+        "/x86_64-efi/ipxe.efi",
     };
-    static const uint8_t file_count = 3;
+    static const uint8_t file_count = 4;
     uint8_t ok_count = 0;
     uint8_t skip_count = 0;
 

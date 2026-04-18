@@ -15,6 +15,12 @@ build/
 # ufbt
 .ufbt/
 
+# Claude Code
+.claude/
+
+# Python venv
+.venv/
+
 # OS files
 .DS_Store
 Thumbs.db
