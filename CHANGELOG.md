@@ -1,3 +1,13 @@
+# 2.7.0
+
+## Added
+- **File Manager** custom CSS/JS support — place custom.css and/or custom.js in apps_data/lan_tester/web/ on SD card to override default styles and scripts
+- **File Manager** JS-based alphabetical sorting (directories first, then files) replaces two-pass C rendering
+- **File Manager** serves .css and .js files with correct Content-Type (text/css, text/javascript) instead of octet-stream
+- Example themes in docs/filemanager_themes/: Hacker Green, Arctic Light, Cyberpunk, Solarized Dark
+- Example custom.js with search, breadcrumbs, multi-select delete, drag and drop upload, file preview (text, images, audio, video, PDF, hex dump)
+- Build excludes docs/ directory via sources parameter in application.fam
+
 # 2.6.0
 
 ## Added
