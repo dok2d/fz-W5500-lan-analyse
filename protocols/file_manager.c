@@ -123,6 +123,14 @@ static bool http_send_str(uint8_t sn, const char* str) {
     return http_send_buf(sn, (const uint8_t*)str, len);
 }
 
+/* Send "/web_path/name?token" path fragment (reused for browse/download/delete links) */
+static void http_send_path(uint8_t sn, const char* web_path, const char* name, const char* tsuf) {
+    if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
+    http_send_str(sn, "/");
+    http_send_str(sn, name);
+    http_send_str(sn, tsuf);
+}
+
 /*
  * Wait for ALL pending data to be transmitted before closing connection.
  * 1. Wait for SEND_OK (last send command completed)
@@ -150,8 +158,8 @@ static void http_flush(uint8_t sn) {
 static const char css[] =
     "<style>"
     "body{font-family:monospace;background:#1a1a2e;color:#e0e0e0;margin:0;padding:16px}"
-    "h1{color:#ff8c00;font-size:18px;margin:0 0 4px}"
-    ".p{color:#888;font-size:13px;margin-bottom:12px;word-break:break-all}"
+    "h1{color:#ff8c00;margin:0 0 4px}"
+    ".p{color:#888;margin-bottom:12px;word-break:break-all}"
     "table{width:100%;border-collapse:collapse}"
     "th{text-align:left;padding:6px 8px;border-bottom:2px solid #ff8c00;color:#ff8c00}"
     "td{padding:5px 8px;border-bottom:1px solid #333}"
@@ -161,12 +169,22 @@ static const char css[] =
     ".a{white-space:nowrap}"
     ".a a{margin-left:8px;color:#e74c3c}"
     ".b{display:inline-block;padding:6px 14px;background:#ff8c00;color:#1a1a2e;"
-    "border:none;font-family:monospace;font-weight:bold;text-decoration:none;margin:2px}"
+    "border:none;font-weight:bold;text-decoration:none;margin:2px}"
     ".bs{padding:3px 8px}"
     ".uf{margin:12px 0;padding:10px;background:#2a2a4a;border:1px solid #444}"
     ".mf{margin:8px 0}"
-    ".ft{margin-top:16px;color:#888;font-size:11px}"
-    "</style>";
+    ".ft{margin-top:16px;color:#888}"
+    "</style>"
+    "<script>"
+    "onload=()=>{let t=document.querySelector('table');"
+    "if(!t)return;let r=[...t.rows].slice(1),"
+    "d=r.filter(e=>e.querySelector('.d')),"
+    "f=r.filter(e=>!e.querySelector('.d'));"
+    "let s=e=>e.cells[0].textContent.toLowerCase();"
+    "d.sort((a,b)=>s(a).localeCompare(s(b)));"
+    "f.sort((a,b)=>s(a).localeCompare(s(b)));"
+    "[...d,...f].forEach(e=>t.tBodies[0].appendChild(e))}"
+    "</script>";
 
 /* Format file size human-readable */
 static void format_size(uint64_t size, char* buf, size_t buf_size) {
@@ -317,8 +335,7 @@ static void
     /* Table header */
     http_send_str(sn, "<table><tr><th>Name</th><th>Size</th><th></th></tr>");
 
-    /* Two-pass rendering: directories first, then files.
-     * No heap allocation — each pass streams directly to the socket. */
+    /* Single-pass rendering — JS on client sorts dirs first, then alphabetically */
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* dir = storage_file_alloc(storage);
     /* Static to avoid 320B stack usage; worker is single-threaded */
@@ -330,66 +347,42 @@ static void
         FileInfo info;
         char name[FM_NAME_MAX];
 
-        /* Pass 1: directories */
         while(storage_dir_read(dir, &info, name, sizeof(name))) {
-            if(!(info.flags & FSF_DIRECTORY)) continue;
             html_escape(name, esc_name, sizeof(esc_name));
-            http_send_str(sn, "<tr><td><a href='/browse");
-            if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
-            http_send_str(sn, "/");
-            http_send_str(sn, esc_name);
-            http_send_str(sn, tsuf);
-            http_send_str(sn, "' class='d'>");
-            http_send_str(sn, esc_name);
-            http_send_str(
-                sn,
-                "/</a></td><td class='s'>-</td><td class='a'>"
-                "<a href='/delete");
-            if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
-            http_send_str(sn, "/");
-            http_send_str(sn, esc_name);
-            http_send_str(sn, tsuf);
+            bool is_dir = (info.flags & FSF_DIRECTORY);
+
+            http_send_str(sn, "<tr><td>");
+            if(is_dir) {
+                http_send_str(sn, "<a href='/browse");
+                http_send_path(sn, web_path, esc_name, tsuf);
+                http_send_str(sn, "' class='d'>");
+                http_send_str(sn, esc_name);
+                http_send_str(sn, "/</a>");
+            } else {
+                http_send_str(sn, esc_name);
+            }
+            http_send_str(sn, "</td><td class='s'>");
+            if(is_dir) {
+                http_send_str(sn, "-");
+            } else {
+                char size_str[32];
+                format_size(info.size, size_str, sizeof(size_str));
+                http_send_str(sn, size_str);
+            }
+            http_send_str(sn, "</td><td class='a'>");
+            if(!is_dir) {
+                http_send_str(sn, "<a href='/download");
+                http_send_path(sn, web_path, esc_name, tsuf);
+                http_send_str(sn, "' class='b bs'>DL</a>");
+            }
+            http_send_str(sn, "<a href='/delete");
+            http_send_path(sn, web_path, esc_name, tsuf);
             http_send_str(
                 sn,
                 "' onclick=\"return confirm('Delete?')\">"
                 "Del</a></td></tr>");
         }
         storage_dir_close(dir);
-
-        /* Pass 2: files */
-        if(storage_dir_open(dir, sd_path)) {
-            while(storage_dir_read(dir, &info, name, sizeof(name))) {
-                if(info.flags & FSF_DIRECTORY) continue;
-                html_escape(name, esc_name, sizeof(esc_name));
-                char size_str[32];
-                format_size(info.size, size_str, sizeof(size_str));
-                http_send_str(sn, "<tr><td>");
-                http_send_str(sn, esc_name);
-                http_send_str(sn, "</td><td class='s'>");
-                http_send_str(sn, size_str);
-                http_send_str(
-                    sn,
-                    "</td><td class='a'>"
-                    "<a href='/download");
-                if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
-                http_send_str(sn, "/");
-                http_send_str(sn, esc_name);
-                http_send_str(sn, tsuf);
-                http_send_str(
-                    sn,
-                    "' class='b bs'>DL</a>"
-                    "<a href='/delete");
-                if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
-                http_send_str(sn, "/");
-                http_send_str(sn, esc_name);
-                http_send_str(sn, tsuf);
-                http_send_str(
-                    sn,
-                    "' onclick=\"return confirm('Delete?')\">"
-                    "Del</a></td></tr>");
-            }
-            storage_dir_close(dir);
-        }
     }
     storage_file_free(dir);
     furi_record_close(RECORD_STORAGE);
