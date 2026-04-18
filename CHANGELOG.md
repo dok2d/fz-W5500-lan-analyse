@@ -1,32 +1,29 @@
-# 2.4.1
+# 2.4.5
+
+## Added
+- **PXE Server** auto-selects boot file by client architecture (DHCP Option 93) — BIOS clients get .kpxe/.pxe, UEFI clients get .efi
+- **PXE Server** TFTP block size negotiation (RFC 2348) — supports blksize up to 1468 bytes, allowing files over 512 KB to transfer without "PXE-E3A: TFTP too many packages" error
+- **PXE Server** TFTP transfer size option (RFC 2349) — reports file size to client in OACK for progress display
+- **PXE Download** now includes ipxe.pxe (native driver build) for better Legacy BIOS compatibility
 
 ## Improved
-- **Auto Test** LLDP/CDP listener now runs inline instead of a separate thread — saves ~2 KB heap and avoids thread allocation failures
+- **PXE Server** TFTP sends DATA from port 69 (single socket) — fixes iPXE rejecting packets from ephemeral port
+- **PXE Server** gracefully restarts transfer when client sends new RRQ during active session instead of rejecting with "Server busy"
+- **PXE Server** uses real DHCP-assigned IP when built-in DHCP is OFF, so clients on external networks can reach TFTP
+- **Auto Test** LLDP/CDP listener now runs inline instead of a separate thread — saves ~2 KB heap
 - **Discovery** no longer allocates a device array — uses compact dedup and streams results live to screen
-- **File Manager** directory listing no longer allocates a sorted array (~3.8 KB) — uses two-pass streaming (directories first, then files)
-- Tools now free leftover state (ping graph, history list) before launching, reducing heap fragmentation
+- **File Manager** directory listing uses two-pass streaming instead of sorted array (~3.8 KB saved)
+- Tools now free leftover state before launching, reducing heap fragmentation
 
 ## Fixed
-- **Auto Test** instant out-of-memory when launched — worker thread stack reduced from 8 KB to 4 KB
-- **Settings load/save** stack overflow on main thread (384 and 320 byte buffers moved to heap)
-- **LLDP/CDP** stack overflow during neighbor formatting (two 512 byte buffers replaced with one heap buffer)
-- **STP/VLAN** stack overflow when displaying BPDU details (256 byte buffers moved off stack)
-- **DNS poison check** stack overflow in query buffer (256 bytes)
-- **DNS lookup** stack overflow in query buffer (512 bytes)
-- **VLAN hopping** stack overflow in receive buffer (256 bytes)
-- **EAPOL probe** stack overflow in receive buffer (256 bytes)
-- **RADIUS client** stack overflow in MD5 hash buffer (180 bytes) and broken response parsing
-- **Rogue DHCP** detection broken response parsing — receive size was pointer size, not buffer size
-- **TFTP client** broken file download — receive size was pointer size, not buffer size
-- **File Manager** stack overflow in HTML escape buffer (320 bytes) and response header (192 bytes)
-- **ETH Bridge** crash if bridge state allocation failed at startup — now guarded
-- **Ping** and **Traceroute** stack overflow in receive buffers (128 bytes each)
-- **DHCP** stack overflow in fingerprint buffer (128 bytes)
-- **IPMI** stack overflow in packet buffer (128 bytes)
-- **PXE Server** stack overflow in file path buffers (128 bytes)
-- **History** stack overflow in file path buffers (128 bytes each, four locations)
-- **PCAP dump** stack overflow in file path buffer (128 bytes)
-- Multiple NULL-check guards added after malloc to prevent crashes on out-of-memory
+- **PXE Server** TFTP transfer broken — clients rejected DATA from wrong source port (port 51000 instead of 69)
+- **Auto Test** instant out-of-memory — worker thread stack reduced from 8 KB to 4 KB
+- Stack overflows in Settings, LLDP/CDP, STP/VLAN, DNS, VLAN hopping, EAPOL, RADIUS, Ping, Traceroute, DHCP, IPMI, PXE, History, PCAP dump (128-512 byte buffers moved off stack)
+- **RADIUS client** broken response parsing
+- **Rogue DHCP** and **TFTP client** broken receive — size was pointer size, not buffer size
+- **File Manager** stack overflow in HTML escape and response header buffers
+- **ETH Bridge** crash on failed allocation
+- Multiple NULL-check guards added after malloc
 
 # 2.4.0
 
