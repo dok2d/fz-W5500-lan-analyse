@@ -1822,7 +1822,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "TFTP, NTP,\n"
         "PXE boot/download,\n"
         "rogue DHCP/RA detect.\n"
-        "v2.4.5 | by dok2d\n"
+        "v2.5.0 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(

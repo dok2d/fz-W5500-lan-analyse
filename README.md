@@ -8,7 +8,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Build](https://img.shields.io/badge/build-ufbt-yellow)
-![Version](https://img.shields.io/badge/version-2.4.5-brightgreen)
+![Version](https://img.shields.io/badge/version-2.5.0-brightgreen)
 
 **[English docs](docs/en/README.md)** | **[Документация на русском](docs/ru/README.md)**
 
@@ -52,7 +52,6 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | **VLAN Hopping** | Send 802.1Q tagged frames to test VLAN isolation (Top 10 / Custom VLANs) |
 | **TFTP Client** | Download config files from network equipment via TFTP, save to SD card |
 | **IPMI v1.5** | Query BMC: chassis power status, device ID, firmware version |
-| **RADIUS Test** | Send Access-Request with PAP auth (MD5), check Accept/Reject/Challenge |
 | **History** | All scan results auto-saved with timestamps, browsable and deletable |
 | **Settings** | Auto-save, sound/vibro, custom DNS server, ping count/timeout/interval, clear history, MAC Changer |
 
@@ -146,7 +145,6 @@ The compiled `.fap` file will appear in `dist/`. You can also copy it manually t
 │   ├── netbios_query.c / .h    # NetBIOS Name Query (NBSTAT)
 │   ├── ntp_diag.c / .h         # NTP diagnostics (stratum, offset, RTT)
 │   ├── port_scan.c / .h        # TCP connect port scanner
-│   ├── radius_client.c / .h    # RADIUS Access-Request with PAP/MD5
 │   ├── rogue_dhcp.c / .h       # Rogue DHCP server detection
 │   ├── rogue_ra.c / .h         # Rogue IPv6 Router Advertisement detection
 │   ├── snmp_client.c / .h      # SNMP v1/v2c GET client (BER/ASN.1)
@@ -218,8 +216,6 @@ The compiled `.fap` file will appear in `dist/`. You can also copy it manually t
 - **802.1X Probe** — send EAPOL-Start, detect port authentication and EAP type.
 - **VLAN Hop Top10** — test VLAN isolation on common VLANs (1,2,10,20,50,100,150,200,300,999).
 - **VLAN Hop Custom** — test user-specified VLAN IDs (comma-separated).
-- **RADIUS Test** — send Access-Request with PAP/MD5 auth, check server response.
-
 ### Utilities
 - **Wake-on-LAN** — send magic packet to wake a device by MAC address.
 - **PXE Server** — minimal PXE boot server with built-in DHCP + TFTP.
@@ -304,7 +300,6 @@ MIT License. See [LICENSE](LICENSE) for details.
 | **VLAN Hopping** | Отправка 802.1Q tagged-фреймов для проверки изоляции VLAN (Top 10 / Custom) |
 | **TFTP Client** | Скачивание конфигурационных файлов с оборудования по TFTP на SD-карту |
 | **IPMI v1.5** | Запрос BMC: статус питания шасси, ID устройства, версия прошивки |
-| **RADIUS Test** | Отправка Access-Request с PAP-аутентификацией (MD5), проверка Accept/Reject |
 | **История** | Все результаты автосохраняются с метками времени, просмотр и удаление |
 | **Настройки** | Автосохранение, звук/вибрация, очистка истории, MAC Changer (смена MAC с сохранением на SD) |
 

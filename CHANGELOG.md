@@ -1,3 +1,15 @@
+# 2.5.0
+
+## Improved
+- Reduced flash usage by ~2.8 KB through code deduplication and dead code removal
+- Reduced heap usage by ~2.4 KB: DHCP buffer optimized, unused struct fields removed, USB RX buffer now allocated on demand
+- Removed unused DNS and ICMP modules from WIZnet library build
+- Disabled debug logging in WIZnet DHCP library to save flash
+- Simplified PXE Help screen and File Manager web interface styling
+
+## Removed
+- **RADIUS Test** tool removed (limited by Flipper keyboard — no special characters for passwords)
+
 # 2.4.5
 
 ## Added
