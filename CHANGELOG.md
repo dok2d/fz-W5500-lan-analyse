@@ -1,11 +1,18 @@
 # 2.4.1
 
+## Improved
+- **Auto Test** LLDP/CDP listener now runs inline instead of a separate thread — saves ~2 KB heap and avoids thread allocation failures
+- **Discovery** no longer allocates a device array — uses compact dedup and streams results live to screen
+- **File Manager** directory listing no longer allocates a sorted array (~3.8 KB) — uses two-pass streaming (directories first, then files)
+- Tools now free leftover state (ping graph, history list) before launching, reducing heap fragmentation
+
 ## Fixed
-- **Auto Test** instant out-of-memory when launched — worker thread stack reduced from 8 KB to 4 KB and Auto Test LLDP thread from 3 KB to 2 KB, so they fit on a fragmented heap
+- **Auto Test** instant out-of-memory when launched — worker thread stack reduced from 8 KB to 4 KB
 - **Settings load/save** stack overflow on main thread (384 and 320 byte buffers moved to heap)
 - **LLDP/CDP** stack overflow during neighbor formatting (two 512 byte buffers replaced with one heap buffer)
 - **STP/VLAN** stack overflow when displaying BPDU details (256 byte buffers moved off stack)
 - **DNS poison check** stack overflow in query buffer (256 bytes)
+- **DNS lookup** stack overflow in query buffer (512 bytes)
 - **VLAN hopping** stack overflow in receive buffer (256 bytes)
 - **EAPOL probe** stack overflow in receive buffer (256 bytes)
 - **RADIUS client** stack overflow in MD5 hash buffer (180 bytes) and broken response parsing
@@ -13,6 +20,13 @@
 - **TFTP client** broken file download — receive size was pointer size, not buffer size
 - **File Manager** stack overflow in HTML escape buffer (320 bytes) and response header (192 bytes)
 - **ETH Bridge** crash if bridge state allocation failed at startup — now guarded
+- **Ping** and **Traceroute** stack overflow in receive buffers (128 bytes each)
+- **DHCP** stack overflow in fingerprint buffer (128 bytes)
+- **IPMI** stack overflow in packet buffer (128 bytes)
+- **PXE Server** stack overflow in file path buffers (128 bytes)
+- **History** stack overflow in file path buffers (128 bytes each, four locations)
+- **PCAP dump** stack overflow in file path buffer (128 bytes)
+- Multiple NULL-check guards added after malloc to prevent crashes on out-of-memory
 
 # 2.4.0
 
