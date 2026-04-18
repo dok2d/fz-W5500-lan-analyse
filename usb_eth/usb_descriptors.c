@@ -97,7 +97,7 @@ static const struct usb_string_descriptor ecm_str_prod = {
 
 /* Frame assembly buffer for received frames from USB host */
 #define USB_FRAME_BUF_SIZE 1520
-static uint8_t usb_rx_frame[USB_FRAME_BUF_SIZE];
+uint8_t* usb_rx_frame; /* heap-allocated once in usb_eth_init() */
 static volatile uint16_t usb_rx_frame_pos = 0;
 static volatile uint16_t usb_rx_frame_len = 0;
 static volatile bool usb_rx_frame_ready = false;

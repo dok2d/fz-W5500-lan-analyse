@@ -28,7 +28,6 @@
 #include "protocols/vlan_hop.h"
 #include "protocols/tftp_client.h"
 #include "protocols/ipmi_client.h"
-#include "protocols/radius_client.h"
 #include "protocols/http_download.h"
 #include "bridge/eth_bridge.h"
 #include "usb_eth/usb_eth.h"
@@ -269,6 +268,8 @@ static void lan_tester_show_view(
     FuriString* text,
     const char* initial);
 static bool lan_tester_ensure_w5500(LanTesterApp* app);
+static bool lan_tester_check_w5500(LanTesterApp* app);
+static bool lan_tester_check_dhcp(LanTesterApp* app);
 
 static void lan_tester_do_link_info(LanTesterApp* app);
 static void lan_tester_do_lldp_cdp(LanTesterApp* app);
@@ -303,9 +304,7 @@ static void lan_tester_do_eapol_probe(LanTesterApp* app);
 static void lan_tester_do_vlan_hop(LanTesterApp* app);
 static void lan_tester_do_tftp_client(LanTesterApp* app);
 static void lan_tester_do_ipmi_client(LanTesterApp* app);
-static void lan_tester_do_radius_client(LanTesterApp* app);
 static void lan_tester_do_pxe_download(LanTesterApp* app);
-static uint32_t lan_tester_nav_back_security(void* context);
 static uint32_t lan_tester_nav_back_tool(void* context);
 static void lan_tester_history_populate(LanTesterApp* app);
 static void lan_tester_history_file_callback(void* context, uint32_t index);
@@ -1186,10 +1185,7 @@ static void pxe_settings_enter_callback(void* context, uint32_t index) {
             lan_tester_nav_back_pxe_settings);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
-    case 6: /* ? Help */
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPxeHelp);
-        break;
-    case 7: /* Download Boot Files */
+    case 6: /* Download Boot Files */
         app->tool_back_view = LanTesterViewPxeSettings;
         furi_string_set(app->tool_text, "[PXE Download]\nStarting...\n");
         text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
@@ -1550,12 +1546,6 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         LanTesterMenuItemVlanHopCustom,
         lan_tester_submenu_callback,
         app);
-    submenu_add_item(
-        app->submenu_cat_security,
-        "RADIUS Test",
-        LanTesterMenuItemRadiusClient,
-        lan_tester_submenu_callback,
-        app);
     view_set_previous_callback(
         submenu_get_view(app->submenu_cat_security), lan_tester_navigation_submenu_callback);
     view_dispatcher_add_view(
@@ -1688,57 +1678,8 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->pxe_subnet[2] = 255;
     app->pxe_subnet[3] = 0;
 
-    /* PXE TextBox (live status during server run) */
-    /* PXE Help TextBox */
+    /* PXE Help TextBox (unused, kept for view ID compatibility) */
     app->text_box_pxe_help = text_box_alloc();
-    text_box_set_font(app->text_box_pxe_help, TextBoxFontText);
-    text_box_set_text(
-        app->text_box_pxe_help,
-        "[PXE Server Help]\n\n"
-        "== Prerequisites ==\n\n"
-        "1. Place boot file on SD:\n"
-        "   /ext/apps_data/\n"
-        "     lan_tester/pxe/\n\n"
-        "   Supported formats:\n"
-        "   .kpxe (Legacy BIOS)\n"
-        "   .efi  (UEFI)\n"
-        "   .pxe  .0\n\n"
-        "   Recommended:\n"
-        "   undionly.kpxe (~70KB)\n"
-        "   from boot.netboot.xyz\n\n"
-        "2. Connect W5500 module\n"
-        "   to Flipper via SPI.\n\n"
-        "3. Connect RJ45 cable\n"
-        "   to target machine.\n\n"
-        "== Modes ==\n\n"
-        "DHCP ON (default):\n"
-        "  Flipper assigns IP to\n"
-        "  client and provides\n"
-        "  TFTP server address +\n"
-        "  boot filename via\n"
-        "  DHCP options 66/67.\n"
-        "  Direct cable connect.\n\n"
-        "DHCP OFF (TFTP only):\n"
-        "  Flipper only serves\n"
-        "  files via TFTP.\n"
-        "  Client must know the\n"
-        "  server IP. Use when:\n"
-        "  - External DHCP with\n"
-        "    option 66/67 set\n"
-        "  - Manual IP on target\n"
-        "  - Existing network\n\n"
-        "== Network ==\n\n"
-        "Default: 192.168.77.0/24\n"
-        "Server:  192.168.77.1\n"
-        "Client:  192.168.77.10\n"
-        "All IPs configurable.\n\n"
-        "== Target BIOS ==\n\n"
-        "Enable Network/PXE Boot\n"
-        "in BIOS/UEFI settings.\n"
-        "Set boot order to\n"
-        "Network first.\n");
-    view_set_previous_callback(
-        text_box_get_view(app->text_box_pxe_help), lan_tester_nav_back_pxe_settings);
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewPxeHelp, text_box_get_view(app->text_box_pxe_help));
 
@@ -1778,10 +1719,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         variable_item_list_add(app->pxe_settings_list, "Subnet Mask", 0, NULL, app);
     variable_item_set_current_value_text(app->pxe_item_sub, app->pxe_subnet_input);
 
-    /* Index 6: Help */
-    variable_item_list_add(app->pxe_settings_list, "? Help", 0, NULL, app);
-
-    /* Index 7: Download Boot Files */
+    /* Index 6: Download Boot Files */
     variable_item_list_add(app->pxe_settings_list, "Download Files", 0, NULL, app);
 
     variable_item_list_set_enter_callback(
@@ -1842,7 +1780,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* Shared result view for all new analysis tools (saves ~12 TextBox allocs) */
     app->tool_back_view = LanTesterViewMainMenu;
 
-    /* Shared text input for tool-specific entry (TFTP filename, RADIUS fields) */
+    /* Shared text input for tool-specific entry (TFTP filename, etc.) */
     /* Tool input defaults */
     strncpy(app->snmp_ip_input, "192.168.1.1", sizeof(app->snmp_ip_input));
     strncpy(app->ntp_ip_input, "192.168.1.1", sizeof(app->ntp_ip_input));
@@ -1851,11 +1789,6 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     strncpy(app->tftp_ip_input, "192.168.1.1", sizeof(app->tftp_ip_input));
     strncpy(app->tftp_filename_input, "config.cfg", sizeof(app->tftp_filename_input));
     strncpy(app->ipmi_ip_input, "192.168.1.1", sizeof(app->ipmi_ip_input));
-    strncpy(app->radius_ip_input, "192.168.1.1", sizeof(app->radius_ip_input));
-    strncpy(app->radius_secret_input, "testing123", sizeof(app->radius_secret_input));
-    strncpy(app->radius_user_input, "test", sizeof(app->radius_user_input));
-    strncpy(app->radius_pass_input, "test", sizeof(app->radius_pass_input));
-    app->radius_input_step = 0;
     app->vlan_hop_custom = false;
     strncpy(app->vlan_hop_input, "1,10,20,50,100", sizeof(app->vlan_hop_input));
 
@@ -1886,10 +1819,10 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "34 tools: scan, ping,\n"
         "SNMP, DHCP, LLDP/CDP,\n"
         "802.1X, VLAN, IPMI,\n"
-        "RADIUS, TFTP, NTP,\n"
+        "TFTP, NTP,\n"
         "PXE boot/download,\n"
         "rogue DHCP/RA detect.\n"
-        "v2.4.5 | by dok2d\n"
+        "v2.5.0 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
@@ -2389,10 +2322,6 @@ static int32_t lan_tester_worker_fn(void* context) {
         lan_tester_do_ipmi_client(app);
         lan_tester_update_view(app->text_box_tool, app->tool_text);
         break;
-    case LanTesterMenuItemRadiusClient:
-        lan_tester_do_radius_client(app);
-        lan_tester_update_view(app->text_box_tool, app->tool_text);
-        break;
     case LanTesterMenuItemHistory:
         break; /* History uses synchronous submenu, no worker needed */
     case WORKER_OP_PING_SWEEP_DETECT:
@@ -2548,7 +2477,7 @@ static bool lan_tester_ensure_dhcp(LanTesterApp* app) {
 
     /* DHCP needs its own buffer — WIZnet library keeps the pointer for DHCP_run().
      * Cannot share with frame_buf which is used for ping/ARP/MACRAW. */
-    uint8_t* dhcp_buffer = malloc(1024);
+    uint8_t* dhcp_buffer = malloc(576);
     if(!dhcp_buffer) return false;
 
     wiz_NetInfo net_info;
@@ -2593,6 +2522,36 @@ static bool lan_tester_ensure_dhcp(LanTesterApp* app) {
     }
 
     return got_ip;
+}
+
+/* ==================== Common init checks ==================== */
+
+/**
+ * Reset tool_text + ensure W5500. Sets error message on failure.
+ */
+static bool lan_tester_check_w5500(LanTesterApp* app) {
+    furi_string_reset(app->tool_text);
+    if(!lan_tester_ensure_w5500(app)) {
+        furi_string_set(app->tool_text, "W5500 Not Found!\n");
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Ensure DHCP (includes W5500+link). Sets diagnostic error in tool_text on failure.
+ * Does NOT reset tool_text — caller may have set a "loading" message before this.
+ */
+static bool lan_tester_check_dhcp(LanTesterApp* app) {
+    if(!lan_tester_ensure_dhcp(app)) {
+        furi_string_set(
+            app->tool_text,
+            !app->w5500_initialized      ? "W5500 Not Found!\n" :
+            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
+                                           "DHCP failed.\n");
+        return false;
+    }
+    return true;
 }
 
 /* ==================== ASCII progress bar ==================== */
@@ -2860,12 +2819,6 @@ static void lan_tester_wol_input_callback(void* context) {
     lan_tester_worker_start(app, LanTesterMenuItemWol, LanTesterViewToolResult);
 }
 
-static uint32_t lan_tester_nav_back_security(void* context) {
-    UNUSED(context);
-    lan_tester_stop_worker_on_back();
-    return LanTesterViewCatSecurity;
-}
-
 /* Dynamic back callback for the shared tool result/input views */
 static uint32_t lan_tester_nav_back_tool(void* context) {
     UNUSED(context);
@@ -2959,7 +2912,7 @@ static void lan_tester_vlan_hop_custom_input_callback(void* context) {
     }
 }
 
-/* ==================== TFTP/IPMI/RADIUS input callbacks ==================== */
+/* ==================== TFTP/IPMI input callbacks ==================== */
 
 static void lan_tester_tftp_filename_input_callback(void* context) {
     LanTesterApp* app = context;
@@ -2997,69 +2950,6 @@ static void lan_tester_ipmi_ip_input_callback(void* context) {
         lan_tester_show_view(
             app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Querying IPMI...\n");
         lan_tester_worker_start(app, LanTesterMenuItemIpmiClient, LanTesterViewToolResult);
-    }
-}
-
-static void lan_tester_radius_step_callback(void* context);
-
-static void lan_tester_radius_ip_input_callback(void* context) {
-    LanTesterApp* app = context;
-    furi_assert(app);
-    if(lan_tester_parse_ip(app->radius_ip_input, app->radius_target)) {
-        /* Next: ask for shared secret */
-        app->radius_input_step = 1;
-        text_input_reset(app->text_input_tool);
-        text_input_set_header_text(app->text_input_tool, "Shared secret:");
-        text_input_set_result_callback(
-            app->text_input_tool,
-            lan_tester_radius_step_callback,
-            app,
-            app->radius_secret_input,
-            sizeof(app->radius_secret_input),
-            false);
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
-    }
-}
-
-static void lan_tester_radius_step_callback(void* context) {
-    LanTesterApp* app = context;
-    furi_assert(app);
-
-    if(app->radius_input_step == 1) {
-        /* Ask for username */
-        app->radius_input_step = 2;
-        text_input_reset(app->text_input_tool);
-        text_input_set_header_text(app->text_input_tool, "Username:");
-        text_input_set_result_callback(
-            app->text_input_tool,
-            lan_tester_radius_step_callback,
-            app,
-            app->radius_user_input,
-            sizeof(app->radius_user_input),
-            false);
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
-    } else if(app->radius_input_step == 2) {
-        /* Ask for password */
-        app->radius_input_step = 3;
-        text_input_reset(app->text_input_tool);
-        text_input_set_header_text(app->text_input_tool, "Password:");
-        text_input_set_result_callback(
-            app->text_input_tool,
-            lan_tester_radius_step_callback,
-            app,
-            app->radius_pass_input,
-            sizeof(app->radius_pass_input),
-            false);
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolInput);
-    } else {
-        /* All inputs collected, run test */
-        lan_tester_show_view(
-            app,
-            app->text_box_tool,
-            LanTesterViewToolResult,
-            app->tool_text,
-            "Testing RADIUS...\n");
-        lan_tester_worker_start(app, LanTesterMenuItemRadiusClient, LanTesterViewToolResult);
     }
 }
 
@@ -3624,22 +3514,6 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
         break;
 
-    case LanTesterMenuItemRadiusClient:
-        app->tool_back_view = LanTesterViewCatSecurity;
-        app->radius_input_step = 0;
-        ip_keyboard_setup(
-            app->ip_keyboard,
-            "RADIUS server IP:",
-            app->radius_ip_input,
-            false,
-            lan_tester_radius_ip_input_callback,
-            app,
-            app->radius_ip_input,
-            sizeof(app->radius_ip_input),
-            lan_tester_nav_back_security);
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
-        break;
-
     default:
         break;
     }
@@ -3685,12 +3559,7 @@ static void lan_tester_do_link_info(LanTesterApp* app) {
 }
 
 static void lan_tester_do_lldp_cdp(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     if(!w5500_hal_get_link_status()) {
         furi_string_set(app->tool_text, "No Link!\nConnect cable.\n");
@@ -3804,15 +3673,7 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
     furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ?
-                                      "No Link!\nConnect cable.\n" :
-                                      "DHCP failed.\nCannot determine\nsubnet for ARP scan.\n");
-        return;
-    }
+    if(!lan_tester_check_dhcp(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -4010,12 +3871,7 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
 }
 
 static void lan_tester_do_dhcp_analyze(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     if(!w5500_hal_get_link_status()) {
         furi_string_set(app->tool_text, "No Link!\nConnect cable.\n");
@@ -4121,14 +3977,7 @@ static void lan_tester_do_ping(LanTesterApp* app) {
     furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\nCannot ping.\n");
-        return;
-    }
+    if(!lan_tester_check_dhcp(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -4171,14 +4020,7 @@ static void lan_tester_do_dns_lookup(LanTesterApp* app) {
     furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\nCannot resolve DNS.\n");
-        return;
-    }
+    if(!lan_tester_check_dhcp(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -4226,17 +4068,7 @@ static void lan_tester_do_wol(LanTesterApp* app) {
     furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\nCannot send WoL.\n");
-        return;
-    }
-
-    wiz_NetInfo net_info;
-    wizchip_getnetinfo(&net_info);
+    if(!lan_tester_check_dhcp(app)) return;
 
     char mac_str[18];
     pkt_format_mac(app->wol_mac_input, mac_str);
@@ -4304,17 +4136,7 @@ static void lan_tester_do_traceroute(LanTesterApp* app) {
     furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\n");
-        return;
-    }
-
-    wiz_NetInfo net_info;
-    wizchip_getnetinfo(&net_info);
+    if(!lan_tester_check_dhcp(app)) return;
 
     /* If input is a hostname, resolve via DNS first */
     if(app->traceroute_is_hostname) {
@@ -4410,18 +4232,10 @@ static void lan_tester_do_ping_sweep_detect(LanTesterApp* app) {
     furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\n");
+    if(!lan_tester_check_dhcp(app)) {
         lan_tester_update_view(app->text_box_tool, app->tool_text);
         return;
     }
-
-    wiz_NetInfo net_info;
-    wizchip_getnetinfo(&net_info);
 
     /* Populate CIDR from detected network */
     uint8_t net[4];
@@ -4449,14 +4263,7 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app) {
     furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\n");
-        return;
-    }
+    if(!lan_tester_check_dhcp(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -4601,14 +4408,7 @@ static void lan_tester_do_discovery(LanTesterApp* app) {
     furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\n");
-        return;
-    }
+    if(!lan_tester_check_dhcp(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -4753,12 +4553,7 @@ static void lan_tester_do_discovery(LanTesterApp* app) {
 /* ==================== STP/BPDU + VLAN Detection ==================== */
 
 static void lan_tester_do_stp_vlan(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     if(!w5500_hal_get_link_status()) {
         furi_string_set(app->tool_text, "No Link!\nConnect cable.\n");
@@ -4968,14 +4763,7 @@ static void lan_tester_do_port_scan(LanTesterApp* app) {
     furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
-    if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            app->tool_text,
-            !app->w5500_initialized      ? "W5500 Not Found!\n" :
-            !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-                                           "DHCP failed.\nCannot scan.\n");
-        return;
-    }
+    if(!lan_tester_check_dhcp(app)) return;
 
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
@@ -5218,12 +5006,7 @@ static void lan_tester_count_frame(LanTesterApp* app, const uint8_t* frame, uint
 }
 
 static void lan_tester_do_stats(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     if(!w5500_hal_get_link_status()) {
         furi_string_set(app->tool_text, "No Link!\nConnect cable first.\n");
@@ -6238,12 +6021,7 @@ static void lan_tester_do_pxe_download(LanTesterApp* app) {
 /* ==================== TFTP Client ==================== */
 
 static void lan_tester_do_tftp_client(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     char ip_str[16];
     snprintf(
@@ -6292,12 +6070,7 @@ static void lan_tester_do_tftp_client(LanTesterApp* app) {
 /* ==================== IPMI Client ==================== */
 
 static void lan_tester_do_ipmi_client(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     char ip_str[16];
     snprintf(
@@ -6359,69 +6132,10 @@ static void lan_tester_do_ipmi_client(LanTesterApp* app) {
     lan_tester_save_and_notify(app, "ipmi.txt", app->tool_text);
 }
 
-/* ==================== RADIUS Client ==================== */
-
-static void lan_tester_do_radius_client(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
-
-    char ip_str[16];
-    snprintf(
-        ip_str,
-        sizeof(ip_str),
-        "%d.%d.%d.%d",
-        app->radius_target[0],
-        app->radius_target[1],
-        app->radius_target[2],
-        app->radius_target[3]);
-
-    furi_string_cat(app->tool_text, "[RADIUS] ");
-    furi_string_cat_printf(app->tool_text, "Server: %s\n", ip_str);
-    furi_string_cat_printf(app->tool_text, "User: %s\n", app->radius_user_input);
-    furi_string_cat(app->tool_text, "Sending Access-Request...\n");
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
-
-    RadiusResult result;
-    radius_test(
-        app->radius_target,
-        app->radius_secret_input,
-        app->radius_user_input,
-        app->radius_pass_input,
-        &result);
-
-    furi_string_cat_printf(app->tool_text, "\nResult: %s\n", result.status_str);
-
-    if(result.response_received) {
-        furi_string_cat_printf(app->tool_text, "Code: %d\n", result.code);
-        furi_string_cat_printf(app->tool_text, "Length: %d bytes\n", result.length);
-
-        if(result.code == 2) {
-            furi_string_cat(app->tool_text, "\nAuthentication OK!\n");
-        } else if(result.code == 3) {
-            furi_string_cat(app->tool_text, "\nAuthentication FAILED.\nBad credentials.\n");
-        } else if(result.code == 11) {
-            furi_string_cat(app->tool_text, "\nChallenge received.\n(Multi-factor auth)\n");
-        }
-    } else {
-        furi_string_cat(app->tool_text, "\nCheck server IP,\nport 1812, and\nshared secret.\n");
-    }
-
-    lan_tester_save_and_notify(app, "radius.txt", app->tool_text);
-}
-
 /* ==================== 802.1X EAPOL Probe ==================== */
 
 static void lan_tester_do_eapol_probe(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     furi_string_cat(app->tool_text, "[802.1X] Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -6475,12 +6189,7 @@ static void lan_tester_do_eapol_probe(LanTesterApp* app) {
 /* ==================== VLAN Hopping Test ==================== */
 
 static void lan_tester_do_vlan_hop(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     uint8_t target_ip[4] = {0, 0, 0, 0};
     uint8_t our_ip[4] = {0, 0, 0, 0};
@@ -6578,12 +6287,7 @@ static void lan_tester_do_vlan_hop(LanTesterApp* app) {
 /* ==================== ARP Watch ==================== */
 
 static void lan_tester_do_arp_watch(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     furi_string_cat(app->tool_text, "[ARP Watch] Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -6670,12 +6374,7 @@ static void lan_tester_do_arp_watch(LanTesterApp* app) {
 /* ==================== Rogue DHCP Detection ==================== */
 
 static void lan_tester_do_rogue_dhcp(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     furi_string_cat(app->tool_text, "[Rogue DHCP] Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -6743,12 +6442,7 @@ static void lan_tester_do_rogue_dhcp(LanTesterApp* app) {
 /* ==================== Rogue RA Detection ==================== */
 
 static void lan_tester_do_rogue_ra(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     furi_string_cat(app->tool_text, "[Rogue RA] Scanning...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -6814,12 +6508,7 @@ static void lan_tester_do_rogue_ra(LanTesterApp* app) {
 /* ==================== DHCP Fingerprinting ==================== */
 
 static void lan_tester_do_dhcp_fingerprint(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     furi_string_cat(app->tool_text, "[DHCP FP] Listening...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -6871,12 +6560,7 @@ static void lan_tester_do_dhcp_fingerprint(LanTesterApp* app) {
 /* ==================== SNMP GET ==================== */
 
 static void lan_tester_do_snmp_get(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     char ip_str[16];
     snprintf(
@@ -6939,12 +6623,7 @@ static void lan_tester_do_snmp_get(LanTesterApp* app) {
 /* ==================== NTP Diagnostics ==================== */
 
 static void lan_tester_do_ntp_diag(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     char ip_str[16];
     snprintf(
@@ -7003,12 +6682,7 @@ static void lan_tester_do_ntp_diag(LanTesterApp* app) {
 /* ==================== NetBIOS Query ==================== */
 
 static void lan_tester_do_netbios_query(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     char ip_str[16];
     snprintf(
@@ -7063,12 +6737,7 @@ static void lan_tester_do_netbios_query(LanTesterApp* app) {
 /* ==================== DNS Poisoning Check ==================== */
 
 static void lan_tester_do_dns_poison_check(LanTesterApp* app) {
-    furi_string_reset(app->tool_text);
-
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_set(app->tool_text, "W5500 Not Found!\n");
-        return;
-    }
+    if(!lan_tester_check_w5500(app)) return;
 
     furi_string_cat_printf(app->tool_text, "[DNS Check] %s\n", app->dns_poison_host_input);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
