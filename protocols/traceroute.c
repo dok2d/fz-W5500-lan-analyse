@@ -84,7 +84,8 @@ bool traceroute_send_hop(
 
     /* Wait for response (Time Exceeded or Echo Reply) */
     uint32_t start_tick = furi_get_tick();
-    uint8_t recv_buf[128];
+    /* Static to avoid 128B stack usage; worker is single-threaded */
+    static uint8_t recv_buf[128];
     uint8_t from_ip[4];
     uint16_t from_port;
 

@@ -351,8 +351,8 @@ static void pxe_tftp_handle(PxeServerState* state, uint8_t* buf, uint16_t buf_si
                         req_ip[3],
                         req_port);
 
-                    /* Build file path */
-                    char filepath[128];
+                    /* Build file path — static to avoid 128B stack usage */
+                    static char filepath[128];
                     snprintf(filepath, sizeof(filepath), "%s/%s", PXE_BOOT_DIR, filename);
 
                     /* Open file from SD */
@@ -535,7 +535,8 @@ bool pxe_detect_boot_file(PxeServerState* state) {
 
     /* Check preferred files first (these get priority ordering) */
     for(int i = 0; pxe_preferred_files[i] != NULL; i++) {
-        char path[128];
+        /* Static to avoid 128B stack usage; worker is single-threaded */
+        static char path[128];
         snprintf(path, sizeof(path), "%s/%s", PXE_BOOT_DIR, pxe_preferred_files[i]);
         File* file = storage_file_alloc(storage);
         if(storage_file_open(file, path, FSAM_READ, FSOM_OPEN_EXISTING)) {

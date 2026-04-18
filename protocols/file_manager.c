@@ -15,34 +15,7 @@
 #define TAG "FILEMGR"
 
 /* Max single file/folder name */
-#define FM_NAME_MAX    64
-#define FM_MAX_ENTRIES 48 /* max directory entries to sort (48×80≈3.8KB) */
-
-/* Directory entry for sorting */
-typedef struct {
-    char name[FM_NAME_MAX];
-    uint64_t size;
-    bool is_dir;
-} FmDirEntry;
-
-/* Compare: directories first, then case-insensitive alphabetical */
-static int fm_entry_cmp(const void* a, const void* b) {
-    const FmDirEntry* ea = a;
-    const FmDirEntry* eb = b;
-    if(ea->is_dir != eb->is_dir) return ea->is_dir ? -1 : 1;
-    /* Case-insensitive compare */
-    const char* sa = ea->name;
-    const char* sb = eb->name;
-    while(*sa && *sb) {
-        char ca = *sa, cb = *sb;
-        if(ca >= 'A' && ca <= 'Z') ca += 32;
-        if(cb >= 'A' && cb <= 'Z') cb += 32;
-        if(ca != cb) return (ca < cb) ? -1 : 1;
-        sa++;
-        sb++;
-    }
-    return (*sa == 0 && *sb == 0) ? 0 : (*sa == 0 ? -1 : 1);
-}
+#define FM_NAME_MAX 64
 
 /* Simple memmem implementation */
 static void* filemgr_memmem(const void* haystack, size_t hlen, const void* needle, size_t nlen) {
@@ -350,69 +323,52 @@ static void
     /* Table header */
     http_send_str(sn, "<table><tr><th>Name</th><th>Size</th><th></th></tr>");
 
-    /* Read directory entries into array for sorting */
+    /* Two-pass rendering: directories first, then files.
+     * No heap allocation — each pass streams directly to the socket. */
     Storage* storage = furi_record_open(RECORD_STORAGE);
-    FmDirEntry* entries = malloc(sizeof(FmDirEntry) * FM_MAX_ENTRIES);
-    uint16_t entry_count = 0;
-
     File* dir = storage_file_alloc(storage);
-    if(!entries) {
-        http_send_str(sn, "<tr><td colspan='3'>Not enough memory</td></tr>");
-    } else if(!storage_dir_open(dir, sd_path)) {
+    /* Static to avoid 320B stack usage; worker is single-threaded */
+    static char esc_name[FM_NAME_MAX * 5];
+    bool dir_ok = storage_dir_open(dir, sd_path);
+    if(!dir_ok) {
         http_send_str(sn, "<tr><td colspan='3'>Failed to open directory</td></tr>");
     } else {
         FileInfo info;
         char name[FM_NAME_MAX];
-        while(storage_dir_read(dir, &info, name, sizeof(name)) && entry_count < FM_MAX_ENTRIES) {
-            strncpy(entries[entry_count].name, name, FM_NAME_MAX - 1);
-            entries[entry_count].name[FM_NAME_MAX - 1] = '\0';
-            entries[entry_count].size = info.size;
-            entries[entry_count].is_dir = (info.flags & FSF_DIRECTORY);
-            entry_count++;
+
+        /* Pass 1: directories */
+        while(storage_dir_read(dir, &info, name, sizeof(name))) {
+            if(!(info.flags & FSF_DIRECTORY)) continue;
+            html_escape(name, esc_name, sizeof(esc_name));
+            http_send_str(sn, "<tr><td><a href='/browse");
+            if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
+            http_send_str(sn, "/");
+            http_send_str(sn, esc_name);
+            http_send_str(sn, tsuf);
+            http_send_str(sn, "' class='d'>");
+            http_send_str(sn, esc_name);
+            http_send_str(
+                sn,
+                "/</a></td><td class='s'>-</td><td class='a'>"
+                "<a href='/delete");
+            if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
+            http_send_str(sn, "/");
+            http_send_str(sn, esc_name);
+            http_send_str(sn, tsuf);
+            http_send_str(
+                sn,
+                "' onclick=\"return confirm('Delete?')\">"
+                "Del</a></td></tr>");
         }
         storage_dir_close(dir);
 
-        /* Insertion sort: directories first, then alphabetical.
-         * qsort is disabled in Flipper FAP SDK; insertion sort is
-         * fine for <=48 entries and uses no extra memory. */
-        for(uint16_t i = 1; i < entry_count; i++) {
-            FmDirEntry tmp = entries[i];
-            uint16_t j = i;
-            while(j > 0 && fm_entry_cmp(&tmp, &entries[j - 1]) < 0) {
-                entries[j] = entries[j - 1];
-                j--;
-            }
-            entries[j] = tmp;
-        }
-
-        /* Stream each row directly — no HTML accumulation
-         * Static to avoid 320B stack usage; worker is single-threaded */
-        static char esc_name[FM_NAME_MAX * 5]; /* worst case: every char escaped */
-        for(uint16_t i = 0; i < entry_count; i++) {
-            html_escape(entries[i].name, esc_name, sizeof(esc_name));
-            if(entries[i].is_dir) {
-                http_send_str(sn, "<tr><td><a href='/browse");
-                if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
-                http_send_str(sn, "/");
-                http_send_str(sn, esc_name);
-                http_send_str(sn, tsuf);
-                http_send_str(sn, "' class='d'>");
-                http_send_str(sn, esc_name);
-                http_send_str(
-                    sn,
-                    "/</a></td><td class='s'>-</td><td class='a'>"
-                    "<a href='/delete");
-                if(strcmp(web_path, "/") != 0) http_send_str(sn, web_path);
-                http_send_str(sn, "/");
-                http_send_str(sn, esc_name);
-                http_send_str(sn, tsuf);
-                http_send_str(
-                    sn,
-                    "' onclick=\"return confirm('Delete?')\">"
-                    "Del</a></td></tr>");
-            } else {
+        /* Pass 2: files */
+        if(storage_dir_open(dir, sd_path)) {
+            while(storage_dir_read(dir, &info, name, sizeof(name))) {
+                if(info.flags & FSF_DIRECTORY) continue;
+                html_escape(name, esc_name, sizeof(esc_name));
                 char size_str[32];
-                format_size(entries[i].size, size_str, sizeof(size_str));
+                format_size(info.size, size_str, sizeof(size_str));
                 http_send_str(sn, "<tr><td>");
                 http_send_str(sn, esc_name);
                 http_send_str(sn, "</td><td class='s'>");
@@ -438,10 +394,10 @@ static void
                     "' onclick=\"return confirm('Delete?')\">"
                     "Del</a></td></tr>");
             }
+            storage_dir_close(dir);
         }
     }
     storage_file_free(dir);
-    if(entries) free(entries);
     furi_record_close(RECORD_STORAGE);
 
     /* Footer with device info */
@@ -453,7 +409,8 @@ static void
         uint64_t st_total = 0, st_free = 0;
         storage_common_fs_info(fst, "/ext", &st_total, &st_free);
         furi_record_close(RECORD_STORAGE);
-        char ft[128];
+        /* Static to avoid 128B stack usage; worker is single-threaded */
+        static char ft[128];
         snprintf(
             ft,
             sizeof(ft),

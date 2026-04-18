@@ -210,7 +210,8 @@ static uint8_t radius_encode_password(
     if(padded_len == 0) padded_len = 16;
     if(padded_len > 128) padded_len = 128;
 
-    uint8_t padded[128];
+    /* Static to avoid 128B stack usage; worker is single-threaded */
+    static uint8_t padded[128];
     memset(padded, 0, padded_len);
     memcpy(padded, password, pw_len);
 
@@ -291,7 +292,8 @@ bool radius_test(
     idx += uname_len;
 
     /* Attribute: User-Password (MD5-hidden) */
-    uint8_t encoded_pw[128];
+    /* Static to avoid 128B stack usage; worker is single-threaded */
+    static uint8_t encoded_pw[128];
     uint8_t pw_enc_len = radius_encode_password(password, secret, authenticator, encoded_pw);
     pkt[idx++] = RADIUS_ATTR_USER_PASSWORD;
     pkt[idx++] = 2 + pw_enc_len;
