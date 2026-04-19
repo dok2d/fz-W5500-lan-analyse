@@ -75,6 +75,7 @@ typedef enum {
     LanTesterMenuItemPacketCapture,
     LanTesterMenuItemSnmpGet,
     LanTesterMenuItemNtpDiag,
+    LanTesterMenuItemNtpSync,
     LanTesterMenuItemNetbiosQuery,
     LanTesterMenuItemDnsPoisonCheck,
     LanTesterMenuItemArpWatch,
@@ -264,6 +265,8 @@ struct LanTesterApp {
     char snmp_ip_input[16];
     uint8_t ntp_target[4];
     char ntp_ip_input[16];
+    uint32_t ntp_unix_time; /* last NTP result for clock sync (0 = none) */
+    uint32_t ntp_query_tick; /* furi_get_tick() when NTP result was received */
     uint8_t netbios_target[4];
     char netbios_ip_input[16];
     char dns_poison_host_input[64];
