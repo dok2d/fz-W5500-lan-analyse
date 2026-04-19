@@ -250,8 +250,41 @@ static void lan_tester_generate_default_mac(uint8_t mac[6]) {
 
 static bool lan_tester_parse_ip(const char* str, uint8_t ip[4]);
 
+/* Helper: extract string value for "key=" from buffer into dst (max dst_sz-1 chars).
+ * Matches only at line start (beginning of buffer or after \n) to avoid
+ * "ping_ip=" matching inside "cont_ping_ip=". */
+static bool settings_parse_str(const char* buf, const char* key, char* dst, size_t dst_sz) {
+    size_t klen = strlen(key);
+    const char* p = buf;
+    while((p = strstr(p, key)) != NULL) {
+        if(p == buf || *(p - 1) == '\n') {
+            p += klen;
+            int j = 0;
+            while(p[j] && p[j] != '\n' && j < (int)(dst_sz - 1)) {
+                dst[j] = p[j];
+                j++;
+            }
+            dst[j] = '\0';
+            return j > 0;
+        }
+        p += klen;
+    }
+    return false;
+}
+
+/* Helper: extract IP value for "key=" from buffer into ip[4], also copy text to txt */
+static bool
+    settings_parse_ip(const char* buf, const char* key, uint8_t ip[4], char* txt, size_t txt_sz) {
+    char tmp[16];
+    if(!settings_parse_str(buf, key, tmp, sizeof(tmp))) return false;
+    if(!lan_tester_parse_ip(tmp, ip)) return false;
+    strncpy(txt, tmp, txt_sz);
+    txt[txt_sz - 1] = '\0';
+    return true;
+}
+
 static void lan_tester_settings_load(LanTesterApp* app) {
-    /* Defaults */
+    /* Defaults — general settings */
     app->setting_autosave = true;
     app->setting_sound = true;
     app->dns_custom_enabled = false;
@@ -267,37 +300,53 @@ static void lan_tester_settings_load(LanTesterApp* app) {
     app->autotest_lldp_wait_s = 30;
     app->autotest_arp_enabled = true;
 
+    /* Defaults — tool targets */
+    strncpy(app->ping_ip_input, "8.8.8.8", sizeof(app->ping_ip_input));
+    strncpy(app->cont_ping_ip_input, "8.8.8.8", sizeof(app->cont_ping_ip_input));
+    strncpy(app->dns_hostname_input, "google.com", sizeof(app->dns_hostname_input));
+    strncpy(app->traceroute_ip_input, "8.8.8.8", sizeof(app->traceroute_ip_input));
+    strncpy(app->traceroute_host_input, "8.8.8.8", sizeof(app->traceroute_host_input));
+    app->port_scan_ip_input[0] = '\0';
+    app->ping_sweep_ip_input[0] = '\0';
+    strncpy(app->snmp_ip_input, "192.168.1.1", sizeof(app->snmp_ip_input));
+    strncpy(app->ntp_ip_input, "192.168.1.1", sizeof(app->ntp_ip_input));
+    strncpy(app->netbios_ip_input, "192.168.1.1", sizeof(app->netbios_ip_input));
+    strncpy(app->dns_poison_host_input, "google.com", sizeof(app->dns_poison_host_input));
+    strncpy(app->tftp_ip_input, "192.168.1.1", sizeof(app->tftp_ip_input));
+    strncpy(app->tftp_filename_input, "config.cfg", sizeof(app->tftp_filename_input));
+    strncpy(app->ipmi_ip_input, "192.168.1.1", sizeof(app->ipmi_ip_input));
+    strncpy(app->vlan_hop_input, "1,10,20,50,100", sizeof(app->vlan_hop_input));
+
+    /* Defaults — PXE */
+    strncpy(app->pxe_server_ip_input, "192.168.77.1", sizeof(app->pxe_server_ip_input));
+    strncpy(app->pxe_client_ip_input, "192.168.77.10", sizeof(app->pxe_client_ip_input));
+    strncpy(app->pxe_subnet_input, "255.255.255.0", sizeof(app->pxe_subnet_input));
+
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);
+
     if(storage_file_open(file, SETTINGS_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
-        /* Heap-allocated to avoid 384-byte stack usage on 4KB main thread */
-        char* buf = malloc(384);
+        char* buf = malloc(768);
         if(!buf) {
             storage_file_close(file);
             storage_file_free(file);
             furi_record_close(RECORD_STORAGE);
             return;
         }
-        uint16_t read = storage_file_read(file, buf, 383);
+        uint16_t read = storage_file_read(file, buf, 767);
         buf[read] = '\0';
         storage_file_close(file);
+
+        /* General settings */
         if(strstr(buf, "autosave=0")) app->setting_autosave = false;
         if(strstr(buf, "sound=0")) app->setting_sound = false;
         if(strstr(buf, "dns_custom=1")) app->dns_custom_enabled = true;
-        char* dns_ip = strstr(buf, "dns_ip=");
-        if(dns_ip) {
-            dns_ip += 7; /* skip "dns_ip=" */
-            char ip_buf[16];
-            int j = 0;
-            while(dns_ip[j] && dns_ip[j] != '\n' && j < 15) {
-                ip_buf[j] = dns_ip[j];
-                j++;
-            }
-            ip_buf[j] = '\0';
-            if(lan_tester_parse_ip(ip_buf, app->dns_custom_server)) {
-                strncpy(app->dns_custom_ip_input, ip_buf, sizeof(app->dns_custom_ip_input));
-            }
-        }
+        settings_parse_ip(
+            buf,
+            "dns_ip=",
+            app->dns_custom_server,
+            app->dns_custom_ip_input,
+            sizeof(app->dns_custom_ip_input));
         char* pc = strstr(buf, "ping_count=");
         if(pc) {
             int val = atoi(pc + 11);
@@ -313,26 +362,85 @@ static void lan_tester_settings_load(LanTesterApp* app) {
             int val = atoi(pi + 14);
             if(val >= 200 && val <= 5000) app->ping_interval_ms = (uint16_t)val;
         }
-        char* at_dns = strstr(buf, "autotest_dns=");
-        if(at_dns) {
-            at_dns += 13;
-            int j = 0;
-            while(at_dns[j] && at_dns[j] != '\n' && j < 63) {
-                app->autotest_dns_host[j] = at_dns[j];
-                j++;
-            }
-            app->autotest_dns_host[j] = '\0';
-        }
+        settings_parse_str(
+            buf, "autotest_dns=", app->autotest_dns_host, sizeof(app->autotest_dns_host));
         char* at_lldp = strstr(buf, "autotest_lldp_wait=");
         if(at_lldp) {
             int val = atoi(at_lldp + 19);
             if(val >= 10 && val <= 60) app->autotest_lldp_wait_s = (uint8_t)val;
         }
         if(strstr(buf, "autotest_arp=0")) app->autotest_arp_enabled = false;
+
+        /* MAC address */
+        char mac_str[18];
+        if(settings_parse_str(buf, "mac=", mac_str, sizeof(mac_str))) {
+            unsigned int m[6];
+            if(sscanf(
+                   mac_str,
+                   "%02X:%02X:%02X:%02X:%02X:%02X",
+                   &m[0],
+                   &m[1],
+                   &m[2],
+                   &m[3],
+                   &m[4],
+                   &m[5]) == 6) {
+                for(int i = 0; i < 6; i++)
+                    app->mac_addr[i] = (uint8_t)m[i];
+            }
+        }
+
+        /* Tool targets */
+        settings_parse_str(buf, "ping_ip=", app->ping_ip_input, sizeof(app->ping_ip_input));
+        settings_parse_str(
+            buf, "cont_ping_ip=", app->cont_ping_ip_input, sizeof(app->cont_ping_ip_input));
+        settings_parse_str(
+            buf, "dns_host=", app->dns_hostname_input, sizeof(app->dns_hostname_input));
+        settings_parse_str(
+            buf,
+            "traceroute_host=",
+            app->traceroute_host_input,
+            sizeof(app->traceroute_host_input));
+        /* Keep traceroute_ip_input in sync for compat */
+        strncpy(
+            app->traceroute_ip_input,
+            app->traceroute_host_input,
+            sizeof(app->traceroute_ip_input));
+        settings_parse_str(
+            buf, "port_scan_ip=", app->port_scan_ip_input, sizeof(app->port_scan_ip_input));
+        settings_parse_str(
+            buf, "ping_sweep=", app->ping_sweep_ip_input, sizeof(app->ping_sweep_ip_input));
+        settings_parse_str(buf, "snmp_ip=", app->snmp_ip_input, sizeof(app->snmp_ip_input));
+        settings_parse_str(buf, "ntp_ip=", app->ntp_ip_input, sizeof(app->ntp_ip_input));
+        settings_parse_str(
+            buf, "netbios_ip=", app->netbios_ip_input, sizeof(app->netbios_ip_input));
+        settings_parse_str(
+            buf,
+            "dns_poison_host=",
+            app->dns_poison_host_input,
+            sizeof(app->dns_poison_host_input));
+        settings_parse_str(buf, "tftp_ip=", app->tftp_ip_input, sizeof(app->tftp_ip_input));
+        settings_parse_str(
+            buf, "tftp_file=", app->tftp_filename_input, sizeof(app->tftp_filename_input));
+        settings_parse_str(buf, "ipmi_ip=", app->ipmi_ip_input, sizeof(app->ipmi_ip_input));
+        settings_parse_str(buf, "vlan_hop=", app->vlan_hop_input, sizeof(app->vlan_hop_input));
+
+        /* PXE settings */
+        settings_parse_str(
+            buf, "pxe_server_ip=", app->pxe_server_ip_input, sizeof(app->pxe_server_ip_input));
+        settings_parse_str(
+            buf, "pxe_client_ip=", app->pxe_client_ip_input, sizeof(app->pxe_client_ip_input));
+        settings_parse_str(
+            buf, "pxe_subnet=", app->pxe_subnet_input, sizeof(app->pxe_subnet_input));
+
         free(buf);
     }
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
+
+    /* Parse PXE IP arrays from loaded text */
+    lan_tester_parse_ip(app->pxe_server_ip_input, app->pxe_server_ip);
+    lan_tester_parse_ip(app->pxe_client_ip_input, app->pxe_client_ip);
+    lan_tester_parse_ip(app->pxe_subnet_input, app->pxe_subnet);
 }
 
 static void lan_tester_settings_save(LanTesterApp* app) {
@@ -340,20 +448,26 @@ static void lan_tester_settings_save(LanTesterApp* app) {
     storage_simply_mkdir(storage, APP_DATA_PATH(""));
     File* file = storage_file_alloc(storage);
     if(storage_file_open(file, SETTINGS_PATH, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
-        /* Heap-allocated to avoid 320-byte stack usage on 4KB main thread */
-        char* buf = malloc(320);
+        char* buf = malloc(768);
         if(!buf) {
             storage_file_close(file);
             storage_file_free(file);
             furi_record_close(RECORD_STORAGE);
             return;
         }
-        snprintf(
+        int len = snprintf(
             buf,
-            320,
+            768,
             "autosave=%d\nsound=%d\ndns_custom=%d\ndns_ip=%s\n"
             "ping_count=%d\nping_timeout=%d\nping_interval=%d\n"
-            "autotest_dns=%s\nautotest_lldp_wait=%d\nautotest_arp=%d\n",
+            "autotest_dns=%s\nautotest_lldp_wait=%d\nautotest_arp=%d\n"
+            "mac=%02X:%02X:%02X:%02X:%02X:%02X\n"
+            "ping_ip=%s\ncont_ping_ip=%s\ndns_host=%s\n"
+            "traceroute_host=%s\nport_scan_ip=%s\nping_sweep=%s\n"
+            "snmp_ip=%s\nntp_ip=%s\nnetbios_ip=%s\n"
+            "dns_poison_host=%s\ntftp_ip=%s\ntftp_file=%s\n"
+            "ipmi_ip=%s\nvlan_hop=%s\n"
+            "pxe_server_ip=%s\npxe_client_ip=%s\npxe_subnet=%s\n",
             app->setting_autosave ? 1 : 0,
             app->setting_sound ? 1 : 0,
             app->dns_custom_enabled ? 1 : 0,
@@ -363,8 +477,31 @@ static void lan_tester_settings_save(LanTesterApp* app) {
             app->ping_interval_ms,
             app->autotest_dns_host,
             app->autotest_lldp_wait_s,
-            app->autotest_arp_enabled ? 1 : 0);
-        storage_file_write(file, buf, strlen(buf));
+            app->autotest_arp_enabled ? 1 : 0,
+            app->mac_addr[0],
+            app->mac_addr[1],
+            app->mac_addr[2],
+            app->mac_addr[3],
+            app->mac_addr[4],
+            app->mac_addr[5],
+            app->ping_ip_input,
+            app->cont_ping_ip_input,
+            app->dns_hostname_input,
+            app->traceroute_host_input,
+            app->port_scan_ip_input,
+            app->ping_sweep_ip_input,
+            app->snmp_ip_input,
+            app->ntp_ip_input,
+            app->netbios_ip_input,
+            app->dns_poison_host_input,
+            app->tftp_ip_input,
+            app->tftp_filename_input,
+            app->ipmi_ip_input,
+            app->vlan_hop_input,
+            app->pxe_server_ip_input,
+            app->pxe_client_ip_input,
+            app->pxe_subnet_input);
+        storage_file_write(file, buf, len);
         storage_file_close(file);
         free(buf);
     }
@@ -1848,11 +1985,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     view_dispatcher_add_view(
         app->view_dispatcher, LanTesterViewIpKeyboard, ip_keyboard_get_view(app->ip_keyboard));
 
-    /* Default ping target */
-    strncpy(app->ping_ip_input, "8.8.8.8", sizeof(app->ping_ip_input));
-
-    /* Default DNS hostname */
-    strncpy(app->dns_hostname_input, "google.com", sizeof(app->dns_hostname_input));
+    /* Ping and DNS defaults set in settings_load() */
 
     /* Continuous Ping views */
     app->view_cont_ping = view_alloc();
@@ -1863,11 +1996,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     with_view_model(app->view_cont_ping, ContPingViewModel * vm, { vm->app = app; }, false);
     view_dispatcher_add_view(app->view_dispatcher, LanTesterViewContPing, app->view_cont_ping);
 
-    /* Default continuous ping target */
-    strncpy(app->cont_ping_ip_input, "8.8.8.8", sizeof(app->cont_ping_ip_input));
-
-    /* Port scan target defaults to empty — filled from DHCP gateway when available */
-    app->port_scan_ip_input[0] = '\0';
+    /* Cont ping and port scan defaults set in settings_load() */
     app->port_scan_custom_start = 1;
     app->port_scan_custom_end = 1024;
     strncpy(app->port_scan_start_input, "1", sizeof(app->port_scan_start_input));
@@ -1908,23 +2037,8 @@ static LanTesterApp* lan_tester_app_alloc(void) {
 
     /* PXE Server views */
 
-    /* PXE defaults */
-    strncpy(app->pxe_server_ip_input, "192.168.77.1", sizeof(app->pxe_server_ip_input));
-    strncpy(app->pxe_client_ip_input, "192.168.77.10", sizeof(app->pxe_client_ip_input));
-    strncpy(app->pxe_subnet_input, "255.255.255.0", sizeof(app->pxe_subnet_input));
+    /* PXE text defaults + IP arrays set in settings_load(), just set DHCP flag */
     app->pxe_dhcp_enabled = true;
-    app->pxe_server_ip[0] = 192;
-    app->pxe_server_ip[1] = 168;
-    app->pxe_server_ip[2] = 77;
-    app->pxe_server_ip[3] = 1;
-    app->pxe_client_ip[0] = 192;
-    app->pxe_client_ip[1] = 168;
-    app->pxe_client_ip[2] = 77;
-    app->pxe_client_ip[3] = 10;
-    app->pxe_subnet[0] = 255;
-    app->pxe_subnet[1] = 255;
-    app->pxe_subnet[2] = 255;
-    app->pxe_subnet[3] = 0;
 
     /* PXE Help TextBox (unused, kept for view ID compatibility) */
     app->text_box_pxe_help = text_box_alloc();
@@ -2006,15 +2120,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->discovered_host_count = 0;
     app->host_list_page = 0;
 
-    /* Traceroute views */
-    /* Traceroute text input (supports hostnames and IPs) */
-    /* Default traceroute target */
-    strncpy(app->traceroute_ip_input, "8.8.8.8", sizeof(app->traceroute_ip_input));
-    strncpy(app->traceroute_host_input, "8.8.8.8", sizeof(app->traceroute_host_input));
-
-    /* Ping Sweep views */
-    /* Ping sweep defaults to empty — auto-detected from DHCP at scan time */
-    app->ping_sweep_ip_input[0] = '\0';
+    /* Traceroute, ping sweep defaults set in settings_load() */
 
     /* mDNS/SSDP Discovery view */
     /* Auto Test view */
@@ -2029,22 +2135,8 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* Shared result view for all new analysis tools (saves ~12 TextBox allocs) */
     app->tool_back_view = LanTesterViewMainMenu;
 
-    /* Shared text input for tool-specific entry (TFTP filename, etc.) */
-    /* Tool input defaults */
-    strncpy(app->snmp_ip_input, "192.168.1.1", sizeof(app->snmp_ip_input));
-    strncpy(app->ntp_ip_input, "192.168.1.1", sizeof(app->ntp_ip_input));
-    strncpy(app->netbios_ip_input, "192.168.1.1", sizeof(app->netbios_ip_input));
-    strncpy(app->dns_poison_host_input, "google.com", sizeof(app->dns_poison_host_input));
-    strncpy(app->tftp_ip_input, "192.168.1.1", sizeof(app->tftp_ip_input));
-    strncpy(app->tftp_filename_input, "config.cfg", sizeof(app->tftp_filename_input));
-    strncpy(app->ipmi_ip_input, "192.168.1.1", sizeof(app->ipmi_ip_input));
+    /* Tool input defaults set in settings_load() */
     app->vlan_hop_custom = false;
-    strncpy(app->vlan_hop_input, "1,10,20,50,100", sizeof(app->vlan_hop_input));
-
-    /* Auto Test defaults */
-    strncpy(app->autotest_dns_host, "google.com", sizeof(app->autotest_dns_host));
-    app->autotest_lldp_wait_s = 30;
-    app->autotest_arp_enabled = true;
     app->autotest_running = false;
 
     /* History views */
@@ -2199,11 +2291,12 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     /* AutoTest DNS host — already set from load */
     variable_item_set_current_value_text(item_at_dns, app->autotest_dns_host);
 
-    /* Load saved MAC from SD card if available, otherwise save the generated one */
-    if(mac_changer_load(app->mac_addr)) {
-        FURI_LOG_I(TAG, "Loaded custom MAC from SD");
-    } else {
-        mac_changer_save(app->mac_addr);
+    /* MAC loaded in settings_load() (with mac.conf backward compat).
+     * If still zero (fresh install), generate and save immediately. */
+    if(!(app->mac_addr[0] | app->mac_addr[1] | app->mac_addr[2] | app->mac_addr[3] |
+         app->mac_addr[4] | app->mac_addr[5])) {
+        lan_tester_generate_default_mac(app->mac_addr);
+        lan_tester_settings_save(app);
         FURI_LOG_I(TAG, "Generated and saved new unique MAC");
     }
 
@@ -2212,6 +2305,9 @@ static LanTesterApp* lan_tester_app_alloc(void) {
 
 static void lan_tester_app_free(LanTesterApp* app) {
     furi_assert(app);
+
+    /* Save all settings + last-used targets + MAC on exit */
+    lan_tester_settings_save(app);
 
     /* Stop and free worker thread */
     lan_tester_worker_stop(app);
@@ -3028,7 +3124,7 @@ static void lan_tester_mac_changer_input_callback(void* context) {
     if(app->w5500_initialized) {
         w5500_hal_set_mac(app->mac_addr);
     }
-    mac_changer_save(app->mac_addr);
+    lan_tester_settings_save(app);
 
     /* Invalidate DHCP cache since MAC changed */
     app->dhcp_valid = false;
