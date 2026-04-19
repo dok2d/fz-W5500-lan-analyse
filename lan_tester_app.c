@@ -310,6 +310,8 @@ static void lan_tester_settings_load(LanTesterApp* app) {
     app->ping_sweep_ip_input[0] = '\0';
     strncpy(app->snmp_ip_input, "192.168.1.1", sizeof(app->snmp_ip_input));
     strncpy(app->ntp_ip_input, "192.168.1.1", sizeof(app->ntp_ip_input));
+    app->ntp_tz_hours = 0;
+    app->ntp_tz_minutes = 0;
     strncpy(app->netbios_ip_input, "192.168.1.1", sizeof(app->netbios_ip_input));
     strncpy(app->dns_poison_host_input, "google.com", sizeof(app->dns_poison_host_input));
     strncpy(app->tftp_ip_input, "192.168.1.1", sizeof(app->tftp_ip_input));
@@ -411,6 +413,15 @@ static void lan_tester_settings_load(LanTesterApp* app) {
             buf, "ping_sweep=", app->ping_sweep_ip_input, sizeof(app->ping_sweep_ip_input));
         settings_parse_str(buf, "snmp_ip=", app->snmp_ip_input, sizeof(app->snmp_ip_input));
         settings_parse_str(buf, "ntp_ip=", app->ntp_ip_input, sizeof(app->ntp_ip_input));
+        char tz_tmp[8];
+        if(settings_parse_str(buf, "ntp_tz_h=", tz_tmp, sizeof(tz_tmp))) {
+            int v = atoi(tz_tmp);
+            if(v >= -12 && v <= 14) app->ntp_tz_hours = (int8_t)v;
+        }
+        if(settings_parse_str(buf, "ntp_tz_m=", tz_tmp, sizeof(tz_tmp))) {
+            int v = atoi(tz_tmp);
+            if(v >= 0 && v <= 45) app->ntp_tz_minutes = (int8_t)v;
+        }
         settings_parse_str(
             buf, "netbios_ip=", app->netbios_ip_input, sizeof(app->netbios_ip_input));
         settings_parse_str(
@@ -464,7 +475,7 @@ static void lan_tester_settings_save(LanTesterApp* app) {
             "mac=%02X:%02X:%02X:%02X:%02X:%02X\n"
             "ping_ip=%s\ncont_ping_ip=%s\ndns_host=%s\n"
             "traceroute_host=%s\nport_scan_ip=%s\nping_sweep=%s\n"
-            "snmp_ip=%s\nntp_ip=%s\nnetbios_ip=%s\n"
+            "snmp_ip=%s\nntp_ip=%s\nntp_tz_h=%d\nntp_tz_m=%d\nnetbios_ip=%s\n"
             "dns_poison_host=%s\ntftp_ip=%s\ntftp_file=%s\n"
             "ipmi_ip=%s\nvlan_hop=%s\n"
             "pxe_server_ip=%s\npxe_client_ip=%s\npxe_subnet=%s\n",
@@ -492,6 +503,8 @@ static void lan_tester_settings_save(LanTesterApp* app) {
             app->ping_sweep_ip_input,
             app->snmp_ip_input,
             app->ntp_ip_input,
+            app->ntp_tz_hours,
+            app->ntp_tz_minutes,
             app->netbios_ip_input,
             app->dns_poison_host_input,
             app->tftp_ip_input,
@@ -563,7 +576,6 @@ static void lan_tester_do_packet_capture(LanTesterApp* app);
 static void lan_tester_do_autotest(LanTesterApp* app);
 static void lan_tester_do_snmp_get(LanTesterApp* app);
 static void lan_tester_do_ntp_diag(LanTesterApp* app);
-static void lan_tester_do_ntp_sync(LanTesterApp* app);
 static void lan_tester_do_netbios_query(LanTesterApp* app);
 static void lan_tester_do_dns_poison_check(LanTesterApp* app);
 static void lan_tester_do_arp_watch(LanTesterApp* app);
@@ -581,6 +593,8 @@ static void lan_tester_populate_host_list(LanTesterApp* app);
 static void lan_tester_port_scan_start_callback(void* context);
 static void lan_tester_history_file_callback(void* context, uint32_t index);
 static void lan_tester_mac_changer_input_callback(void* context);
+static void lan_tester_ntp_sync_hours_callback(void* context, int32_t number);
+static void lan_tester_ntp_sync_minutes_callback(void* context, int32_t number);
 static void lan_tester_stop_worker_on_back(void);
 static void lan_tester_count_frame(LanTesterApp* app, const uint8_t* frame, uint16_t len);
 static bool lan_tester_save_results(const char* filename, const char* content);
@@ -1811,7 +1825,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         app);
     submenu_add_item(
         app->submenu_cat_diag,
-        "NTP Sync Clock",
+        "Apply NTP Sync",
         LanTesterMenuItemNtpSync,
         lan_tester_submenu_callback,
         app);
@@ -1985,7 +1999,15 @@ static LanTesterApp* lan_tester_app_alloc(void) {
 
     /* Shared ByteInput for MAC address entry (WOL, MAC changer) */
     app->byte_input_tool = byte_input_alloc();
-    /* ByteInput shares the ToolInput view slot — we swap the view as needed */
+
+    /* Shared NumberInput for integer entry */
+    app->number_input_tool = number_input_alloc();
+    view_set_previous_callback(
+        number_input_get_view(app->number_input_tool), lan_tester_nav_back_tool);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        LanTesterViewNumberInput,
+        number_input_get_view(app->number_input_tool));
 
     /* IP Keyboard (shared custom view for all IP address inputs) */
     app->ip_keyboard = ip_keyboard_alloc();
@@ -2170,7 +2192,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "TFTP, NTP,\n"
         "PXE boot/download,\n"
         "rogue DHCP/RA detect.\n"
-        "v2.7.0 | by dok2d\n"
+        "v2.8.0 | by dok2d\n"
         "github.com/dok2d/\n"
         "fz-W5500-lan-analyse\n");
     view_set_previous_callback(
@@ -2347,6 +2369,7 @@ static void lan_tester_app_free(LanTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewAutoTest);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewCatSecurity);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewToolByteInput);
+    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewNumberInput);
 
     submenu_free(app->submenu);
     submenu_free(app->submenu_cat_portinfo);
@@ -2360,6 +2383,7 @@ static void lan_tester_app_free(LanTesterApp* app) {
     text_box_free(app->text_box_tool);
     text_input_free(app->text_input_tool);
     byte_input_free(app->byte_input_tool);
+    number_input_free(app->number_input_tool);
     view_free(app->view_cont_ping);
     view_free(app->view_bridge);
     view_free(app->view_packet_capture);
@@ -2635,10 +2659,6 @@ static int32_t lan_tester_worker_fn(void* context) {
         break;
     case LanTesterMenuItemNtpDiag:
         lan_tester_do_ntp_diag(app);
-        lan_tester_update_view(app->text_box_tool, app->tool_text);
-        break;
-    case LanTesterMenuItemNtpSync:
-        lan_tester_do_ntp_sync(app);
         lan_tester_update_view(app->text_box_tool, app->tool_text);
         break;
     case LanTesterMenuItemNetbiosQuery:
@@ -3219,18 +3239,75 @@ static void lan_tester_ntp_ip_input_callback(void* context) {
     }
 }
 
-static void lan_tester_ntp_sync_ip_input_callback(void* context) {
+static void lan_tester_ntp_sync_hours_callback(void* context, int32_t number) {
     LanTesterApp* app = context;
     furi_assert(app);
-    if(lan_tester_parse_ip(app->ntp_ip_input, app->ntp_target)) {
-        lan_tester_show_view(
-            app, app->text_box_tool, LanTesterViewToolResult, app->tool_text, "Querying NTP...\n");
-        lan_tester_worker_start(app, LanTesterMenuItemNtpSync, LanTesterViewToolResult);
-    } else {
-        furi_string_set(app->tool_text, "Invalid IP address!\n");
-        text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolResult);
+    app->ntp_tz_hours = (int8_t)number;
+
+    /* Step 2: ask for minutes */
+    number_input_set_header_text(app->number_input_tool, "TZ minutes (0/15/30/45):");
+    number_input_set_result_callback(
+        app->number_input_tool,
+        lan_tester_ntp_sync_minutes_callback,
+        app,
+        app->ntp_tz_minutes,
+        0,
+        45);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewNumberInput);
+}
+
+static void lan_tester_ntp_sync_minutes_callback(void* context, int32_t number) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    /* Round to nearest 15 */
+    app->ntp_tz_minutes = (int8_t)((number + 7) / 15 * 15);
+
+    /* Apply NTP time + timezone offset */
+    int32_t tz_offset_sec = (int32_t)app->ntp_tz_hours * 3600 +
+                            (int32_t)app->ntp_tz_minutes * (app->ntp_tz_hours < 0 ? -60 : 60);
+    uint32_t elapsed = (furi_get_tick() - app->ntp_query_tick) / 1000;
+    uint32_t utc_time = app->ntp_unix_time + elapsed;
+    uint32_t local_time = (uint32_t)((int32_t)utc_time + tz_offset_sec);
+
+    DateTime flip_dt;
+    furi_hal_rtc_get_datetime(&flip_dt);
+    int32_t diff_sec = (int32_t)local_time - (int32_t)datetime_datetime_to_timestamp(&flip_dt);
+
+    DateTime local_dt;
+    datetime_timestamp_to_datetime(local_time, &local_dt);
+    furi_hal_rtc_set_datetime(&local_dt);
+
+    furi_string_reset(app->tool_text);
+    furi_string_cat_printf(
+        app->tool_text,
+        "[NTP Sync] UTC%+d:%02d\n"
+        "Flipper: %04d-%02d-%02d %02d:%02d:%02d\n"
+        "NTP:     %04d-%02d-%02d %02d:%02d:%02d\n"
+        "Diff: %+ld sec\n"
+        "Clock synced!\n",
+        app->ntp_tz_hours,
+        app->ntp_tz_minutes,
+        flip_dt.year,
+        flip_dt.month,
+        flip_dt.day,
+        flip_dt.hour,
+        flip_dt.minute,
+        flip_dt.second,
+        local_dt.year,
+        local_dt.month,
+        local_dt.day,
+        local_dt.hour,
+        local_dt.minute,
+        local_dt.second,
+        (long)diff_sec);
+
+    app->ntp_unix_time = 0;
+    text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
+    if(app->setting_sound) {
+        notification_message(app->notifications, &sequence_success);
     }
+    lan_tester_settings_save(app);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolResult);
 }
 
 static void lan_tester_netbios_ip_input_callback(void* context) {
@@ -3681,66 +3758,37 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
 
     case LanTesterMenuItemNtpSync:
         app->tool_back_view = LanTesterViewCatDiag;
-        /* If NTP Diag was run recently, offer instant sync without re-query */
-        if(app->ntp_unix_time && (furi_get_tick() - app->ntp_query_tick) < 120000) {
-            uint32_t elapsed = (furi_get_tick() - app->ntp_query_tick) / 1000;
-            uint32_t adjusted = app->ntp_unix_time + elapsed;
-            DateTime ntp_dt;
-            datetime_timestamp_to_datetime(adjusted, &ntp_dt);
-            DateTime flip_dt;
-            furi_hal_rtc_get_datetime(&flip_dt);
-            int32_t diff = (int32_t)adjusted - (int32_t)datetime_datetime_to_timestamp(&flip_dt);
-            furi_hal_rtc_set_datetime(&ntp_dt);
+        if(!app->ntp_unix_time || (furi_get_tick() - app->ntp_query_tick) >= 120000) {
             furi_string_reset(app->tool_text);
-            furi_string_cat_printf(
-                app->tool_text,
-                "[NTP Sync]\n"
-                "Flipper: %04d-%02d-%02d %02d:%02d:%02d\n"
-                "NTP:     %04d-%02d-%02d %02d:%02d:%02d\n"
-                "Diff: %+ld sec\n"
-                "Clock synced!\n",
-                flip_dt.year,
-                flip_dt.month,
-                flip_dt.day,
-                flip_dt.hour,
-                flip_dt.minute,
-                flip_dt.second,
-                ntp_dt.year,
-                ntp_dt.month,
-                ntp_dt.day,
-                ntp_dt.hour,
-                ntp_dt.minute,
-                ntp_dt.second,
-                (long)diff);
-            app->ntp_unix_time = 0;
+            furi_string_set(
+                app->tool_text, "[NTP Sync]\nNo recent NTP data.\nRun NTP Diagnostics first.\n");
             text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
-            if(app->setting_sound) {
-                notification_message(app->notifications, &sequence_success);
-            }
             view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewToolResult);
         } else {
-            /* No recent NTP result — query first */
-            if(app->dhcp_valid && app->ntp_ip_input[0] == '\0') {
-                snprintf(
-                    app->ntp_ip_input,
-                    sizeof(app->ntp_ip_input),
-                    "%d.%d.%d.%d",
-                    app->dhcp_gw[0],
-                    app->dhcp_gw[1],
-                    app->dhcp_gw[2],
-                    app->dhcp_gw[3]);
+            /* Auto-detect timezone from diff if between 1h and 12h */
+            uint32_t elapsed = (furi_get_tick() - app->ntp_query_tick) / 1000;
+            uint32_t adjusted = app->ntp_unix_time + elapsed;
+            DateTime flip_dt;
+            furi_hal_rtc_get_datetime(&flip_dt);
+            int32_t diff_sec =
+                (int32_t)adjusted - (int32_t)datetime_datetime_to_timestamp(&flip_dt);
+            int32_t abs_diff = diff_sec < 0 ? -diff_sec : diff_sec;
+            if(abs_diff >= 3600 && abs_diff <= 43200) {
+                int32_t tz_total = (diff_sec + (diff_sec > 0 ? 450 : -450)) / 900 * 15;
+                tz_total = -tz_total;
+                app->ntp_tz_hours = (int8_t)(tz_total / 60);
+                app->ntp_tz_minutes = (int8_t)((tz_total < 0 ? -tz_total : tz_total) % 60);
             }
-            ip_keyboard_setup(
-                app->ip_keyboard,
-                "NTP server IP:",
-                app->ntp_ip_input,
-                false,
-                lan_tester_ntp_sync_ip_input_callback,
+            /* Step 1: ask for hours */
+            number_input_set_header_text(app->number_input_tool, "TZ hours (-12..+14):");
+            number_input_set_result_callback(
+                app->number_input_tool,
+                lan_tester_ntp_sync_hours_callback,
                 app,
-                app->ntp_ip_input,
-                sizeof(app->ntp_ip_input),
-                lan_tester_nav_back_diag);
-            view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
+                app->ntp_tz_hours,
+                -12,
+                14);
+            view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewNumberInput);
         }
         break;
 
@@ -7121,61 +7169,6 @@ static void lan_tester_do_ntp_diag(LanTesterApp* app) {
     }
 
     lan_tester_save_and_notify(app, "ntp.txt", app->tool_text);
-}
-
-/* ==================== NTP Sync ==================== */
-
-static void lan_tester_do_ntp_sync(LanTesterApp* app) {
-    if(!lan_tester_check_w5500(app)) return;
-
-    char ip_str[16];
-    snprintf(
-        ip_str,
-        sizeof(ip_str),
-        "%d.%d.%d.%d",
-        app->ntp_target[0],
-        app->ntp_target[1],
-        app->ntp_target[2],
-        app->ntp_target[3]);
-    furi_string_cat_printf(app->tool_text, "[NTP Sync] %s\n", ip_str);
-    lan_tester_update_view(app->text_box_tool, app->tool_text);
-
-    NtpDiagResult result;
-    if(!ntp_diag_query(app->ntp_target, &result) || !result.unix_time) {
-        furi_string_cat(app->tool_text, "No NTP response.\n");
-        return;
-    }
-
-    DateTime flip_dt;
-    furi_hal_rtc_get_datetime(&flip_dt);
-    int32_t diff = (int32_t)result.unix_time - (int32_t)datetime_datetime_to_timestamp(&flip_dt);
-
-    DateTime ntp_dt;
-    datetime_timestamp_to_datetime(result.unix_time, &ntp_dt);
-    furi_hal_rtc_set_datetime(&ntp_dt);
-
-    furi_string_cat_printf(
-        app->tool_text,
-        "Flipper: %04d-%02d-%02d %02d:%02d:%02d\n"
-        "NTP:     %04d-%02d-%02d %02d:%02d:%02d\n"
-        "Diff: %+ld sec\n"
-        "Clock synced!\n",
-        flip_dt.year,
-        flip_dt.month,
-        flip_dt.day,
-        flip_dt.hour,
-        flip_dt.minute,
-        flip_dt.second,
-        ntp_dt.year,
-        ntp_dt.month,
-        ntp_dt.day,
-        ntp_dt.hour,
-        ntp_dt.minute,
-        ntp_dt.second,
-        (long)diff);
-
-    app->ntp_unix_time = 0;
-    lan_tester_save_and_notify(app, "ntp_sync.txt", app->tool_text);
 }
 
 /* ==================== NetBIOS Query ==================== */
